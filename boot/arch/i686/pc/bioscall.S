@@ -2,8 +2,8 @@
     .org    0
     .section .text
     .code32
-    .globl  bios_call
-bios_call:
+    .globl  _pc_bios_call
+_pc_bios_call:
     push    %ebp                        # set up stack base pointer
     mov     %esp, %ebp
 
@@ -30,8 +30,10 @@ bios_call:
     movw    %ax, .Lsi
     movw    20(%edx), %ax
     movw    %ax, .Ldi
-    movw    24(%edx), %ax
+    movw    28(%edx), %ax
     movw    %ax, .Les
+    movw    32(%edx), %ax
+    movw    %ax, .Lds
 
     call    switch_prot_to_real         # switch to real mode
     .code16
@@ -66,6 +68,11 @@ bios_call:
 .Les:
     .word   0
     mov     %ax, %es
+
+    .byte   0xB8
+.Lds:
+    .word   0
+    mov     %ax, %ds
 
     .byte   0xB8
 .Lax:

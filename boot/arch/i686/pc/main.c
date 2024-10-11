@@ -6,42 +6,21 @@
 
 #include <stdint.h>
 
-union data_reg {
-    uint32_t l;
-    uint16_t w;
-    struct {
-        uint8_t l, h;
-    } b;
-};
+#include "bioscall.h"
+#include "disk.h"
+#include "video.h"
+#include "bootinfo.h"
 
-union index_reg {
-    uint32_t l;
-    uint16_t w;
-    uint8_t b;
-};
-
-struct regs {
-    union data_reg a;
-    union data_reg b;
-    union data_reg c;
-    union data_reg d;
-    union index_reg si;
-    union index_reg di;
-    union index_reg es;
-};
-
-extern int bios_call(uint8_t irq, struct regs*);
-
-void main(void)
+__attribute__((noreturn))
+void _pc_init(void)
 {
     const char str[] = "Hello, World!\r\n";
-    struct regs irq_regs = {
-        .a.b.h = 0x0E,
-        .a.b.l = 'H',
-    };
     for (int i = 0; str[i]; i++) {
-        irq_regs.a.b.l = str[i];
-        bios_call(0x10, &irq_regs);
+        _pc_bios_tty_output(str[i]);
     }
-    return;
+
+    _pc_bios_read_drive_chs(_pc_boot_drive, (struct chs){ 0, 0, 1 }, 18, (void*)0x10000);
+    
+    
+    for (;;) {}
 }

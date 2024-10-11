@@ -50,10 +50,6 @@ str_diskerror:
     .word   MAGIC                       # magic number
 
     .org    0x200                       # now there's 17 more sectors for code!
-halt:
-    hlt                                 # halt forever
-    jmp     halt
-
 print_string:
     mov     $0x0E, %ah                  # print the string in %si
     xor     %bx, %bx
@@ -70,8 +66,7 @@ print_string.2:
     ret                                 # return
 
 start2:
-    mov     $str_hello, %si
-    call    print_string                # Hello, World!
+    mov     %dl, _pc_boot_drive         # store the index of the boot drive
 
 .activate_a20:
     mov     $0x2401, %ax                # activate A20 via bios
@@ -80,19 +75,20 @@ start2:
 
     mov     $str_a20error, %si
     call    print_string                # else print error
-    jmp     halt                        # and halt
+.activate_a20.halt:
+    hlt                                 # and halt forever
+    jmp     .activate_a20.halt
+
 
 start2.1:
     call    switch_real_to_prot         # switch to protected mode
     .code32
-    call    main                        # jump to c code
+    call    _pc_init                    # jump to c code.
+                                        # this function should not return
 
-.phlt:
+.halt:                                  # if the function returns,
     hlt                                 # halt forever
-    jmp     .phlt
-
-str_hello:
-    .asciz "Hello, World!\r\n"
+    jmp     .halt
 
 str_a20error:
     .asciz "Error activating A20 line.\r\n"
