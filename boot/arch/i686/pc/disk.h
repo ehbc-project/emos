@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "../../../common/disk.h"
+#include "common/disk.h"
 
 int _pc_bios_reset_drive(uint8_t drive);
 int _pc_bios_read_drive_chs(uint8_t drive, struct chs chs, uint8_t count, void *buf);

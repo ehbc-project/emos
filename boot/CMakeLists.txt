@@ -26,17 +26,17 @@ target_compile_options(bootloader PUBLIC
         -pedantic-errors>)
 target_link_libraries(bootloader gcc)
 
-target_include_directories(bootloader PUBLIC "${CMAKE_SOURCE_DIR}/include")
-target_include_directories(bootloader PRIVATE "${CMAKE_SOURCE_DIR}/src")
+target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(bootloader PRIVATE "${CMAKE_BINARY_DIR}")
 
 # Subdirectories
 add_subdirectory(arch)
 add_subdirectory(common)
+add_subdirectory(fs)
 
 # Additional Targets
 add_custom_target(bootloader_image ALL
     COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:bootloader>" bootloader.bin
     DEPENDS bootloader
-    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     COMMENT "Creating bootloader image")

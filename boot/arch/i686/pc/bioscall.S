@@ -18,6 +18,8 @@ _pc_bios_call:
     movb    %al, .Lirq                  # load irq number
     mov     12(%ebp), %edx              # load stuct pointer
 
+    push    %ebp                        # store base pointer for later use
+
     movw    (%edx), %ax                 # load registers
     movw    %ax, .Lax
     movw    4(%edx), %ax
@@ -82,18 +84,33 @@ _pc_bios_call:
 .Lirq:
     .byte   0
 
-    mov     8(%ebp), %edi               # edi may not be used to store data
-
-    mov     %ax, (%edi)                 # store registers
-    mov     %bx, 4(%edi)
-    mov     %cx, 8(%edi)
-    mov     %dx, 12(%edi)
-    mov     %si, 16(%edi)
-    mov     %di, 20(%edi)
-    mov     %es, 24(%edi)
+    mov     %ax, .Lax                   # store registers temporarily
+    mov     %bx, .Lbx
+    mov     %cx, .Lcx
+    mov     %dx, .Ldx
+    mov     %si, .Lsi
+    mov     %di, .Ldi
 
     call    switch_real_to_prot         # switch back to protected mode
     .code32
+
+    pop     %ebp                        # restore stack base pointer
+
+    mov     12(%ebp), %edx              # load stuct pointer
+
+    movw    .Lax, %ax                   # store registers
+    movw    %ax, (%edx)
+    movw    .Lbx, %ax
+    movw    %ax, 4(%edx)
+    movw    .Lcx, %ax
+    movw    %ax, 8(%edx)
+    movw    .Ldx, %ax
+    movw    %ax, 12(%edx)
+    movw    .Lsi, %ax
+    movw    %ax, 16(%edx)
+    movw    .Ldi, %ax
+    movw    %ax, 20(%edx)
+
 
                                         # TODO: return carry flag value
 

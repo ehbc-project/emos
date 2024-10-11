@@ -2,7 +2,7 @@
     .set    MAGIC, 0xAA55
 
     .org    0
-    .section .text
+    .section .text.startup
     .code16
     .globl  _start
 _start:

@@ -85,6 +85,7 @@ switch_prot_to_real:
     mov     %eax, %cr0                  # set cr0
 
     ljmp    $0, $.rmode                 # reload code segment
+                                        # assuming that we're in 0-FFFFh area
 
 .rmode:                                 # real mode
     xor     %eax, %eax
