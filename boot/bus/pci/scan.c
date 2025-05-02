@@ -1,8 +1,8 @@
-#include "scan.h"
+#include "bus/pci/scan.h"
 
-#include "cfgspace.h"
+#include "asm/pci/cfgspace.h"
 
-#include "../bios/video.h"
+#include "asm/bios/video.h"
 
 static void print_hex_byte(uint8_t value)
 {
@@ -29,11 +29,11 @@ static void print_hex_dword(uint32_t value)
     print_hex_byte(value);
 }
 
-int _pc_pci_function_scan(struct pci_device *buf, int max_count, int bus, int device, int function)
+int _bus_pci_function_scan(struct pci_device *buf, int max_count, int bus, int device, int function)
 {
-    uint16_t vendor_id = _pc_pci_cfg_read(bus, device, function, 0x00) & 0xFFFF;
-    uint16_t device_id = _pc_pci_cfg_read(bus, device, function, 0x00) >> 16;
-    uint32_t class_code = _pc_pci_cfg_read(bus, device, function, 0x08);
+    uint16_t vendor_id = _bus_pci_cfg_read(bus, device, function, 0x00) & 0xFFFF;
+    uint16_t device_id = _bus_pci_cfg_read(bus, device, function, 0x00) >> 16;
+    uint32_t class_code = _bus_pci_cfg_read(bus, device, function, 0x08);
     uint8_t base_class = (class_code >> 16) & 0xFF;
     uint8_t sub_class = (class_code >> 8) & 0xFF;
     uint8_t interface_id = class_code & 0xFF;
@@ -59,22 +59,22 @@ int _pc_pci_function_scan(struct pci_device *buf, int max_count, int bus, int de
     return 0;
 }
 
-int _pc_pci_device_scan(struct pci_device *buf, int max_count, int bus, int device)
+int _bus_pci_device_scan(struct pci_device *buf, int max_count, int bus, int device)
 {
-    _pc_pci_function_scan(buf, max_count, bus, device, 0);
+    _bus_pci_function_scan(buf, max_count, bus, device, 0);
 
-    uint32_t header_type = (_pc_pci_cfg_read(bus, device, 0, 0x0C) & 0x00FF0000) >> 16;
+    uint32_t header_type = (_bus_pci_cfg_read(bus, device, 0, 0x0C) & 0x00FF0000) >> 16;
     if (!(header_type & 0x80)) {
         return 0;
     }
 
     for (int function = 1; function < 8; function++) {
-        uint32_t vendor_id = _pc_pci_cfg_read(bus, device, function, 0x00) & 0xFFFF;
+        uint32_t vendor_id = _bus_pci_cfg_read(bus, device, function, 0x00) & 0xFFFF;
         if (vendor_id == 0xFFFF) {
             continue;
         }
         
-        int err = _pc_pci_function_scan(buf, max_count, bus, device, function);
+        int err = _bus_pci_function_scan(buf, max_count, bus, device, function);
         if (err) {
             return err;
         }
@@ -83,15 +83,15 @@ int _pc_pci_device_scan(struct pci_device *buf, int max_count, int bus, int devi
     return 0;
 }
 
-int _pc_pci_bus_scan(struct pci_device *buf, int max_count, int bus)
+int _bus_pci_bus_scan(struct pci_device *buf, int max_count, int bus)
 {
     for (int device = 0; device < 32; device++) {
-        uint32_t vendor_id = _pc_pci_cfg_read(bus, device, 0, 0x00) & 0xFFFF;
+        uint32_t vendor_id = _bus_pci_cfg_read(bus, device, 0, 0x00) & 0xFFFF;
         if (vendor_id == 0xFFFF) {
             continue;
         }
         
-        int err = _pc_pci_device_scan(buf, max_count, bus, device);
+        int err = _bus_pci_device_scan(buf, max_count, bus, device);
         if (err) {
             return err;
         }
@@ -100,21 +100,21 @@ int _pc_pci_bus_scan(struct pci_device *buf, int max_count, int bus)
     return 0;
 }
 
-int _pc_pci_host_scan(struct pci_device *buf, int max_count)
+int _bus_pci_host_scan(struct pci_device *buf, int max_count)
 {
-    uint32_t header_type = (_pc_pci_cfg_read(0, 0, 0, 0x0C) & 0x00FF0000) >> 16;
+    uint32_t header_type = (_bus_pci_cfg_read(0, 0, 0, 0x0C) & 0x00FF0000) >> 16;
 
     if (!(header_type & 0x80)) {
-        return _pc_pci_bus_scan(buf, max_count, 0);
+        return _bus_pci_bus_scan(buf, max_count, 0);
     }
 
     for (int function = 1; function < 8; function++) {
-        uint32_t vendor_id = _pc_pci_cfg_read(0, 0, function, 0x00) & 0xFFFF;
+        uint32_t vendor_id = _bus_pci_cfg_read(0, 0, function, 0x00) & 0xFFFF;
         if (vendor_id == 0xFFFF) {
             continue;
         }
 
-        int err = _pc_pci_function_scan(buf, max_count, 0, 0, function);
+        int err = _bus_pci_function_scan(buf, max_count, 0, 0, function);
         if (err) {
             return err;
         }

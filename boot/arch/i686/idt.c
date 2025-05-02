@@ -1,4 +1,4 @@
-#include "idt.h"
+#include "asm/idt.h"
 
 #include <stdint.h>
 

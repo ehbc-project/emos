@@ -27,16 +27,18 @@ target_compile_options(bootloader PUBLIC
 target_link_libraries(bootloader gcc)
 
 target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(bootloader PRIVATE "${CMAKE_BINARY_DIR}")
 
 # Subdirectories
 add_subdirectory(arch)
-add_subdirectory(core)
+add_subdirectory(bus)
 add_subdirectory(term)
 add_subdirectory(video)
 add_subdirectory(disk)
-add_subdirectory(stdc)
 add_subdirectory(fs)
+add_subdirectory(stdc)
+add_subdirectory(core)
 
 # Additional Targets
 add_custom_target(bootloader_image ALL

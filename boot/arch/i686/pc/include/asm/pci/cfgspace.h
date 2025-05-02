@@ -1,3 +1,4 @@
+
 #ifndef __I686_PC_PCI_CFGSPACE_H__
 #define __I686_PC_PCI_CFGSPACE_H__
 

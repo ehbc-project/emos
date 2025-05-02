@@ -1,8 +1,8 @@
-#include "cfgspace.h"
+#include "arch/i686/pc/pci/cfgspace.h"
 
-#include "../../io.h"
+#include "asm/io.h"
 
-uint32_t _pc_pci_cfg_read(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset)
+uint32_t _bus_pci_cfg_read(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset)
 {
     uint32_t address = 0x80000000 | (bus << 16) | (device << 11) | (function << 8) | offset;
 
@@ -10,7 +10,7 @@ uint32_t _pc_pci_cfg_read(uint8_t bus, uint8_t device, uint8_t function, uint8_t
     return _i686_in32(PCI_CONFIG_DATA);
 }
 
-void _pc_pci_cfg_write(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value)
+void _bus_pci_cfg_write(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value)
 {
     uint32_t address = 0x80000000 | (bus << 16) | (device << 11) | (function << 8) | offset;
 

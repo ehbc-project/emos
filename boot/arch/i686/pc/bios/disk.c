@@ -1,8 +1,8 @@
-#include "disk.h"
+#include "asm/bios/disk.h"
 
 #include <stdint.h>
 
-#include "bioscall.h"
+#include "asm/bios/bioscall.h"
 
 struct dap {
     uint8_t dap_size;
