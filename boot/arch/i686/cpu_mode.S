@@ -38,7 +38,7 @@ switch_real_to_prot:
 
     xor     %eax, %eax
     mov     (%esp), %ax
-    mov     %ax, REAL_STACK_INIT       # save current return address
+    mov     %ax, REAL_STACK_INIT        # save current return address
 
     mov     prot_stack, %eax
     mov     %eax, %esp

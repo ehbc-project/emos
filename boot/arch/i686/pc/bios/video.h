@@ -1,5 +1,5 @@
-#ifndef __I686_PC_VIDEO_H__
-#define __I686_PC_VIDEO_H__
+#ifndef __I686_PC_BIOS_VIDEO_H__
+#define __I686_PC_BIOS_VIDEO_H__
 
 #include <stdint.h>
 
@@ -15,4 +15,4 @@ void _pc_bios_write_text_at_cur(uint8_t ch, uint16_t count);
 void _pc_bios_tty_output(uint8_t ch);
 void _pc_bios_write_string(uint8_t mode, uint8_t attr, uint8_t row, uint8_t col, const void *str, uint16_t len);
 
-#endif // __I686_PC_VIDEO_H__
+#endif // __I686_PC_BIOS_VIDEO_H__

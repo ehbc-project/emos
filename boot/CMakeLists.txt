@@ -31,7 +31,11 @@ target_include_directories(bootloader PRIVATE "${CMAKE_BINARY_DIR}")
 
 # Subdirectories
 add_subdirectory(arch)
-add_subdirectory(common)
+add_subdirectory(core)
+add_subdirectory(term)
+add_subdirectory(video)
+add_subdirectory(disk)
+add_subdirectory(stdc)
 add_subdirectory(fs)
 
 # Additional Targets

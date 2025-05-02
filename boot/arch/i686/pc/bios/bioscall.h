@@ -14,7 +14,10 @@ union data_reg {
 union index_reg {
     uint32_t l;
     uint16_t w;
-    uint8_t b;
+};
+
+union segment_reg {
+    uint16_t w;
 };
 
 struct bioscall_regs {
@@ -24,8 +27,8 @@ struct bioscall_regs {
     union data_reg d;
     union index_reg si;
     union index_reg di;
-    union index_reg ds;
-    union index_reg es;
+    union segment_reg ds;
+    union segment_reg es;
 };
 
 extern int _pc_bios_call(uint8_t irq, struct bioscall_regs*);
