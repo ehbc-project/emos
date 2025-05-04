@@ -8,6 +8,7 @@
 _start:
     jmp     start1
 
+    .org    0x5A
 start1:
     xor     %ax, %ax
     mov     %ax, %ds
@@ -18,12 +19,36 @@ start1:
 .read_disk:
     mov     $0x02, %ah                  # read
     mov     $0x11, %al                  # 17 sectors
-    mov     $0x00, %ch                  # starting from cylinder 0
+    mov     $0x00, %ch                  # from cylinder 0
     mov     $0x02, %cl                  # sector 2
     mov     $0x00, %dh                  # head 0
-                                        # from the drive booted from
-    mov     $0x7E00, %bx                # to buffer starts after this code
+                                        # of the drive booted from
+    mov     $0x7E00, %bx                # to buffer starting at 0x7E00
     int     $0x13                       # do it!
+
+    jc      .print_error                # print error if occured
+
+    mov     $0x02, %ah                  # read
+    mov     $0x12, %al                  # 18 sectors
+    mov     $0x00, %ch                  # from cylinder 0
+    mov     $0x01, %cl                  # sector 1
+    mov     $0x01, %dh                  # head 1
+                                        # of the drive booted from
+    mov     $0xA000, %bx                # to buffer starting at 0xA000
+    int     $0x13                       # do it!
+
+    jc      .print_error                # print error if occured
+
+    mov     $0x02, %ah                  # read
+    mov     $0x12, %al                  # 18 sectors
+    mov     $0x01, %ch                  # from cylinder 1
+    mov     $0x01, %cl                  # sector 1
+    mov     $0x00, %dh                  # head 0
+                                        # of the drive booted from
+    mov     $0xC400, %bx                # to buffer starting at 0xC400
+    int     $0x13                       # do it!
+
+    jc      .print_error                # print error if occured
 
     jnc     start2                      # jump to next step if there's no error
 
@@ -49,7 +74,7 @@ str_diskerror:
     .org    0x1FE                       # 512 - 2
     .word   MAGIC                       # magic number
 
-    .org    0x200                       # now there's 17 more sectors for code!
+    .org    0x200                       # now there's 35 more sectors for code!
 print_string:
     mov     $0x0E, %ah                  # print the string in %si
     xor     %bx, %bx

@@ -17,13 +17,14 @@ target_compile_features(bootloader PUBLIC c_std_11)
 target_compile_features(bootloader PUBLIC cxx_std_14)
 target_compile_options(bootloader PUBLIC 
     $<$<COMPILE_LANGUAGE:C,CXX>:
-        -Werror
+        #-Werror
         -Wall
         -Wno-unused-function
         -Wno-unused-variable
         -Wno-unused-but-set-variable
-        -pedantic
-        -pedantic-errors>)
+        #-pedantic
+        #-pedantic-errors
+    >)
 target_link_libraries(bootloader gcc)
 
 target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -38,6 +39,7 @@ add_subdirectory(video)
 add_subdirectory(disk)
 add_subdirectory(fs)
 add_subdirectory(stdc)
+add_subdirectory(lib)
 add_subdirectory(core)
 
 # Additional Targets

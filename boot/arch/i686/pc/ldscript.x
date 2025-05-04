@@ -16,6 +16,7 @@ SECTIONS
     .text 0x00007C00 :
     {
         KEEP(*(.text.startup .text.startup.*))
+        KEEP(*(.textlow .textlow.*))
         KEEP(*(.text .text.*))
     }
 

@@ -86,7 +86,6 @@ struct vbe_video_mode_info {
     uint8_t lin_reserved_position;
     uint32_t max_pixel_clock;
     
-
     uint8_t reserved3[189];
 } __attribute__((packed));
 

@@ -1,6 +1,6 @@
 
     .org    0
-    .section .text
+    .section .textlow
     .code32
     .globl  _pc_bios_call
 _pc_bios_call:

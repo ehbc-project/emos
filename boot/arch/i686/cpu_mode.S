@@ -8,7 +8,7 @@
     .set    PROT16_CODE_SEG, 0x18
     .set    PROT16_DATA_SEG, 0x20
 
-    .section .text
+    .section .textlow
     .code16
     .globl switch_real_to_prot
 switch_real_to_prot:

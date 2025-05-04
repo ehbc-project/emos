@@ -100,7 +100,7 @@ int _bus_pci_bus_scan(struct pci_device *buf, int max_count, int bus)
     return 0;
 }
 
-int _bus_pci_host_scan(struct pci_device *buf, int max_count)
+int pci_host_scan(struct pci_device *buf, int max_count)
 {
     uint32_t header_type = (_bus_pci_cfg_read(0, 0, 0, 0x0C) & 0x00FF0000) >> 16;
 
