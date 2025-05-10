@@ -13,13 +13,17 @@
 #include "asm/bios/keyboard.h"
 #include "asm/bios/mem.h"
 
+#include "asm/pci/cfgspace.h"
 #include "bus/pci/scan.h"
-
 #include "acpi/rsdp.h"
 #include "acpi/rsdt.h"
 #include "acpi/fadt.h"
 
 #include "term/ansi.h"
+
+#include "bus/usb/host/xhci.h"
+
+#include "core/panic.h"
 
 extern void main(void);
 
@@ -70,18 +74,6 @@ static void print_glyph(struct ansi_state *state, uint32_t codepoint, uint32_t f
             } else {
                 *pixel |= fg ? foreground_converted : background_converted;
             }
-
-            /*
-            if (on) {
-                *pixel |= ((1 << vbe_mode_info->blue_mask) - 1) << vbe_mode_info->blue_position;
-                *pixel |= ((1 << vbe_mode_info->green_mask) - 1) << vbe_mode_info->green_position;
-                *pixel |= ((1 << vbe_mode_info->red_mask) - 1) << vbe_mode_info->red_position;
-            } else {
-                *pixel &= ~(((1 << vbe_mode_info->blue_mask) - 1) << vbe_mode_info->blue_position);
-                *pixel &= ~(((1 << vbe_mode_info->green_mask) - 1) << vbe_mode_info->green_position);
-                *pixel &= ~(((1 << vbe_mode_info->red_mask) - 1) << vbe_mode_info->red_position);
-            }
-            */
         }
 
         if ((state->text_overlined && y == y_offset + 1) ||
@@ -243,13 +235,6 @@ static struct acpi_fadt *find_fadt(struct acpi_rsdt *rsdt)
 __attribute__((noreturn))
 void _pc_init(void)
 {
-    const char str[] = "Hello, World!\r\n";
-    for (int i = 0; str[i]; i++) {
-        _pc_bios_tty_output(str[i]);
-    }
-
-    pci_host_scan(pci_devices, 32);
-
     struct vbe_controller_info vbe_info;
     _pc_bios_get_vbe_controller_info(&vbe_info);
 
@@ -266,7 +251,7 @@ void _pc_init(void)
     }
 
     if (mode == 0xFFFF) {
-        for (;;) {}
+        panic("No supported video mode found");
     }
 
     _pc_bios_set_vbe_video_mode(mode);
@@ -276,7 +261,56 @@ void _pc_init(void)
 
     uint32_t cursor = 0;
     struct smap_entry entry;
+    
+    /* List VBE Controller Info */
+    print_str(&state, "VBE Controller Info: \r\n");
+    print_str(&state, "\tSignature: ");
+    print_str(&state, vbe_info.signature);
+    print_str(&state, "\r\n");
+    print_str(&state, "\tVersion: ");
+    print_hex_dword(&state, vbe_info.vbe_version);
+    print_str(&state, "\r\n");
+    print_str(&state, "\tOEM String: ");
+    print_str(&state, (const char *)((vbe_info.oem_string.segment << 4) + vbe_info.oem_string.offset));
+    print_str(&state, "\r\n");
+    print_str(&state, "\tCapabilities: ");
+    print_hex_dword(&state, vbe_info.capabilities);
+    print_str(&state, "\r\n");
+    print_str(&state, "\tOEM Vendor Name: ");
+    print_str(&state, (const char *)((vbe_info.oem_vendor_name_ptr.segment << 4) + vbe_info.oem_vendor_name_ptr.offset));
+    print_str(&state, "\r\n");
+    print_str(&state, "\tOEM Product Name: ");
+    print_str(&state, (const char *)((vbe_info.oem_product_name_ptr.segment << 4) + vbe_info.oem_product_name_ptr.offset));
+    print_str(&state, "\r\n");
+    print_str(&state, "\tOEM Product Rev: ");
+    print_str(&state, (const char *)((vbe_info.oem_product_rev_ptr.segment << 4) + vbe_info.oem_product_rev_ptr.offset));
+    print_str(&state, "\r\n");
 
+    /* List PCI Devices */
+    int pci_count = pci_host_scan(pci_devices, 32);
+    print_str(&state, "PCI Devices: \r\n");
+    for (int i = 0; i < pci_count; i++) {
+        print_str(&state, "\tbus ");
+        print_dec(&state, pci_devices[i].bus);
+        print_str(&state, " device ");
+        print_dec(&state, pci_devices[i].device);
+        print_str(&state, " function ");
+        print_dec(&state, pci_devices[i].function);
+        print_str(&state, ": vendor ");
+        print_hex_dword(&state, pci_devices[i].vendor_id);
+        print_str(&state, ", device ");
+        print_hex_dword(&state, pci_devices[i].device_id);
+        print_str(&state, " (");
+        print_dec(&state, pci_devices[i].class_code.base_class);
+        print_str(&state, ", ");
+        print_dec(&state, pci_devices[i].class_code.sub_class);
+        print_str(&state, ", ");
+        print_dec(&state, pci_devices[i].class_code.interface);
+        print_str(&state, ")\r\n");
+    }
+    
+    /* List Memory Map */
+    print_str(&state, "Memory Map: \r\n");
     do {
         _pc_bios_query_address_map(&cursor, &entry, sizeof(entry));
         print_hex_dword(&state, entry.base_addr_low);
@@ -287,6 +321,41 @@ void _pc_init(void)
         print_str(&state, "\r\n");
     } while (cursor);
 
+    const struct vbe_pm_interface *pm_interface;
+    _pc_bios_get_vbe_pm_interface(&pm_interface);
+
+    /* List VBE Protected Mode Interface */
+    print_str(&state, "VBE Protected Mode Interface: \r\n");
+    print_str(&state, "\tSet Window: ");
+    if (pm_interface->set_window) {
+        print_hex_dword(&state, (uint32_t)pm_interface + pm_interface->set_window);
+    } else {
+        print_str(&state, "Not supported");
+    }
+    print_str(&state, "\r\n");
+    print_str(&state, "\tSet Display Start: ");
+    if (pm_interface->set_display_start) {
+        print_hex_dword(&state, (uint32_t)pm_interface + pm_interface->set_display_start);
+    } else {
+        print_str(&state, "Not supported");
+    }
+    print_str(&state, "\r\n");
+    print_str(&state, "\tSet Primary Palette Data: ");
+    if (pm_interface->set_primary_palette_data) {
+        print_hex_dword(&state, (uint32_t)pm_interface + pm_interface->set_primary_palette_data);
+    } else {
+        print_str(&state, "Not supported");
+    }
+    print_str(&state, "\r\n");
+    print_str(&state, "\tPort Memory Locations: ");
+    if (pm_interface->port_mem_locations) {
+        print_hex_dword(&state, (uint32_t)pm_interface + pm_interface->port_mem_locations);
+    } else {
+        print_str(&state, "Not supported");
+    }
+    print_str(&state, "\r\n");
+
+    /* List ACPI Info */
     struct acpi_rsdp *rsdp = acpi_rsdp_find();
     if (rsdp) {
         print_str(&state, "RSDP found at ");
@@ -341,50 +410,118 @@ void _pc_init(void)
             print_hex_dword(&state, (uint32_t)fadt);
             print_str(&state, "\r\n");
 
-            print_str(&state, "\t\t\033[4mACPI Enable: ");
+            print_str(&state, "\t\tACPI Enable: ");
             print_dec(&state, fadt->acpi_enable);
             print_str(&state, "\r\n");
-            print_str(&state, "\t\t\033[9mACPI Disable: ");
+            print_str(&state, "\t\tACPI Disable: ");
             print_dec(&state, fadt->acpi_disable);
             print_str(&state, "\r\n");
 
-            print_str(&state, "\t\t\033[24mPM1a Event Block: ");
+            print_str(&state, "\t\tPM1a Event Block: ");
             print_hex_dword(&state, fadt->pm1a_event_block);
             print_str(&state, "\r\n");
-            print_str(&state, "\t\t\033[29m\033[53mPM1b Event Block: ");
+            print_str(&state, "\t\tPM1b Event Block: ");
             print_hex_dword(&state, fadt->pm1b_event_block);
             print_str(&state, "\r\n");
 
-            print_str(&state, "\t\t\033[9mPM1a Control Block: ");
+            print_str(&state, "\t\tPM1a Control Block: ");
             print_hex_dword(&state, fadt->pm1a_control_block);
             print_str(&state, "\r\n");
-            print_str(&state, "\t\t\033[4m\033[29m\033[55mPM1b Control Block: ");
+            print_str(&state, "\t\tPM1b Control Block: ");
             print_hex_dword(&state, fadt->pm1b_control_block);
             print_str(&state, "\r\n");
 
-            print_str(&state, "\t\t\033[24m\033[7mPM2 Control Block: ");
+            print_str(&state, "\t\tPM2 Control Block: ");
             print_hex_dword(&state, fadt->pm2_control_block);
             print_str(&state, "\r\n");
 
-            print_str(&state, "\t\t\033[27mPM Timer Block: ");
+            print_str(&state, "\t\tPM Timer Block: ");
             print_hex_dword(&state, fadt->pm_timer_block);
             print_str(&state, "\r\n");
         }
     }
 
-    for (int i = 0; i < 16; i++) {
-        for (int j = 0; j < 16; j++) {
-            print_str(&state, "\033[48;5;");
-            print_dec(&state, i * 16 + j);
-            print_str(&state, "m color ");
+    /* Find xHCI Controller */
+    int xhci_device_index = -1;
+    for (int i = 0; i < pci_count; i++) {
+        if (pci_devices[i].class_code.base_class == 0x0C &&
+            pci_devices[i].class_code.sub_class == 0x03 && 
+            pci_devices[i].class_code.interface == 0x30) {
+            print_str(&state, "xHCI Controller found at ");
+            print_hex_dword(&state, pci_devices[i].vendor_id);
+            print_str(&state, ", device ");
+            print_hex_dword(&state, pci_devices[i].device_id);
+            print_str(&state, ", function ");
+            print_dec(&state, pci_devices[i].function);
+            print_str(&state, "\r\n");
+
+            xhci_device_index = i;
         }
+    }
+
+    if (xhci_device_index >= 0) {
+        /* Get MMIO Address of xHCI Controller */
+        uint32_t xhci_mmio_address = _bus_pci_cfg_read(pci_devices[xhci_device_index].bus, pci_devices[xhci_device_index].device, pci_devices[xhci_device_index].function, 0x10);
+        print_str(&state, "xHCI MMIO Address: ");
+        print_hex_dword(&state, xhci_mmio_address);
         print_str(&state, "\r\n");
     }
 
-    print_str(&state, "\033[0m");
+    /* Find EHCI Controller */
+    int ehci_device_index = -1;
+    for (int i = 0; i < pci_count; i++) {
+        if (pci_devices[i].class_code.base_class == 0x0C &&
+            pci_devices[i].class_code.sub_class == 0x03 && 
+            pci_devices[i].class_code.interface == 0x20) {
+            print_str(&state, "EHCI Controller found at ");
+            print_hex_dword(&state, pci_devices[i].vendor_id);
+            print_str(&state, ", device ");
+            print_hex_dword(&state, pci_devices[i].device_id);
+            print_str(&state, ", function ");
+            print_dec(&state, pci_devices[i].function);
+            print_str(&state, "\r\n");
+
+            ehci_device_index = i;
+        }
+    }
+
+    if (ehci_device_index >= 0) {
+        /* Get MMIO Address of EHCI Controller */
+        uint32_t ehci_mmio_address = _bus_pci_cfg_read(pci_devices[ehci_device_index].bus, pci_devices[ehci_device_index].device, pci_devices[ehci_device_index].function, 0x10);
+        print_str(&state, "EHCI MMIO Address: ");
+        print_hex_dword(&state, ehci_mmio_address);
+        print_str(&state, "\r\n");
+    }
+
+    /* Find UHCI Controller */
+    int uhci_device_index = -1;
+    for (int i = 0; i < pci_count; i++) {
+        if (pci_devices[i].class_code.base_class == 0x0C &&
+            pci_devices[i].class_code.sub_class == 0x03 && 
+            pci_devices[i].class_code.interface == 0x00) {
+            print_str(&state, "UHCI Controller found at ");
+            print_hex_dword(&state, pci_devices[i].vendor_id);
+            print_str(&state, ", device ");
+            print_hex_dword(&state, pci_devices[i].device_id);
+            print_str(&state, ", function ");
+            print_dec(&state, pci_devices[i].function);
+            print_str(&state, "\r\n");
+
+            uhci_device_index = i;
+        }
+    }
+
+    if (uhci_device_index >= 0) {
+        /* Get PMIO Address of UHCI Controller */
+        uint32_t uhci_pmio_address = _bus_pci_cfg_read(pci_devices[uhci_device_index].bus, pci_devices[uhci_device_index].device, pci_devices[uhci_device_index].function, 0x20);
+        print_str(&state, "UHCI I/O Port Address: ");
+        print_hex_dword(&state, uhci_pmio_address);
+        print_str(&state, "\r\n");
+    }
+
     echo_char(&state);
 
     main();
 
-    for (;;) {}
+    panic("Kernel returned");
 }

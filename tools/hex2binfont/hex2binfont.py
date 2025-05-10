@@ -1,5 +1,11 @@
+import sys
+
+
+hexfont_path = sys.argv[1]
+binfont_path = sys.argv[2]
+
 max_codepoint = 0
-with open("font-ascii.hex", "r") as hexfont:
+with open(hexfont_path, "r") as hexfont:
     for line in hexfont:
         codepoint, _ = line.split(":")
         codepoint = int(codepoint, 16)
@@ -15,7 +21,7 @@ file_header = bytes([
     0,
 ])
 
-with open("font-ascii.hex", "r") as hexfont, open("font-ascii.bin", "wb") as binfont:
+with open(hexfont_path, "r") as hexfont, open(binfont_path, "wb") as binfont:
     binfont.write(file_header)
     
     glyph_header_offset = len(file_header) + (max_codepoint + 1) * 4

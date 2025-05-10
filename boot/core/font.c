@@ -618,7 +618,7 @@ struct glyph_header {
   uint8_t reserved[3];
 } __attribute__((packed));
 
-extern int font_is_glyph_full_width(uint32_t codepoint)
+int font_is_glyph_full_width(uint32_t codepoint)
 {
     struct font_header *header = (struct font_header*)font_ascii_bin;
     struct glyph_header *glyph_header = (struct glyph_header*)((uint8_t*)font_ascii_bin + ((uint32_t*)(font_ascii_bin + header->glyph_offset_table_offset))[codepoint]);
@@ -633,7 +633,7 @@ static void *memcpy(void *dest, const void *src, long n)
     return dest;
 }
 
-extern int font_get_glyph(uint32_t codepoint, uint8_t *buf, long size)
+int font_get_glyph(uint32_t codepoint, uint8_t *buf, long size)
 {
     struct font_header *header = (struct font_header*)font_ascii_bin;
     struct glyph_header *glyph_header = (struct glyph_header*)((uint8_t*)font_ascii_bin + ((uint32_t*)(font_ascii_bin + header->glyph_offset_table_offset))[codepoint]);

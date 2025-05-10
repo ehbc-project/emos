@@ -22,7 +22,7 @@ find_program(CMAKE_ASM_COMPILER
     HINTS "/usr" "/usr/local" "/opt/homebrew" ENV PATH
     REQUIRED)
 set(CMAKE_ASM_COMPILER_TARGET   i686-elf)
-set(CMAKE_ASM_FLAGS             "${CMAKE_ASM_VASM_FLAGS} -march=i686")
+set(CMAKE_ASM_FLAGS             "${CMAKE_ASM_VASM_FLAGS}")
 
 set(_BINUTILS_LIST AR;NM;OBJCOPY;OBJDUMP;RANLIB;READELF;STRIP)
 

@@ -8,7 +8,7 @@
     .set    PROT16_CODE_SEG, 0x18
     .set    PROT16_DATA_SEG, 0x20
 
-    .section .textlow
+    .section .text.low
     .code16
     .globl switch_real_to_prot
 switch_real_to_prot:
@@ -97,7 +97,6 @@ switch_prot_to_real:
 
     ret
 
-    .section .data
     .align  8
     .word   0
 prot_stack:                             # protected mode stack

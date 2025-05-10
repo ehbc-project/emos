@@ -43,8 +43,4 @@ add_subdirectory(lib)
 add_subdirectory(core)
 
 # Additional Targets
-add_custom_target(bootloader_image ALL
-    COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:bootloader>" bootloader.bin
-    DEPENDS bootloader
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-    COMMENT "Creating bootloader image")
+

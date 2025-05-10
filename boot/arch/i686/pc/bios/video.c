@@ -132,3 +132,17 @@ int _pc_bios_set_vbe_video_mode(uint16_t mode)
 
     return 0;
 }
+
+int _pc_bios_get_vbe_pm_interface(const struct vbe_pm_interface **ptr)
+{
+    struct bioscall_regs regs = {
+        .a.w = 0x4F0A,
+        .b.b.l = 0x00,
+    };
+
+    _pc_bios_call(0x10, &regs);
+    
+    if (ptr) *ptr = (struct vbe_pm_interface *)((regs.es.w << 4) + regs.di.w);
+
+    return 0;
+}

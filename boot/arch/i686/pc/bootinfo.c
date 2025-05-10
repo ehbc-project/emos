@@ -2,5 +2,5 @@
 
 #include <stdint.h>
 
-uint8_t _pc_boot_drive;
+uint8_t _pc_boot_drive = 0xFF;
 

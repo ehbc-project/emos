@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 
-enum ansi_escape_state;
-
 struct ansi_state {
     void *data;
 

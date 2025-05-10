@@ -22,14 +22,28 @@ void _pc_bios_write_string(uint8_t mode, uint8_t attr, uint8_t row, uint8_t col,
 void _pc_bios_write_pixel(uint8_t page, uint16_t x, uint16_t y, uint8_t color);
 uint8_t _pc_bios_read_pixel(uint8_t page, uint16_t x, uint16_t y);
 
+#define VBE_CTRL_SIGNATURE_VBE1 "VESA"
+#define VBE_CTRL_SIGNATURE_VBE2 "VBE2"
+
 struct vbe_controller_info {
+    /* VBE 1.0 */
     char signature[4];
     uint16_t vbe_version;
     farptr_t oem_string;
     uint32_t capabilities;
     farptr_t video_modes;
     uint16_t total_memory;
-    uint8_t reserved[492];
+
+    /* VBE 2.0 */
+    uint16_t oem_software_rev;
+    farptr_t oem_vendor_name_ptr;
+    farptr_t oem_product_name_ptr;
+    farptr_t oem_product_rev_ptr;
+
+    uint8_t reserved[222];
+
+    uint8_t oem_data[256];
+    
 } __attribute__((packed));
 
 struct vbe_video_mode_info {
@@ -89,8 +103,16 @@ struct vbe_video_mode_info {
     uint8_t reserved3[189];
 } __attribute__((packed));
 
+struct vbe_pm_interface {
+    uint16_t set_window;
+    uint16_t set_display_start;
+    uint16_t set_primary_palette_data;
+    uint16_t port_mem_locations;  /* refer to VBE 3.0 spec page 57 */
+};
+
 int _pc_bios_get_vbe_controller_info(struct vbe_controller_info *buf);
 int _pc_bios_get_vbe_video_mode_info(uint16_t mode, struct vbe_video_mode_info *buf);
 int _pc_bios_set_vbe_video_mode(uint16_t mode);
+int _pc_bios_get_vbe_pm_interface(const struct vbe_pm_interface **ptr);
 
 #endif // __I686_PC_BIOS_VIDEO_H__
