@@ -197,24 +197,15 @@ _start:
     mov     %ax, %es
     mov     $DATA_BUFFER, %si
     mov     $0x100, %cx
-0:
-    movw    %ds:(%si), %bx
-    movw    %bx, %es:(%di)
-    add     $2, %si
-    add     $2, %di
-    dec     %cx
-    test    %cx, %cx
-    jnz     0b
+    rep     movsw
 
 .load_file.next_cluster:
     pop     %dx
 
-    pusha
     mov     $0x0E, %ah
     xor     %bx, %bx
     mov     $'.', %al
     int     $0x10
-    popa
 
     push    %dx
     mov     %dx, %ax
@@ -309,10 +300,10 @@ halt:
     jmp     halt                        # halt
 
 str_diskerror: 
-    .asciz  "EREAD\r\n"
+    .asciz  "Disk read error\r\n"
 
 str_bootfile_not_found:
-    .asciz  "ENOENT\r\n"
+    .asciz  "BOOTLDR.BIN not found\r\n"
 
 str_bootfilename:
     .ascii  "BOOTLDR BIN"

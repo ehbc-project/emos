@@ -25,6 +25,8 @@
 
 #include "core/panic.h"
 
+#include "asm/io.h"
+
 extern void main(void);
 
 extern int font_is_glyph_full_width(uint32_t codepoint);
@@ -47,6 +49,31 @@ static void convert_color(struct vbe_video_mode_info *vbe_mode_info, uint32_t co
                  (b << vbe_mode_info->blue_position);
 }
 
+static void set_pixel(struct vbe_video_mode_info *vbe_mode_info, int x, int y, uint32_t color)
+{
+    void* pixel = (void*)(vbe_mode_info->framebuffer + y * vbe_mode_info->pitch + x * vbe_mode_info->bpp / 8);
+
+    switch (vbe_mode_info->bpp) {
+        case 4:
+            *(uint8_t*)pixel &= (x & 1) ? 0x0F : 0xF0;
+            *(uint8_t*)pixel |= color;
+            break;
+        case 8:
+            *(uint8_t*)pixel = color;
+            break;
+        case 16:
+            *(uint16_t*)pixel = color;
+            break;
+        case 24:
+            *(uint32_t*)pixel &= 0xFF0000;
+            *(uint32_t*)pixel |= color;
+            break;
+        case 32:
+            *(uint32_t*)pixel = color;
+            break;
+    }
+}
+
 static void print_glyph(struct ansi_state *state, uint32_t codepoint, uint32_t foreground, uint32_t background, uint16_t x_offset, uint16_t y_offset)
 {
     struct vbe_video_mode_info *vbe_mode_info = state->data;
@@ -66,13 +93,11 @@ static void print_glyph(struct ansi_state *state, uint32_t codepoint, uint32_t f
         for (int x = x_offset; x < x_offset + (is_full_width ? 16 : 8); x++) {
             uint8_t current_byte = glyph[(y - y_offset) * (is_full_width ? 2 : 1) + (x - x_offset) / 8];
             int fg = current_byte & (0x80 >> ((x - x_offset) % 8));
-            uint32_t* pixel = (uint32_t*)(framebuffer + y * vbe_mode_info->pitch + x * vbe_mode_info->bpp / 8);
-            *pixel &= ~((1 << vbe_mode_info->bpp) - 1);
 
             if (state->text_reversed) {
-                *pixel |= fg ? background_converted : foreground_converted;
+                set_pixel(vbe_mode_info, x, y, fg ? background_converted : foreground_converted);
             } else {
-                *pixel |= fg ? foreground_converted : background_converted;
+                set_pixel(vbe_mode_info, x, y, fg ? foreground_converted : background_converted);
             }
         }
 
@@ -80,9 +105,7 @@ static void print_glyph(struct ansi_state *state, uint32_t codepoint, uint32_t f
             (state->text_strike && y == y_offset + 8) ||
             (state->text_underline && y == y_offset + 15)) {
             for (int x = x_offset; x < x_offset + (is_full_width ? 16 : 8); x++) {
-                uint32_t *pixel = (uint32_t*)(framebuffer + y * vbe_mode_info->pitch + x * vbe_mode_info->bpp / 8);
-                *pixel &= ~((1 << vbe_mode_info->bpp) - 1);
-                *pixel |= state->text_reversed ? background : foreground;
+                set_pixel(vbe_mode_info, x, y, state->text_reversed ? background : foreground);
             }
         }
     }
@@ -148,9 +171,7 @@ void term_erase(struct ansi_state *state, int x0, int y0, int x1, int y1)
 
     for (int y = y0 * 16; y < (y1 + 1) * 16; y++) {
         for (int x = x0 * 8; x < (x1 + 1) * 8; x++) {
-            uint32_t *pixel = (uint32_t*)(vbe_mode_info->framebuffer + y * vbe_mode_info->pitch + x * vbe_mode_info->bpp / 8);
-            *pixel &= ~0xFFFFFF;
-            *pixel |= state->bg_color;
+            set_pixel(vbe_mode_info, x, y, state->bg_color);
         }
     }
 }
@@ -232,6 +253,59 @@ static struct acpi_fadt *find_fadt(struct acpi_rsdt *rsdt)
     return NULL;
 }
 
+static void print_str_bios(const char *str)
+{
+    for (int i = 0; str[i]; i++) {
+        _pc_bios_tty_output(str[i]);
+    }
+}
+
+static void print_hex_byte_bios(uint32_t value)
+{
+    static const char hex_chars[] = "0123456789ABCDEF";
+    for (int i = 0; i < 2; i++) {
+        _pc_bios_tty_output(hex_chars[(value >> (4 - i * 4)) & 0xF]);
+    }
+}
+
+static void print_hex_word_bios(uint32_t value)
+{
+    static const char hex_chars[] = "0123456789ABCDEF";
+    for (int i = 0; i < 4; i++) {
+        _pc_bios_tty_output(hex_chars[(value >> (12 - i * 4)) & 0xF]);
+    }
+}
+
+static void print_hex_dword_bios(uint32_t value)
+{
+    static const char hex_chars[] = "0123456789ABCDEF";
+    for (int i = 0; i < 8; i++) {
+        _pc_bios_tty_output(hex_chars[(value >> (28 - i * 4)) & 0xF]);
+    }
+}
+
+static void print_dec_bios(int value)
+{
+    if (value < 0) {
+        _pc_bios_tty_output('-');
+        value = -value;
+    } else if (value == 0) {
+        _pc_bios_tty_output('0');
+        return;
+    }
+
+    int digits[10];
+    int i = 0;
+    while (value > 0) {
+        digits[i++] = value % 10;
+        value /= 10;
+    }
+
+    for (int j = i - 1; j >= 0; j--) {
+        _pc_bios_tty_output(digits[j] + '0');
+    }
+}
+
 __attribute__((noreturn))
 void _pc_init(void)
 {
@@ -241,10 +315,27 @@ void _pc_init(void)
     uint16_t *mode_list = (uint16_t*)((vbe_info.video_modes.segment << 4) + vbe_info.video_modes.offset);
     struct vbe_video_mode_info vbe_mode_info;
     uint16_t mode = 0xFFFF;
+    print_str_bios("Searching VBE Modes:\r\n");
     for (int i = 0; mode_list[i] != 0xFFFF; i++) {
         _pc_bios_get_vbe_video_mode_info(mode_list[i], &vbe_mode_info);
+        print_str_bios("Mode ");
+        print_hex_dword_bios(mode_list[i]);
+        print_str_bios(": w=");
+        print_dec_bios(vbe_mode_info.width);
+        print_str_bios(", h=");
+        print_dec_bios(vbe_mode_info.height);
+        print_str_bios(", bpp=");
+        print_dec_bios(vbe_mode_info.bpp);
+        print_str_bios(", addr=");
+        print_hex_dword_bios(vbe_mode_info.framebuffer);
+        print_str_bios(", attr=");
+        print_hex_word_bios(vbe_mode_info.attributes);
+        print_str_bios(", mm=");
+        print_hex_byte_bios(vbe_mode_info.memory_model);
+        print_str_bios("\r\n");
 
-        if (vbe_mode_info.width == 1280 && vbe_mode_info.height == 1024 && vbe_mode_info.bpp == 24) {
+
+        if (vbe_mode_info.width == 640 && vbe_mode_info.height == 480 && vbe_mode_info.bpp == 16) {
             mode = mode_list[i];
             break;
         }
@@ -258,12 +349,9 @@ void _pc_init(void)
 
     struct ansi_state state;
     ansi_init_state(&vbe_mode_info, vbe_mode_info.width / 8, vbe_mode_info.height / 16, &state);
-
-    uint32_t cursor = 0;
-    struct smap_entry entry;
     
     /* List VBE Controller Info */
-    print_str(&state, "VBE Controller Info: \r\n");
+    print_str(&state, " VBE Controller Info: \r\n");
     print_str(&state, "\tSignature: ");
     print_str(&state, vbe_info.signature);
     print_str(&state, "\r\n");
@@ -310,6 +398,9 @@ void _pc_init(void)
     }
     
     /* List Memory Map */
+    uint32_t cursor = 0;
+    struct smap_entry entry;
+
     print_str(&state, "Memory Map: \r\n");
     do {
         _pc_bios_query_address_map(&cursor, &entry, sizeof(entry));
@@ -520,6 +611,17 @@ void _pc_init(void)
     }
 
     echo_char(&state);
+
+    const uint16_t div = 1193180 / 1000;
+    _i686_out8(0x43, 0xb6);
+    _i686_out8(0x42, (uint8_t)div);
+    _i686_out8(0x42, (uint8_t)(div >> 8));
+
+    uint8_t tmp = _i686_in8(0x61);
+    if (tmp != (tmp | 3)) {
+        _i686_out8(0x61, tmp | 3);
+    }
+
 
     main();
 

@@ -18,6 +18,12 @@ _start:
     int     $0x15
     jnc     _start.1                    # finish if there's no error
 
+    in      $0x92, %al
+    or      $2, %al
+    out     %al, $0x92
+
+    jmp     _start.1
+
     mov     $str_a20error, %si
     call    print_string                # else print error
     

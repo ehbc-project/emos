@@ -2,8 +2,6 @@
 
 #include "asm/pci/cfgspace.h"
 
-#include "asm/bios/video.h"
-
 #include "bus/pci/device.h"
 
 struct pci_device_list {
