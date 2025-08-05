@@ -1,5 +1,4 @@
 import sys
-import os
 
 with open(sys.argv[1], "rb") as vbrfile, open(sys.argv[2], "rb+") as imagefile:
     imagefile.seek(1)

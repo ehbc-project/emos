@@ -17,13 +17,13 @@ target_compile_features(bootloader PUBLIC c_std_11)
 target_compile_features(bootloader PUBLIC cxx_std_14)
 target_compile_options(bootloader PUBLIC 
     $<$<COMPILE_LANGUAGE:C,CXX>:
-        #-Werror
+        -Werror
         -Wall
         -Wno-unused-function
         -Wno-unused-variable
         -Wno-unused-but-set-variable
-        #-pedantic
-        #-pedantic-errors
+        -pedantic
+        -pedantic-errors
     >)
 target_link_libraries(bootloader gcc)
 
@@ -34,13 +34,14 @@ target_include_directories(bootloader PRIVATE "${CMAKE_BINARY_DIR}")
 # Subdirectories
 add_subdirectory(arch)
 add_subdirectory(bus)
-add_subdirectory(term)
-add_subdirectory(video)
-add_subdirectory(disk)
-add_subdirectory(fs)
-add_subdirectory(stdc)
-add_subdirectory(lib)
 add_subdirectory(core)
+add_subdirectory(device)
+add_subdirectory(disk)
+add_subdirectory(font)
+add_subdirectory(fs)
+add_subdirectory(lib)
+add_subdirectory(mm)
+add_subdirectory(stdc)
 
 # Additional Targets
 

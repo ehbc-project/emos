@@ -1,6 +1,5 @@
 import sys
 
-
 hexfont_path = sys.argv[1]
 binfont_path = sys.argv[2]
 

@@ -30,17 +30,16 @@ target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/inclu
 target_include_directories(bootloader PRIVATE "${CMAKE_BINARY_DIR}")
 
 target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_sources(bootloader PRIVATE start.S bios/bioscall.S bootinfo.c bios/disk.c init.c bios/keyboard.c bios/video.c bios/mem.c pci/cfgspace.c acpi/rsdp.c)
+target_sources(bootloader PRIVATE start.S chainload.S bios/bioscall.S bootinfo.c bios/disk.c init.c bios/keyboard.c bios/video.c bios/mem.c pci/cfgspace.c acpi/rsdp.c)
 target_link_options(bootloader PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.x")
 set_target_properties(bootloader PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.x")
-
-add_subdirectory(lib/uacpi)
 
 add_custom_target(bootloader_image ALL
     COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:bootloader>" bootloader.bin
     COMMAND dd if=/dev/zero of="${CMAKE_CURRENT_BINARY_DIR}/floppy.img" bs=1024 count=1440
     COMMAND mformat -i "${CMAKE_CURRENT_BINARY_DIR}/floppy.img"
     COMMAND mcopy -i "${CMAKE_CURRENT_BINARY_DIR}/floppy.img" "${CMAKE_CURRENT_BINARY_DIR}/bootloader.bin" ::/BOOTLDR.BIN
+    COMMAND mcopy -s -i "${CMAKE_CURRENT_BINARY_DIR}/floppy.img" "${CMAKE_SOURCE_DIR}/boot/config" ::/config
     COMMAND python "${CMAKE_SOURCE_DIR}/tools/injectvbr/injectvbr.py" "${CMAKE_CURRENT_BINARY_DIR}/bootsector.bin" "${CMAKE_CURRENT_BINARY_DIR}/floppy.img"
     DEPENDS bootloader
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"

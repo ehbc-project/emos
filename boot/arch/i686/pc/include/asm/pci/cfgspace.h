@@ -7,7 +7,7 @@
 #define PCI_CONFIG_ADDRESS 0x0CF8
 #define PCI_CONFIG_DATA 0x0CFC
 
-uint32_t _bus_pci_cfg_read(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
-void _bus_pci_cfg_write(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value);
+uint32_t _bus_pci_cfg_read(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, int size);
+void _bus_pci_cfg_write(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value, int size);
 
 #endif // __I686_PC_PCI_CFGSPACE_H__

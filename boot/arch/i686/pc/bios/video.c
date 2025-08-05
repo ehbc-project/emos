@@ -52,7 +52,9 @@ void _pc_bios_tty_output(uint8_t ch)
 {
     struct bioscall_regs regs = {
         .a.b.h = 0x0E,
-        .a.b.l = ch
+        .a.b.l = ch,
+        .b.b.h = 0x00,
+        .b.b.l = 0x0F,
     };
 
     _pc_bios_call(0x10, &regs);
@@ -95,8 +97,7 @@ int _pc_bios_get_vbe_controller_info(struct vbe_controller_info *buf)
 
     _pc_bios_call(0x10, &regs);
 
-    if (regs.a.b.h != 0x4F) return 1;
-    if (regs.a.b.l != 0x00) return 1;
+    if (regs.a.w != 0x004F) return 1;
 
     return 0;
 }
@@ -112,8 +113,7 @@ int _pc_bios_get_vbe_video_mode_info(uint16_t mode, struct vbe_video_mode_info *
 
     _pc_bios_call(0x10, &regs);
 
-    if (regs.a.b.h != 0x4F) return 1;
-    if (regs.a.b.l != 0x00) return 1;
+    if (regs.a.w != 0x004F) return 1;
 
     return 0;
 }
@@ -127,10 +127,59 @@ int _pc_bios_set_vbe_video_mode(uint16_t mode)
 
     _pc_bios_call(0x10, &regs);
 
-    if (regs.a.b.h != 0x4F) return 1;
-    if (regs.a.b.l != 0x00) return 1;
+    if (regs.a.w != 0x004F) return 1;
 
     return 0;
+}
+
+int _pc_bios_set_vbe_display_start(uint16_t x, uint16_t y)
+{
+    struct bioscall_regs regs = {
+        .a.w = 0x4F07,
+        .b.b.h = 0x00,
+        .b.b.l = 0x00,
+        .c.w = x,
+        .d.w = y,
+    };
+
+    return _pc_bios_call(0x10, &regs);
+}
+
+int _pc_bios_set_vbe_display_start_at_retrace(uint16_t x, uint16_t y)
+{
+    struct bioscall_regs regs = {
+        .a.w = 0x4F07,
+        .b.b.h = 0x00,
+        .b.b.l = 0x80,
+        .c.w = x,
+        .d.w = y,
+    };
+
+    return _pc_bios_call(0x10, &regs);
+}
+
+int _pc_bios_schedule_vbe_display_start(uint32_t fboffset)
+{
+    struct bioscall_regs regs = {
+        .a.w = 0x4F07,
+        .b.b.h = 0x00,
+        .b.b.l = 0x02,
+        .c.l = fboffset,
+    };
+
+    return _pc_bios_call(0x10, &regs);
+}
+
+int _pc_bios_schedule_vbe_display_start_at_retrace(uint32_t fboffset)
+{
+    struct bioscall_regs regs = {
+        .a.w = 0x4F07,
+        .b.b.h = 0x00,
+        .b.b.l = 0x82,
+        .c.l = fboffset,
+    };
+
+    return _pc_bios_call(0x10, &regs);
 }
 
 int _pc_bios_get_vbe_pm_interface(const struct vbe_pm_interface **ptr)
@@ -145,4 +194,18 @@ int _pc_bios_get_vbe_pm_interface(const struct vbe_pm_interface **ptr)
     if (ptr) *ptr = (struct vbe_pm_interface *)((regs.es.w << 4) + regs.di.w);
 
     return 0;
+}
+
+int _pc_bios_get_vbe_edid(uint16_t ctrlr_unit, uint16_t edid_block, struct edid *buf)
+{
+    struct bioscall_regs regs = {
+        .a.w = 0x4F15,
+        .b.b.l = 0x01,
+        .c.w = ctrlr_unit,
+        .d.w = edid_block,
+        .es.w = ((uint32_t)buf >> 4) & 0xFFFF,
+        .di.w = (uint32_t)buf & 0x000F,
+    };
+
+    return _pc_bios_call(0x10, &regs);
 }

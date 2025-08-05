@@ -1,7 +1,7 @@
     .org    0
 
-    .set    REAL_STACK_INIT, 0x00009000  # right below the inital code area
-    .set    PROT_STACK_INIT, 0x00008000
+    .set    REAL_STACK_INIT, 0x00007C00  # right below the inital code area
+    .set    PROT_STACK_INIT, 0x00007000
 
     .set    PROT_CODE_SEG, 0x08
     .set    PROT_DATA_SEG, 0x10
@@ -97,13 +97,14 @@ switch_prot_to_real:
 
     ret
 
+    .section .rodata.low
     .align  8
     .word   0
 prot_stack:                             # protected mode stack
     .long   PROT_STACK_INIT
 
 gdtr:
-    .word   8 * 5 - 1                   # 3 entries
+    .word   8 * 5 - 1                   # 5 entries
     .long   gdt                         # gdt pointer
 gdt:
     .word   0x0000                      # null descriptor

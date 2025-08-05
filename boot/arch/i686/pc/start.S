@@ -32,6 +32,21 @@ _start:
 _start.1:
     call    switch_real_to_prot         # switch to protected mode
     .code32
+
+.clear_bss.low:
+    xor     %eax, %eax
+    mov     $__bss_low_start, %edi
+    mov     $__bss_low_end, %ecx
+    sub     $__bss_low_start, %ecx
+    rep     stosb
+
+.clear_bss.high:
+    mov     $__bss_start, %edi
+    mov     $__bss_end, %ecx
+    sub     $__bss_start, %ecx
+    rep     stosb
+
+.jump:
     call    _pc_init                    # jump to c code.
                                         # this function should not return
 

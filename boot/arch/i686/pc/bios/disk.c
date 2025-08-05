@@ -8,8 +8,8 @@ struct dap {
     uint8_t dap_size;
     uint8_t unused;
     uint16_t count;
-    uint16_t buffer_segment;
     uint16_t buffer_offset;
+    uint16_t buffer_segment;
     uint32_t lba_low;
     uint32_t lba_high;
 };
@@ -38,5 +38,22 @@ int _pc_bios_read_drive_chs(uint8_t drive, struct chs chs, uint8_t count, void *
     return _pc_bios_call(0x13, &regs) ? -(regs.a.b.h) : regs.a.b.l;
 }
 
+int _pc_bios_read_drive_lba(uint8_t drive, lba_t lba, uint16_t count, void *buf)
+{
+    struct dap dap = {
+        .dap_size = sizeof(struct dap),
+        .count = count,
+        .buffer_offset = (uint32_t)buf & 0x000F,
+        .buffer_segment = ((uint32_t)buf >> 4) & 0xFFFF,
+        .lba_low = lba & 0xFFFFFFFF,
+        .lba_high = lba >> 32,
+    };
 
-
+    struct bioscall_regs regs = {
+        .a.b.h = 0x42,
+        .d.b.l = drive,
+        .ds.w = ((uint32_t)&dap >> 4) & 0xFFFF,
+        .si.w = (uint32_t)&dap & 0x000F,
+    };
+    return _pc_bios_call(0x13, &regs);
+}

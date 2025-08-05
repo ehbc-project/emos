@@ -1,3 +1,3 @@
 cmake_minimum_required(VERSION 3.13)
 
-target_sources(bootloader PRIVATE main.c font.c panic.c)
+target_sources(bootloader PRIVATE main.c panic.c getopt.c)

@@ -20,7 +20,7 @@ struct acpi_rsdp {
     char reserved[3];
 } __attribute__((packed));
 
-struct acpi_rsdp *acpi_rsdp_find(void);
+struct acpi_rsdp *acpi_find_rsdp(void);
 
 int acpi_rsdp_verify(struct acpi_rsdp *rsdp);
 

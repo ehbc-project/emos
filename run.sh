@@ -1,12 +1,15 @@
 #!/bin/bash
 
-qemu-system-x86_64 -fda build/boot/bootloader.img \
-    -device qemu-xhci \
-    -device usb-ehci \
+qemu-system-i386 \
+    -fda build/boot/arch/i686/pc/floppy.img \
     -usb \
+    -device usb-kbd \
+    -device usb-mouse \
     -device intel-hda \
     -device ide-cd \
+    -boot a \
     -s
+#   -device qemu-xhci \
+#   -device usb-ehci \
 #   -device ide-cf \
-#   -device ide-hd \
 #   -device sd-card \

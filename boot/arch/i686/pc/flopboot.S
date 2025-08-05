@@ -134,7 +134,8 @@ _start:
     add     .root_dir_lba, %eax
     mov     %eax, .cluster_start_lba
 
-    # read the first sector of the root directory
+    # read the sector of the root directory
+.find_loader.load_dirent:
     mov     $0x0001, %ax                # read 1 sector
     mov     $ROOTDIR_BUFFER, %bx        # to buffer starting at 0x7E00
     mov     .root_dir_lba, %cx
@@ -142,19 +143,28 @@ _start:
 
     mov     $ROOTDIR_BUFFER, %si
 .compare_filename:
+    cmpw    $ROOTDIR_BUFFER + 0x200, %si
+    jle     .compare_filename.next_sector
     mov     $str_bootfilename, %di      # compare "BOOTLDR BIN"
     push    %si
     push    %di
-    cmpw    $0x00, (%si)
+    cmpb    $0x00, (%si)
     jz      .compare_filename.notfound
     mov     $11, %cx
     repe    cmpsb
     je      .compare_filename.found
-
+ 
     pop     %di
     pop     %si
     add     $0x20, %si
     jmp     .compare_filename           # next entry
+
+.compare_filename.next_sector:
+    subw    $16, .bpb_root_entries
+    cmpw    $0, .bpb_root_entries
+    jle     .compare_filename.notfound
+    addw    $1, .root_dir_lba
+    jmp     .find_loader.load_dirent
 
 .compare_filename.notfound:
     mov     $str_bootfile_not_found, %si
@@ -172,8 +182,8 @@ _start:
 
 .load_file:
     # read first cluster
-    xor     %di, %di
     mov     26(%si), %dx                # dx = cluster to read
+    mov     $LOAD_SEGMENT, %di          # initial load segment
 
 .load_file.read:
     push    %dx
@@ -193,11 +203,13 @@ _start:
     call    read_disk
 
 .load_file.copy:
-    mov     $LOAD_SEGMENT, %ax          # copy buffer to data
-    mov     %ax, %es
+    mov     %di, %es                    # copy buffer to data
     mov     $DATA_BUFFER, %si
+    xor     %di, %di
     mov     $0x100, %cx
     rep     movsw
+    mov     %es, %di
+    add     $0x20, %di
 
 .load_file.next_cluster:
     pop     %dx
@@ -300,10 +312,10 @@ halt:
     jmp     halt                        # halt
 
 str_diskerror: 
-    .asciz  "Disk read error\r\n"
+    .asciz  "\r\nDisk read error"
 
 str_bootfile_not_found:
-    .asciz  "BOOTLDR.BIN not found\r\n"
+    .asciz  "\r\nBOOTLDR.BIN not found"
 
 str_bootfilename:
     .ascii  "BOOTLDR BIN"
