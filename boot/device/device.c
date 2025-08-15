@@ -5,55 +5,56 @@
 
 #include <mm/mm.h>
 
-struct device_list {
-    struct device_list *next;
-    struct device *dev;
-};
-
-static struct device_list *device_list = NULL;
+static struct device *device_list_head = NULL;
 
 int register_device(struct device *dev)
 {
-    struct device_list **last_elem = NULL;
-    if (!device_list) {
-        last_elem = &device_list;
+    if (!device_list_head) {
+        device_list_head = dev;
     } else {
-        struct device_list *current = device_list;
+        struct device *current = device_list_head;
         while (current->next) {
             current = current->next;
         }
-        last_elem = &current->next;
+        current->next = dev;
     }
 
-    *last_elem = mm_allocate(sizeof(struct device_list));
-    (*last_elem)->next = NULL;
-    (*last_elem)->dev = dev;
+    if (!dev->driver) {
+        return 1;
+    }
 
-    return 0;
+    return dev->driver->probe(dev);
 }
 
 struct device *find_device(const char *id)
 {
-    struct device_list *current = device_list;
-
-    if (!current) {
-        return NULL;
-    }
-
-    do {
-        if (current->dev->id->type != DIT_STRING) {
+    struct device *current = device_list_head;
+    
+    while (current) {
+        if (current->id->type != DIT_STRING) {
             goto next;
         }
 
-        if (strcmp(current->dev->id->string, id) != 0) {
+        if (strcmp(current->id->string, id) != 0) {
             goto next;
         }
 
-        return current->dev;
+        return current;
 
 next:
         current = current->next;
-    } while (current);
+    }
 
     return NULL;
+}
+
+struct device_ref *create_device_ref(struct device_ref *prev)
+{
+    struct device_ref *next = mm_allocate(sizeof(*next));
+
+    if (prev) {
+        prev->next = next;
+    }
+
+    return next;
 }

@@ -1,15 +1,26 @@
 #!/bin/bash
 
 qemu-system-i386 \
-    -fda build/boot/arch/i686/pc/floppy.img \
+    -m 128M \
+    -M q35 \
+    -fda build/boot/floppy.img \
+    -cdrom build/boot/cdrom.iso \
     -usb \
     -device usb-kbd \
     -device usb-mouse \
     -device intel-hda \
-    -device ide-cd \
+    -device qemu-xhci \
+    -device usb-ehci \
+    -device sdhci-pci \
+    -device sd-card \
+    -device am53c974 \
+    -device e1000 \
+    -device pci-serial \
+    -device pci-testdev \
+    -device nvme,drive=hd,serial=1234 \
+    -drive file=disk.img,id=hd,if=none \
     -boot a \
+    -debugcon stdio \
     -s
-#   -device qemu-xhci \
-#   -device usb-ehci \
-#   -device ide-cf \
-#   -device sd-card \
+
+#    -hda build/boot/hd.img \

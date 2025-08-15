@@ -1,16 +1,17 @@
 cmake_minimum_required(VERSION 3.13)
 cmake_policy(SET CMP0076 NEW)
 
-# Target Configurations
-add_executable(bootloader)
-set_target_properties(bootloader PROPERTIES SUFFIX ".elf")
-
 # Compiler Tests
 
 # config.h
 configure_file("config.h.in" "config.h")
 
 # Dependencies
+find_package(Python3 COMPONENTS Interpreter)
+
+# Target Configurations
+add_executable(bootloader)
+set_target_properties(bootloader PROPERTIES SUFFIX ".elf")
 
 # Compile Options
 target_compile_features(bootloader PUBLIC c_std_11)
@@ -31,8 +32,21 @@ target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(bootloader PRIVATE "${CMAKE_BINARY_DIR}")
 
+# Additional Targets
+add_custom_target(bootloader_symbol_table ALL
+    COMMAND ${CMAKE_NM} "$<TARGET_FILE:bootloader>" > bootloader.map
+    DEPENDS bootloader
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMENT "Creating symbol table")
+
+add_custom_target(bootloader_font ALL
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/hex2binfont/hex2binfont.py" "${CMAKE_CURRENT_SOURCE_DIR}/unifont.hex" "unifont.bfn"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMENT "Generating font data")
+
 # Subdirectories
 add_subdirectory(arch)
+add_subdirectory(acpi)
 add_subdirectory(bus)
 add_subdirectory(core)
 add_subdirectory(device)
@@ -42,6 +56,3 @@ add_subdirectory(fs)
 add_subdirectory(lib)
 add_subdirectory(mm)
 add_subdirectory(stdc)
-
-# Additional Targets
-

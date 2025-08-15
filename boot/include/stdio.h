@@ -23,7 +23,7 @@ struct _iobuf {
 
 typedef struct _iobuf FILE;
 
-extern FILE *stdin, *stdout, *stderr;
+extern FILE *stdin, *stdout, *stderr, *stddbg;
 
 __attribute__((format(printf, 2, 3)))
 int sprintf(char *buf, const char *fmt, ...);
@@ -45,8 +45,8 @@ int vfprintf(FILE *fp, const char *fmt, va_list args);
 int putchar(int ch);
 int puts(const char *str);
 
-int putc(int ch, FILE* fp);
-int fputs(const char *str, FILE* fp);
+int putc(int ch, FILE *stream);
+int fputs(const char *str, FILE *stream);
 
 int fgetc(FILE *stream);
 #define getc fgetc

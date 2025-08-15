@@ -26,8 +26,8 @@ struct console_char_cell {
 };
 
 struct console_interface {
-    void (*set_dimension)(struct device *, int, int);
-    void (*get_dimension)(struct device *, int *, int *);
+    int (*set_dimension)(struct device *, int, int);
+    int (*get_dimension)(struct device *, int *, int *);
     struct console_char_cell *(*get_buffer)(struct device *);
     void (*invalidate)(struct device *, int, int, int, int);
     void (*flush)(struct device *);

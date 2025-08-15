@@ -12,4 +12,6 @@ struct acpi_rsdt {
     uint32_t table_pointers[];
 } __attribute__((packed));
 
+void *acpi_find_table(struct acpi_rsdt *rsdt, const char signature[4]);
+
 #endif // __ACPI_RSDT_H__

@@ -12,4 +12,8 @@ static FILE _stderr = {
     .fd = 2,
 };
 
-FILE *stdin = &_stdin, *stdout = &_stdout, *stderr = &_stderr;
+static FILE _stddbg = {
+    .fd = 3,
+};
+
+FILE *stdin = &_stdin, *stdout = &_stdout, *stderr = &_stderr, *stddbg = &_stddbg;

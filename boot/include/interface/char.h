@@ -7,6 +7,7 @@ struct char_interface {
     long (*seek)(struct device *, long, int);
     long (*read)(struct device *, char *, unsigned long);
     long (*write)(struct device *, const char *, unsigned long);
+    int (*flush)(struct device *);
 };
 
 #endif // __INTERFACE_CHAR_H__

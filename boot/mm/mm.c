@@ -1,5 +1,9 @@
+#include <mm/mm.h>
+
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 extern int __end;
 
@@ -7,22 +11,21 @@ static void *alloc_ptr = &__end;
 
 void *mm_allocate(size_t size)
 {
-    if (size == 0) {
+    if (size < 1) {
         return NULL;
     }
 
     uint8_t *ret = (uint8_t *)alloc_ptr + sizeof(size_t);
     ((size_t*)ret)[-1] = size;
     alloc_ptr = ret + size;
+
     return ret;
 }
 
 void *mm_allocate_clear(unsigned long count, size_t size)
 {
     void *ret = mm_allocate(count * size);
-    for (unsigned long i = 0; i < count; i++) {
-        ((uint8_t *)ret)[i] = 0;
-    }
+    memset(ret, 0, count * size);
     return ret;
 }
 

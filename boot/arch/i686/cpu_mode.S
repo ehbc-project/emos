@@ -1,6 +1,6 @@
     .org    0
 
-    .set    REAL_STACK_INIT, 0x00007C00  # right below the inital code area
+    .set    REAL_STACK_INIT, 0x00007BFC  # right below the inital code area
     .set    PROT_STACK_INIT, 0x00007000
 
     .set    PROT_CODE_SEG, 0x08

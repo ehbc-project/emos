@@ -4,7 +4,6 @@
 #include <stdint.h>
 
 #include <asm/farptr.h>
-#include <device/video/vbe.h>
 
 int _pc_bios_set_video_mode(uint8_t mode);
 
@@ -23,11 +22,124 @@ void _pc_bios_write_string(uint8_t mode, uint8_t attr, uint8_t row, uint8_t col,
 void _pc_bios_write_pixel(uint8_t page, uint16_t x, uint16_t y, uint8_t color);
 uint8_t _pc_bios_read_pixel(uint8_t page, uint16_t x, uint16_t y);
 
+#define VBE_CTRL_SIGNATURE_VBE1 "VESA"
+#define VBE_CTRL_SIGNATURE_VBE2 "VBE2"
+
+struct vbe_palette_entry {
+    uint8_t blue;
+    uint8_t green;
+    uint8_t red;
+    uint8_t reserved;
+} __attribute__((packed));
+
+struct vbe_crtc_info_block {
+    uint16_t htotal;
+    uint16_t hsync_start;
+    uint16_t hsync_end;
+    uint16_t vtotal;
+    uint16_t vsync_start;
+    uint16_t vsync_end;
+    uint8_t flags;
+    uint32_t pixel_clock;
+    uint16_t refresh_rate;
+    uint8_t reserved[40];
+} __attribute__((packed));
+
 struct vbe_pm_interface {
     uint16_t set_window;
     uint16_t set_display_start;
     uint16_t set_primary_palette_data;
     uint16_t port_mem_locations;  /* refer to VBE 3.0 spec page 57 */
+    uint8_t additional_data[];
+} __attribute__((packed));
+
+struct vbe_controller_info {
+    /* VBE 1.0 */
+    char signature[4];
+    uint16_t vbe_version;
+    farptr_t oem_string;
+    uint32_t capabilities;
+    farptr_t video_modes;
+    uint16_t total_memory;
+
+    /* VBE 2.0 */
+    uint16_t oem_software_rev;
+    farptr_t oem_vendor_name_ptr;
+    farptr_t oem_product_name_ptr;
+    farptr_t oem_product_rev_ptr;
+
+    uint8_t reserved[222];
+
+    uint8_t oem_data[256];
+    
+} __attribute__((packed));
+
+enum vbe_memory_model {
+    VBEMM_TEXT = 0,
+    VBEMM_CGA,
+    VBEMM_HERCULES,
+    VBEMM_PLANAR,
+    VBEMM_PACKED,
+    VBEMM_NON_CHAIN,
+    VBEMM_DIRECT,
+    VBEMM_YUV,
+};
+
+struct vbe_video_mode_info {
+    /* VBE 1.0 */
+    uint16_t attributes;
+    uint8_t window_a;
+    uint8_t window_b;
+    uint16_t granularity;
+    uint16_t window_size;
+    uint16_t segment_a;
+    uint16_t segment_b;
+    uint32_t win_func_ptr;
+    uint16_t pitch;
+
+    /* VBE 1.2 */
+    uint16_t width;
+    uint16_t height;
+    uint8_t w_char;
+    uint8_t y_char;
+    uint8_t planes;
+    uint8_t bpp;
+    uint8_t banks;
+    uint8_t memory_model;
+    uint8_t bank_size;
+    uint8_t image_pages;
+    uint8_t reserved0;
+
+    uint8_t red_mask;
+    uint8_t red_position;
+    uint8_t green_mask;
+    uint8_t green_position;
+    uint8_t blue_mask;
+    uint8_t blue_position;
+    uint8_t reserved_mask;
+    uint8_t reserved_position;
+    uint8_t direct_color_attributes;
+
+    /* VBE 2.0 */
+    uint32_t framebuffer;
+    uint32_t reserved1;
+    uint16_t reserved2;
+
+    /* VBE 3.0 */
+    uint16_t lin_bytes_per_scan_line;
+    uint8_t bnk_num_image_pages;
+    uint8_t lin_num_image_pages;
+    uint8_t lin_red_mask;
+    uint8_t lin_red_position;
+    uint8_t lin_green_mask;
+    uint8_t lin_green_position;
+    uint8_t lin_blue_mask;
+    uint8_t lin_blue_position;
+    uint8_t lin_reserved_mask;
+    uint8_t lin_reserved_position;
+    uint32_t max_pixel_clock;
+    
+    uint8_t reserved3[189];
 } __attribute__((packed));
 
 struct edid_chroma_info {
@@ -94,7 +206,7 @@ int _pc_bios_set_vbe_display_start(uint16_t x, uint16_t y);
 int _pc_bios_set_vbe_display_start_at_retrace(uint16_t x, uint16_t y);
 int _pc_bios_schedule_vbe_display_start(uint32_t fboffset);
 int _pc_bios_schedule_vbe_display_start_at_retrace(uint32_t fboffset);
-int _pc_bios_get_vbe_pm_interface(const struct vbe_pm_interface **ptr);
+int _pc_bios_get_vbe_pm_interface(struct farptr *pmi_table);
 int _pc_bios_get_vbe_edid(uint16_t ctrlr_unit, uint16_t edid_block, struct edid *buf);
 
 #endif // __I686_PC_BIOS_VIDEO_H__

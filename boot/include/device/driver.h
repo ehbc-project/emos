@@ -7,7 +7,7 @@ struct device_driver {
     struct device_driver *next;
 
     const char *name;
-    struct device *(*probe)(const struct device_id *);
+    int (*probe)(struct device *);
     int (*remove)(struct device *);
     const void *(*get_interface)(struct device *, const char *);
 };

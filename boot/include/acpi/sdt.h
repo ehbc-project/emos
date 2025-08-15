@@ -15,4 +15,6 @@ struct acpi_sdt_header {
     uint32_t creator_revision;
 } __attribute__((packed));
 
+int acpi_verify_table(void *table);
+
 #endif // __ACPI_SDT_H__

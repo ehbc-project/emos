@@ -1,3 +1,3 @@
-#include "asm/vbe/pm_info.h"
+#include "asm/vbe/pm_interface.h"
 
 #include <stddef.h>

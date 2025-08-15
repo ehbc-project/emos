@@ -10,6 +10,7 @@
 #include <string.h>
 #include <macros.h>
 
+#include "mm/mm.h"
 #include <device/driver.h>
 #include <interface/char.h>
 #include <interface/console.h>
@@ -27,6 +28,7 @@
 #include "acpi/rsdt.h"
 #include "acpi/fadt.h"
 
+#include "bus/bus.h"
 #include "bus/usb/host/xhci.h"
 #include "bus/usb/host/uhci.h"
 
@@ -88,6 +90,186 @@ static void bios_print_str(const char *str)
     }
 }
 
+static int verify_acpi_tables(struct acpi_rsdp *rsdp)
+{
+    if (!acpi_verify_rsdp(rsdp)) return 0;
+    
+    struct acpi_rsdt *rsdt = (struct acpi_rsdt *)rsdp->rsdt_address;
+    if (!rsdt) {
+        panic("Could not find RSDT");
+    }
+
+    for (int i = 0; i < (rsdt->header.length - sizeof(rsdt->header)) / sizeof(uint32_t); i++) {
+        if (!acpi_verify_table((void *)rsdt->table_pointers[i])) return 0;
+    }
+    
+    return 1;
+}
+
+static struct bus root_bus = {
+    .next = NULL,
+    .name = "root",
+    .dev = NULL,
+};
+
+static int detect_ide(uint16_t port)
+{
+    return 1;
+}
+
+static void init_root_bus(struct acpi_rsdp *rsdp)
+{
+    int skip_legacy = 0, skip_8042 = 0, skip_rtc = 0;
+    
+    if (rsdp) {
+        struct acpi_rsdt *rsdt = (struct acpi_rsdt *)rsdp->rsdt_address;
+        if (!rsdt) {
+            panic("Could not find RSDT");
+        }
+
+        struct acpi_fadt *fadt = acpi_find_table(rsdt, ACPI_FADT_SIGNATURE);
+        if (!fadt) {
+            panic("Could not find FADT");
+        }
+
+        if (fadt->header.revision >= 3) {
+            if (!(fadt->iapc_boot_arch & ACPI_FADT_IAPC_BOOT_ARCH_LEGACY_PRESENT)) {
+                skip_legacy = 1;
+            }
+    
+            if (!(fadt->iapc_boot_arch & ACPI_FADT_IAPC_BOOT_ARCH_8042_PRESENT)) {
+                skip_8042 = 1;
+            }
+    
+            if (fadt->iapc_boot_arch & ACPI_FADT_IAPC_BOOT_ARCH_CMOSRTC_NPRESENT) {
+                skip_rtc = 1;
+            }
+        }
+    }
+
+    register_bus(&root_bus);
+
+    /* find Non-PnP ISA Components */
+    if (1 || !skip_8042) {
+        struct device *dev = mm_allocate_clear(1, sizeof(struct device));
+        dev->bus = &root_bus;
+        struct resource *res = create_resource(NULL);
+        res->type = RT_IOPORT;
+        res->base = 0x0060;
+        res->limit = 0x0064;
+        res->flags = 0;
+        dev->resource = res;
+        dev->driver = find_driver("i8042");
+        register_device(dev);
+    }
+
+    if (!skip_rtc) {
+        struct device *dev = mm_allocate_clear(1, sizeof(struct device));
+        dev->bus = &root_bus;
+        struct resource *res = create_resource(NULL);
+        res->type = RT_IOPORT;
+        res->base = 0x0070;
+        res->limit = 0x0071;
+        res->flags = 0;
+        dev->resource = res;
+        dev->driver = find_driver("pcrtc");
+        register_device(dev);
+    }
+
+    if (!skip_legacy) {
+        {
+            struct device *dev = mm_allocate_clear(1, sizeof(struct device));
+            dev->bus = &root_bus;
+            struct resource *res = create_resource(NULL);
+            res->type = RT_IOPORT;
+            res->base = 0x03F8;
+            res->limit = 0x03FF;
+            res->flags = 0;
+            dev->resource = res;
+            dev->driver = find_driver("pcuart");
+            register_device(dev);
+        }
+        
+        {
+            struct device *dev = mm_allocate_clear(1, sizeof(struct device));
+            dev->bus = &root_bus;
+            struct resource *res = create_resource(NULL);
+            res->type = RT_IOPORT;
+            res->base = 0x02F8;
+            res->limit = 0x02FF;
+            res->flags = 0;
+            dev->resource = res;
+            dev->driver = find_driver("pcuart");
+            register_device(dev);
+        }
+
+        {
+            struct device *dev = mm_allocate_clear(1, sizeof(struct device));
+            dev->bus = &root_bus;
+            struct resource *res = create_resource(NULL);
+            res->type = RT_IOPORT;
+            res->base = 0x0278;
+            res->limit = 0x027A;
+            res->flags = 0;
+            dev->resource = res;
+            dev->driver = find_driver("pcieee1284");
+            register_device(dev);
+        }
+
+        {
+            struct device *dev = mm_allocate_clear(1, sizeof(struct device));
+            dev->bus = &root_bus;
+            struct resource *res = create_resource(NULL);
+            res->type = RT_IOPORT;
+            res->base = 0x03F0;
+            res->limit = 0x03F7;
+            res->flags = 0;
+            dev->resource = res;
+            dev->driver = find_driver("pcfdc");
+            register_device(dev);
+        }
+    }
+
+    if (detect_ide(0x1F0)) {
+        struct device *dev = mm_allocate_clear(1, sizeof(struct device));
+        dev->bus = &root_bus;
+        struct resource *res = create_resource(NULL);
+        res->type = RT_IOPORT;
+        res->base = 0x01F0;
+        res->limit = 0x01F7;
+        res->flags = 0;
+        dev->resource = res;
+        dev->driver = find_driver("ide");
+        register_device(dev);
+    }
+
+    if (detect_ide(0x170)) {
+        struct device *dev = mm_allocate_clear(1, sizeof(struct device));
+        dev->bus = &root_bus;
+        struct resource *res = create_resource(NULL);
+        res->type = RT_IOPORT;
+        res->base = 0x0170;
+        res->limit = 0x0177;
+        res->flags = 0;
+        dev->resource = res;
+        dev->driver = find_driver("ide");
+        register_device(dev);
+    }
+
+    {
+        struct device *dev = mm_allocate_clear(1, sizeof(struct device));
+        dev->bus = &root_bus;
+        struct resource *res = create_resource(NULL);
+        res->type = RT_IOPORT;
+        res->base = 0x00E9;
+        res->limit = 0x00E9;
+        res->flags = 0;
+        dev->resource = res;
+        dev->driver = find_driver("porte9");
+        register_device(dev);
+    }
+}
+
 __attribute__((noreturn))
 void _pc_init(void)
 {
@@ -97,41 +279,21 @@ void _pc_init(void)
         (&__init_array_start)[i]();
     }
 
-    bios_print_str("Finding drivers...\r\n");
-    struct device_driver *vbe_driver = find_driver("vbe_video");
-    struct device_driver *vconsole_driver = find_driver("vconsole");
-    struct device_driver *ansiterm_driver = find_driver("ansiterm");
-    struct device_driver *kbd_driver = find_driver("bios_keyboard");
-    struct device_driver *bios_tty_driver = find_driver("bios_tty");
+    struct acpi_rsdp *rsdp = acpi_find_rsdp();
 
-    bios_print_str("Probing devices...\r\n");
-    struct device *vbe_device = vbe_driver->probe(NULL);
-    struct device *vconsole_device = vconsole_driver->probe(vbe_device->id);
-    struct device *ansiterm_device = ansiterm_driver->probe(vconsole_device->id);
-    struct device *kbd_device = kbd_driver->probe(NULL);
-    struct device *bios_tty_device = bios_tty_driver->probe(NULL);
+    if (rsdp && !verify_acpi_tables(rsdp)) {
+        panic("ACPI table checksum failed");
+    }
+    init_root_bus(rsdp);
 
-    const struct framebuffer_interface *framebuffer = vbe_driver->get_interface(vbe_device, "framebuffer");
-    const struct console_interface *console = vconsole_driver->get_interface(vconsole_device, "console");
-    const struct char_interface *bios_tty = bios_tty_driver->get_interface(bios_tty_device, "char");
-    const struct char_interface *tty = NULL;
-    if (vbe_device && ansiterm_device) {
-        tty = ansiterm_driver->get_interface(ansiterm_device, "char");
+    {
+        struct device *dev = mm_allocate_clear(1, sizeof(struct device));
+        dev->bus = &root_bus;
+        dev->driver = find_driver("vbe_video");
+        register_device(dev);
     }
 
-    freopen_device(stdout, "tty0");
-    freopen_device(stderr, "tty0");
-    freopen_device(stdin, "kbd");
-
-    if (vbe_device && ansiterm_device) {
-        printf("Setting up video...\r\n");
-        framebuffer->set_mode(vbe_device, 640, 480, 24);
-        console->set_dimension(vconsole_device, 80, 30);
-
-        freopen_device(stdout, "tty");
-        freopen_device(stderr, "tty");
-    }
-
+    freopen_device(stddbg, "dbg");
 
     // struct vbe_controller_info vbe_info;
     // _pc_bios_get_vbe_controller_info(&vbe_info);
@@ -149,7 +311,7 @@ void _pc_init(void)
     // /* List Memory Map */
     // uint32_t cursor = 0;
     // struct smap_entry entry;
-
+    //
     // printf("Memory Map: \r\n");
     // do {
     //     _pc_bios_query_address_map(&cursor, &entry, sizeof(entry));

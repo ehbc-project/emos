@@ -35,3 +35,5 @@
     - `crypto`: Simple cryptography
     - `unicode`: Unicode string manipulation
     - `compress`: Data compression / decompression
+  - `libstdc`: C Standard library
+  - `libstdcxx`: C++ Standard library

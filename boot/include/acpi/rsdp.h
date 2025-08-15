@@ -22,6 +22,6 @@ struct acpi_rsdp {
 
 struct acpi_rsdp *acpi_find_rsdp(void);
 
-int acpi_rsdp_verify(struct acpi_rsdp *rsdp);
+int acpi_verify_rsdp(struct acpi_rsdp *rsdp);
 
 #endif // __ACPI_RSDP_H__

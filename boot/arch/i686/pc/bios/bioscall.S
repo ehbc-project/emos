@@ -84,6 +84,13 @@ _pc_bios_call:
 .Lerr:
     .byte   0
 
+    push    %ax                         # clear DS
+    mov     $0x0000, %ax
+    mov     %ax, %ds
+    pop     %ax
+
+    setc    .Lerr                       # store carry flag
+
     mov     %eax, .Lax                   # store registers temporarily
     mov     %ebx, .Lbx
     mov     %ecx, .Lcx
@@ -91,12 +98,8 @@ _pc_bios_call:
     mov     %esi, .Lsi
     mov     %edi, .Ldi
 
-    xor     %al, %al
-    setc    %al
-    mov     %al, .Lerr                  # store carry flag
-
     call    switch_real_to_prot         # switch back to protected mode
-    .code32
+    .code32 
 
     pop     %ebp                        # restore stack base pointer
 

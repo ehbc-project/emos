@@ -182,7 +182,7 @@ int _pc_bios_schedule_vbe_display_start_at_retrace(uint32_t fboffset)
     return _pc_bios_call(0x10, &regs);
 }
 
-int _pc_bios_get_vbe_pm_interface(const struct vbe_pm_interface **ptr)
+int _pc_bios_get_vbe_pm_interface(struct farptr *pmi_table)
 {
     struct bioscall_regs regs = {
         .a.w = 0x4F0A,
@@ -191,9 +191,12 @@ int _pc_bios_get_vbe_pm_interface(const struct vbe_pm_interface **ptr)
 
     _pc_bios_call(0x10, &regs);
     
-    if (ptr) *ptr = (struct vbe_pm_interface *)((regs.es.w << 4) + regs.di.w);
-
-    return 0;
+    if (pmi_table) {
+        pmi_table->segment = regs.es.w;
+        pmi_table->offset = regs.di.w;
+    }
+    
+    return regs.a.w;
 }
 
 int _pc_bios_get_vbe_edid(uint16_t ctrlr_unit, uint16_t edid_block, struct edid *buf)
