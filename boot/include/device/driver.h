@@ -12,8 +12,17 @@ struct device_driver {
     const void *(*get_interface)(struct device *, const char *);
 };
 
-void register_driver(struct device_driver *drv);
+/**
+ * @brief Register a device driver.
+ * @param drv A pointer to the device driver structure to register.
+ */
+void register_device_driver(struct device_driver *drv);
 
-struct device_driver *find_driver(const char *name);
+/**
+ * @brief Find a device driver by name.
+ * @param name The name of the driver to find.
+ * @return A pointer to the found device driver, or NULL if not found.
+ */
+struct device_driver *find_device_driver(const char *name);
 
 #endif // __DEVICE_DRIVER_H__

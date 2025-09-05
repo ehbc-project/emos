@@ -5,7 +5,7 @@
 
 long long strtoll(const char *str, char **endptr, int base)
 {
-    long ret = 0;
+    long long ret = 0;
     int sign = 0; // 0: positive 1: negative
 
     if (base < 0 || base == 1 || base > 36) {

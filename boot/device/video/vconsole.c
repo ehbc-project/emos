@@ -1,7 +1,9 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <wchar.h>
 
 #include <mm/mm.h>
 #include <device/driver.h>
@@ -19,6 +21,7 @@ struct vconsole_data {
     int width, height;
     int cursor_x, cursor_y;
     int cursor_prev_x, cursor_prev_y;
+    int cursor_visible;
 
     struct console_char_cell *char_buffer;
     uint8_t *diff_buffer;
@@ -42,11 +45,13 @@ static void draw_char(struct device *dev, int col, int row)
     data->fbdev_fbif->get_mode(data->fbdev, &fb_width, NULL, NULL);
 
     struct console_char_cell *cell = &data->char_buffer[row * data->width + col];
+    if (cell->codepoint == 0xFFFFFFFF) return;
     int is_full_width = font_is_glyph_full_width(cell->codepoint);
     uint8_t glyph[32];
     int x_offset = col * 8, y_offset = row * 16;
 
-    if (font_get_glyph(cell->codepoint, glyph, 32)) return;
+    int err = font_get_glyph(cell->codepoint, glyph, sizeof(glyph));
+    if (err) return;
 
     for (int y = 0; y < 16; y++) {
         for (int x = 0; x < (is_full_width ? 16 : 8); x++) {
@@ -81,7 +86,7 @@ static void draw_char(struct device *dev, int col, int row)
         }
     }
     
-    data->fbdev_fbif->invalidate(data->fbdev, x_offset, y_offset, x_offset + 8, y_offset + 16);
+    data->fbdev_fbif->invalidate(data->fbdev, x_offset, y_offset, x_offset + (is_full_width ? 16 : 8), y_offset + 16);
 }
 
 static void draw_cursor(struct device *dev)
@@ -191,7 +196,6 @@ static void flush(struct device *dev)
 
     if (data->passthrough) {
         data->fbdev_conif->flush(data->fbdev);
-        data->fbdev_conif->present(data->fbdev);
         return;
     }
 
@@ -209,11 +213,12 @@ static void flush(struct device *dev)
     if (data->cursor_prev_x != data->cursor_x || data->cursor_prev_y != data->cursor_y) {
         data->cursor_prev_x = data->cursor_x;
         data->cursor_prev_y = data->cursor_y;
-        draw_cursor(dev);
+        if (data->cursor_visible) {
+            draw_cursor(dev);
+        }
     }
 
     data->fbdev_fbif->flush(data->fbdev);
-    data->fbdev_fbif->present(data->fbdev);
 }
 
 static void present(struct device *dev)
@@ -225,7 +230,7 @@ static void present(struct device *dev)
         return;
     }
 
-    data->fbdev_fbif->present(dev);
+    data->fbdev_fbif->present(data->fbdev);
 }
 
 static void set_cursor_pos(struct device *dev, int col, int row)
@@ -237,8 +242,13 @@ static void set_cursor_pos(struct device *dev, int col, int row)
         return;
     }
 
-    data->cursor_x = col;
-    data->cursor_y = row;
+    if (col >= 0) {
+        data->cursor_x = col;
+    }
+
+    if (row >= 0) {
+        data->cursor_y = row;
+    }
 }
 
 static void get_cursor_pos(struct device *dev, int *col, int *row)
@@ -254,6 +264,20 @@ static void get_cursor_pos(struct device *dev, int *col, int *row)
     if (row) *row = data->cursor_y;
 }
 
+static void set_cursor_visibility(struct device *dev, int visible)
+{
+    struct vconsole_data *data = (struct vconsole_data *)dev->data;
+
+    data->cursor_visible = visible;
+}
+
+static int get_cursor_visibility(struct device *dev)
+{
+    struct vconsole_data *data = (struct vconsole_data *)dev->data;
+
+    return data->cursor_visible;
+}
+
 static const struct console_interface conif = {
     .set_dimension = set_dimension,
     .get_dimension = get_dimension,
@@ -263,6 +287,8 @@ static const struct console_interface conif = {
     .present = present,
     .set_cursor_pos = set_cursor_pos,
     .get_cursor_pos = get_cursor_pos,
+    .set_cursor_visibility = set_cursor_visibility,
+    .get_cursor_visibility = get_cursor_visibility,
     .set_cursor_attr = NULL,
     .get_cursor_attr = NULL,
 };
@@ -280,13 +306,10 @@ static struct device_driver drv = {
 
 static int probe(struct device *dev)
 {
-    struct device_id *current_id = mm_allocate(sizeof(*current_id));
-    current_id->type = DIT_STRING;
-    current_id->string = "console";
-    dev->id = current_id;
+    dev->name = "console";
+    dev->id = generate_device_id(dev->name);
 
-    if (!dev->reference) return 1;
-    struct device *fbdev = dev->reference->dev;
+    struct device *fbdev = dev->parent;
     if (!fbdev) return 1;
     const struct framebuffer_interface *fbdev_fbif = fbdev->driver->get_interface(fbdev, "framebuffer");
     if (!fbdev_fbif) return 1;
@@ -304,6 +327,7 @@ static int probe(struct device *dev)
     data->cursor_prev_y = -1;
     data->cursor_x = 0;
     data->cursor_y = 0;
+    data->cursor_visible = 1;
     data->passthrough = 0;
 
     dev->data = data;
@@ -328,5 +352,5 @@ static const void *get_interface(struct device *dev, const char *name)
 __attribute__((constructor))
 static void _register_driver(void)
 {
-    register_driver((struct device_driver *)&drv);
+    register_device_driver(&drv);
 }

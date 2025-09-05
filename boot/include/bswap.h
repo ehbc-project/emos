@@ -9,6 +9,11 @@
 #   define _bswap16 __builtin_bswap16
 #   define __HAVE_BUILTIN_BSWAP16
 #else
+/**
+ * @brief Byte swap a 16-bit value.
+ * @param val The 16-bit value to swap.
+ * @return The byte-swapped 16-bit value.
+ */
 uint16_t _bswap16(uint16_t val);
 #endif
 
@@ -16,6 +21,11 @@ uint16_t _bswap16(uint16_t val);
 #   define _bswap32 __builtin_bswap32
 #   define __HAVE_BUILTIN_BSWAP32
 #else
+/**
+ * @brief Byte swap a 32-bit value.
+ * @param val The 32-bit value to swap.
+ * @return The byte-swapped 32-bit value.
+ */
 uint32_t _bswap32(uint32_t val);
 #endif
 
@@ -23,6 +33,11 @@ uint32_t _bswap32(uint32_t val);
 #   define _bswap64 __builtin_bswap64
 #   define __HAVE_BUILTIN_BSWAP64
 #else
+/**
+ * @brief Byte swap a 64-bit value.
+ * @param val The 64-bit value to swap.
+ * @return The byte-swapped 64-bit value.
+ */
 uint64_t _bswap64(uint64_t val);
 #endif
 

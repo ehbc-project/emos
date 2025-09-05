@@ -23,33 +23,28 @@ struct device_id {
     };
 };
 
-struct device_ref {
-    struct device_ref *next;
-    struct device *dev;
-};
-
 struct device_driver;
 
 struct device {
     struct device *next;
-    struct device *next_bus;
+    struct device *sibling;
+    struct device *parent;
 
     const char *name;
-    const struct device_id *id;
+    int id;
 
     struct device_driver *driver;
 
     struct bus *bus;
 
-    const struct device_ref *reference;
     struct resource *resource;
     void *data;
 };
 
 int register_device(struct device *dev);
-
+struct device *get_first_device(void);
 struct device *find_device(const char *id);
 
-struct device_ref *create_device_ref(struct device_ref *prev);
+int generate_device_id(const char *name);
 
 #endif // __DEVICE_DEVICE_H__

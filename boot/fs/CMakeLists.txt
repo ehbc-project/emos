@@ -1,3 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
 
-# target_sources(bootloader PRIVATE fs.c fat.c iso9660.c)
+add_subdirectory(afs)
+add_subdirectory(fat)
+add_subdirectory(iso9660)
+
+target_sources(bootloader PRIVATE driver.c fs.c)

@@ -297,11 +297,9 @@ static int print_char(char *buf, size_t len, struct fmt_spec spec, va_list *args
     left = !!(spec.flags & SF_LEFT);
 
     // set width to 1 if zero
-    if (spec.width == WIDTH_AUTO)
+    if (spec.width == WIDTH_AUTO) {
         spec.width = 1;
-
-    // get char
-    ch = va_arg(*args, int);
+    }
 
     // get additional args if neded
     if (spec.width == WIDTH_ARG) {
@@ -310,6 +308,9 @@ static int print_char(char *buf, size_t len, struct fmt_spec spec, va_list *args
     if (spec.precision == PREC_ARG) {
         spec.precision = va_arg(*args, wchar_t);
     }
+
+    // get char
+    ch = va_arg(*args, int);
 
     // calc width
     if (len > spec.width) {

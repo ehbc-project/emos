@@ -22,7 +22,7 @@ struct vbe_data {
     uint8_t *diff_buffer;
     int current_page;
 
-    struct farptr pmi_table;
+    farptr_t pmi_table;
 
     struct vbe_video_mode_info mode_info;
 };
@@ -303,7 +303,9 @@ static int set_dimension(struct device *dev, int width, int height)
     data->diff_buffer = mm_reallocate(data->diff_buffer, width * height / 8);
     memset(data->diff_buffer, 0, width * height / 8);
 
-    memset((void *)0xB8000, 0, width * height * sizeof(uint16_t));
+    if (!vbe_mode_info.framebuffer) {
+        memset((void *)0xB8000, 0, width * height * sizeof(uint16_t));
+    }
 
     _pc_bios_set_text_cursor_pos(0, 0, 0);
 
@@ -355,6 +357,9 @@ static void con_present(struct device *dev)
                 uint16_t cell = src->codepoint & 0xFF;
                 cell |= (rgb_to_irgb(src->attr.fg_color) & 0xF) << 8;
                 cell |= (rgb_to_irgb(src->attr.bg_color) & 0xF) << 12;
+                if (src->attr.text_dim) {
+                    cell &= 0x77FF;
+                }
                 ((uint16_t *)0xB8000)[y * data->mode_info.width + x] = cell;
                 data->diff_buffer[(y * data->mode_info.width + x) / 8] &= ~(1 << ((y * data->mode_info.width + x) % 8));
             }
@@ -364,6 +369,16 @@ static void con_present(struct device *dev)
 
 static void set_cursor_pos(struct device *dev, int col, int row)
 {
+    if (col < 0 || row < 0) {
+        uint8_t row_prev, col_prev;
+        _pc_bios_get_text_cursor(0, NULL, row < 0 ? &row_prev : NULL, col < 0 ? &col_prev : NULL);
+        if (col < 0) {
+            col = col_prev;
+        }
+        if (row < 0) {
+            row = row_prev;
+        }
+    }
     _pc_bios_set_text_cursor_pos(0, row, col);
 }
 
@@ -406,12 +421,10 @@ static int probe(struct device *dev)
     struct vbe_controller_info vbe_info;
     if (_pc_bios_get_vbe_controller_info(&vbe_info)) return 1;
     
-    struct device_id *current_id = mm_allocate(sizeof(*current_id));
-    current_id->type = DIT_STRING;
-    current_id->string = "video";
-    dev->id = current_id;
+    dev->name = "video";
+    dev->id = generate_device_id(dev->name);
 
-    struct farptr pmi_table;
+    farptr_t pmi_table;
     if (_pc_bios_get_vbe_pm_interface(&pmi_table)) {
         pmi_table.segment = 0;
         pmi_table.offset = 0;
@@ -448,6 +461,6 @@ static const void *get_interface(struct device *dev, const char *name)
 __attribute__((constructor))
 static void _register_driver(void)
 {
-    register_driver((struct device_driver *)&drv);
+    register_device_driver(&drv);
 }
 

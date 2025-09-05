@@ -1,19 +1,31 @@
 #include <stdio.h>
 
 static FILE _stdout = {
-    .fd = 0,
+    .fs = NULL,
+    .file = NULL,
+    .dev = NULL,
+    .charif = NULL,
 };
 
 static FILE _stdin = {
-    .fd = 1,
+    .fs = NULL,
+    .file = NULL,
+    .dev = NULL,
+    .charif = NULL,
 };
 
 static FILE _stderr = {
-    .fd = 2,
+    .fs = NULL,
+    .file = NULL,
+    .dev = NULL,
+    .charif = NULL,
 };
 
 static FILE _stddbg = {
-    .fd = 3,
+    .fs = NULL,
+    .file = NULL,
+    .dev = NULL,
+    .charif = NULL,
 };
 
 FILE *stdin = &_stdin, *stdout = &_stdout, *stderr = &_stderr, *stddbg = &_stddbg;

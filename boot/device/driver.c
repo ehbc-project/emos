@@ -5,7 +5,7 @@
 
 static struct device_driver *driver_list_head = NULL;
 
-void register_driver(struct device_driver *drv)
+void register_device_driver(struct device_driver *drv)
 {
     if (!driver_list_head) {
         driver_list_head = drv;
@@ -21,7 +21,7 @@ void register_driver(struct device_driver *drv)
     return;
 }
 
-struct device_driver *find_driver(const char *name)
+struct device_driver *find_device_driver(const char *name)
 {
     struct device_driver *current = driver_list_head;
     while (current) {

@@ -11,6 +11,7 @@ include(ExternalProject)
 # Build configurations
 set(TARGET_ARCH "i686" CACHE STRING "Target CPU architecture")
 set(TARGET_BOARD "pc" CACHE STRING "Target board type")
+set(TARGET_FIRMWARE "bios" CACHE STRING "Target firmware")
 set(CONFIG_PRESET "default" CACHE STRING "Preset name of build configuration")
 
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/cmake/${TARGET_ARCH}/Toolchain.cmake")

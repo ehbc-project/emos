@@ -20,8 +20,17 @@ struct acpi_rsdp {
     char reserved[3];
 } __attribute__((packed));
 
+/**
+ * @brief Find the ACPI RSDP (Root System Description Pointer).
+ * @return A pointer to the RSDP structure if found, otherwise NULL.
+ */
 struct acpi_rsdp *acpi_find_rsdp(void);
 
+/**
+ * @brief Verify the checksum of the ACPI RSDP.
+ * @param rsdp A pointer to the RSDP structure.
+ * @return 0 on success (checksum is valid), otherwise an error code.
+ */
 int acpi_verify_rsdp(struct acpi_rsdp *rsdp);
 
 #endif // __ACPI_RSDP_H__

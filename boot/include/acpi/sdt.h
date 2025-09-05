@@ -15,6 +15,11 @@ struct acpi_sdt_header {
     uint32_t creator_revision;
 } __attribute__((packed));
 
+/**
+ * @brief Verify the checksum of an ACPI System Description Table (SDT).
+ * @param table A pointer to the ACPI SDT.
+ * @return 0 on success (checksum is valid), otherwise an error code.
+ */
 int acpi_verify_table(void *table);
 
 #endif // __ACPI_SDT_H__

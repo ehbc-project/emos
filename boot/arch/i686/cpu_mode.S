@@ -8,9 +8,12 @@
     .set    PROT16_CODE_SEG, 0x18
     .set    PROT16_DATA_SEG, 0x20
 
-    .section .text.low
+    .globl  _i686_idt_ptr
+    .lcomm  _i686_idt_ptr, 4
+
+    .section .text
     .code16
-    .globl switch_real_to_prot
+    .globl  switch_real_to_prot
 switch_real_to_prot:
     cli                                 # clear interrupt
 
@@ -36,6 +39,11 @@ switch_real_to_prot:
     mov     %ax, %gs
     mov     %ax, %ss                    # set segments
 
+    pushl   _i686_idt_ptr
+    pushw   $2047
+    lidt    (%esp)
+    add     $6, %esp                    # load idt
+
     xor     %eax, %eax
     mov     (%esp), %ax
     mov     %ax, REAL_STACK_INIT        # save current return address
@@ -52,10 +60,15 @@ switch_real_to_prot:
 
     ret
 
-    .globl switch_prot_to_real
+    .globl  switch_prot_to_real
 switch_prot_to_real:
     cli                                 # clear interrupt
     lgdt    gdtr                        # load gdt
+
+    pushl   $0
+    pushw   $1023
+    lidt    (%esp)
+    add     $6, %esp                    # load ivt
 
     mov     %esp, %eax
     mov     %eax, prot_stack            # save stack
@@ -97,12 +110,13 @@ switch_prot_to_real:
 
     ret
 
-    .section .rodata.low
-    .align  8
-    .word   0
+    .section .data
 prot_stack:                             # protected mode stack
     .long   PROT_STACK_INIT
 
+    .section .rodata
+    .align  8
+    .word   0
 gdtr:
     .word   8 * 5 - 1                   # 5 entries
     .long   gdt                         # gdt pointer

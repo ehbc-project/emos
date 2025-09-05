@@ -5,10 +5,10 @@
 
 int freopen_device(FILE *stream, const char *device_name)
 {
-    struct device *device = find_device(device_name);
-    if (!device) return 1;
-    stream->device = device;
-    stream->char_if = device->driver->get_interface(device, "char");
-    if (!stream->char_if) return 1;
+    struct device *dev = find_device(device_name);
+    if (!dev) return 1;
+    stream->dev = dev;
+    stream->charif = dev->driver->get_interface(dev, "char");
+    if (!stream->charif) return 1;
     return 0;
 }

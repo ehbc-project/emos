@@ -2,6 +2,7 @@
 #define __INTERFACE_CONSOLE_H__
 
 #include <stdint.h>
+#include <wchar.h>
 
 #include <device/device.h>
 
@@ -22,7 +23,7 @@ struct console_char_attributes {
 
 struct console_char_cell {
     struct console_char_attributes attr;
-    uint32_t codepoint;
+    wchar_t codepoint;
 };
 
 struct console_interface {
@@ -34,6 +35,8 @@ struct console_interface {
     void (*present)(struct device *);
     void (*set_cursor_pos)(struct device *, int, int);
     void (*get_cursor_pos)(struct device *, int *, int *);
+    void (*set_cursor_visibility)(struct device *, int);
+    int (*get_cursor_visibility)(struct device *);
     void (*set_cursor_attr)(struct device *, const void *);
     void (*get_cursor_attr)(struct device *, void *);
 };

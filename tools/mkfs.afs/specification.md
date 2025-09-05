@@ -5,6 +5,7 @@
 | Offset | Size | Value                              |
 |--------|------|------------------------------------|
 | 0      | 504  | Boot Code                          |
+| 496    | 8    | Volume Offset                      |
 | 504    | 4    | Filesystem Signature (asciz "AFS") |
 | 508    | 2    | Reserved Sectors                   |
 | 510    | 2    | VBR Signature (0x55 0xAA)          |
@@ -206,11 +207,6 @@ $$ N = \lfloor\frac{(Block\ Size)}{40}\rfloor $$
 $$ N = \frac{(Block\ Size)}{8} - 4 $$
 
 ## DSB - Data Storage Block
-
-| Offset    | Size      | Value          |
-|-----------|-----------|----------------|
-| 0         | BLKSZ - 4 | Data           |
-| BLKSZ - 4 | 4         | CRC32 Checksum |
 
 ## JBB - Journal Buffer Block
 

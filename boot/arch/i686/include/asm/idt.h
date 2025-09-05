@@ -3,17 +3,14 @@
 
 #include <stdint.h>
 
-__attribute__((packed))
+#include <asm/isr.h>
+
 struct idt_entry {
     uint16_t offset_low;
     uint16_t segment_selector;
-    uint16_t attributes;
-    uint16_t offset_middle;
-    uint32_t offset_high;
-    uint32_t reserved2;
-};
-
-void _i686_idt_set_entry(struct idt_entry *entry, void (*handler)(void), uint16_t segment_selector, uint16_t attributes);
-void _i686_idt_load(struct idt_entry *idt, long idt_size);
+    uint8_t reserved1;
+    uint8_t attributes;
+    uint16_t offset_high;
+} __attribute__((packed));
 
 #endif // __I686_IDT_H__

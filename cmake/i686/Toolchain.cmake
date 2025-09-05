@@ -3,32 +3,34 @@ set(CMAKE_SYSTEM_PROCESSOR m68k)
 
 set(CMAKE_SYSROOT)
 
+set(TOOLCHAIN_PREFIX "i686-elf-")
+
 find_program(CMAKE_C_COMPILER
-    "i686-elf-gcc"
+    "${TOOLCHAIN_PREFIX}gcc"
     HINTS "/usr" "/usr/local" "/opt/homebrew" ENV PATH
     REQUIRED)
 set(CMAKE_C_COMPILER_TARGET     i686-elf)
-set(CMAKE_C_FLAGS               "${CMAKE_C_FLAGS} -ffreestanding -nostdlib -march=i686")
+set(CMAKE_C_FLAGS               "${CMAKE_C_FLAGS} -ffreestanding -nostdlib -march=i386")
 
 find_program(CMAKE_CXX_COMPILER
-    "i686-elf-g++"
+    "${TOOLCHAIN_PREFIX}g++"
     HINTS "/usr" "/usr/local" "/opt/homebrew" ENV PATH
     REQUIRED)
 set(CMAKE_CXX_COMPILER_TARGET   i686-elf)
-set(CMAKE_CXX_FLAGS             "${CMAKE_CXX_FLAGS} -ffreestanding -nostdlib -march=i686")
+set(CMAKE_CXX_FLAGS             "${CMAKE_CXX_FLAGS} -ffreestanding -nostdlib -march=i386")
 
 find_program(CMAKE_ASM_COMPILER
-    "i686-elf-as"
+    "${TOOLCHAIN_PREFIX}as"
     HINTS "/usr" "/usr/local" "/opt/homebrew" ENV PATH
     REQUIRED)
 set(CMAKE_ASM_COMPILER_TARGET   i686-elf)
 
-set(_BINUTILS_LIST AR;NM;OBJCOPY;OBJDUMP;RANLIB;READELF;STRIP)
+set(_BINUTILS_LIST LD;AR;NM;OBJCOPY;OBJDUMP;RANLIB;READELF;STRIP)
 
 foreach(TOOL_NAME IN LISTS _BINUTILS_LIST)
     string(TOLOWER ${TOOL_NAME} _TOOL_BIN_NAME)
     find_program(CMAKE_${TOOL_NAME}
-        "i686-elf-${_TOOL_BIN_NAME}"
+        "${TOOLCHAIN_PREFIX}${_TOOL_BIN_NAME}"
         HINTS "/usr" "/usr/local" "/opt/homebrew" ENV PATH
         REQUIRED)
     unset(_TOOL_BIN_NAME)
