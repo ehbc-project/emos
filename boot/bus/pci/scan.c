@@ -1,8 +1,8 @@
-#include "bus/pci/scan.h"
+#include <bus/pci/scan.h>
 
-#include "asm/pci/cfgspace.h"
+#include <asm/pci/cfgspace.h>
 
-#include "bus/pci/device.h"
+#include <bus/pci/device.h>
 
 struct pci_device_list {
     struct pci_device *devices;

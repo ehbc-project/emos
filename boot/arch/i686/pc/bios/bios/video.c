@@ -1,6 +1,6 @@
-#include "asm/bios/video.h"
+#include <asm/bios/video.h>
 
-#include "asm/bios/bioscall.h"
+#include <asm/bios/bioscall.h>
 
 int _pc_bios_set_video_mode(uint8_t mode)
 {

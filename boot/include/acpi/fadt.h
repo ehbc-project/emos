@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "acpi/sdt.h"
+#include <acpi/sdt.h>
 
 #define ACPI_FADT_SIGNATURE "FACP"
 

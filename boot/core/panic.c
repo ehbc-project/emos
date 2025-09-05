@@ -1,4 +1,4 @@
-#include "core/panic.h"
+#include <core/panic.h>
 
 #include <stdio.h>
 #include <asm/halt.h>

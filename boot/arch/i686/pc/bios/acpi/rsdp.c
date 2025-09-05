@@ -1,4 +1,4 @@
-#include "acpi/rsdp.h"
+#include <acpi/rsdp.h>
 
 #include <stddef.h>
 

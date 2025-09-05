@@ -1,6 +1,6 @@
-#include "asm/bios/keyboard.h"
+#include <asm/bios/keyboard.h>
 
-#include "asm/bios/bioscall.h"
+#include <asm/bios/bioscall.h>
 
 void _pc_bios_read_keyboard(uint8_t *scancode, char *ascii)
 {

@@ -1,6 +1,6 @@
-#include "asm/bios/mem.h"
+#include <asm/bios/mem.h>
 
-#include "asm/bios/bioscall.h"
+#include <asm/bios/bioscall.h>
 
 long _pc_bios_query_address_map(uint32_t *_cursor, struct smap_entry *buf, long buf_size)
 {

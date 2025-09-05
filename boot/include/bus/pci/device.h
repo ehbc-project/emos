@@ -1,7 +1,7 @@
 #ifndef __BUS_PCI_DEVICE_H__
 #define __BUS_PCI_DEVICE_H__
 
-#include "bus/pci/cfgspace.h"
+#include <bus/pci/cfgspace.h>
 
 struct pci_device {
     uint8_t bus, device, function;

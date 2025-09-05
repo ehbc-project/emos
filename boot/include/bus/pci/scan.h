@@ -1,7 +1,7 @@
 #ifndef __BUS_PCI_SCAN_H__
 #define __BUS_PCI_SCAN_H__
 
-#include "bus/pci/device.h"
+#include <bus/pci/device.h>
 
 /**
  * @brief Scan for PCI devices on the host bus.

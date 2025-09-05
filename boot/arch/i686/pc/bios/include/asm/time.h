@@ -1,8 +1,8 @@
-#ifndef __ASM_TIME_H__
-#define __ASM_TIME_H__
+#ifndef __I686_PC_TIME_H__
+#define __I686_PC_TIME_H__
 
 #include <stdint.h>
 
-uint64_t get_global_tick();
+uint64_t get_global_tick(void);
 
-#endif // __ASM_TIME_H__
+#endif // __I686_PC_TIME_H__

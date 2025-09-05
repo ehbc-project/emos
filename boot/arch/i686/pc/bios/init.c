@@ -10,33 +10,33 @@
 #include <string.h>
 #include <macros.h>
 
-#include "mm/mm.h"
+#include <mm/mm.h>
 #include <device/driver.h>
 #include <interface/char.h>
 #include <interface/console.h>
 #include <interface/framebuffer.h>
 
-#include "asm/bootinfo.h"
-#include "asm/bios/disk.h"
-#include "asm/bios/video.h"
-#include "asm/bios/keyboard.h"
-#include "asm/bios/mem.h"
+#include <asm/bootinfo.h>
+#include <asm/bios/disk.h>
+#include <asm/bios/video.h>
+#include <asm/bios/keyboard.h>
+#include <asm/bios/mem.h>
+#include <asm/pci/cfgspace.h>
+#include <asm/io.h>
+#include <asm/idt.h>
+#include <asm/pic.h>
 
-#include "asm/pci/cfgspace.h"
-#include "bus/pci/scan.h"
-#include "acpi/rsdp.h"
-#include "acpi/rsdt.h"
-#include "acpi/fadt.h"
+#include <acpi/rsdp.h>
+#include <acpi/rsdt.h>
+#include <acpi/fadt.h>
 
-#include "bus/bus.h"
-#include "bus/usb/host/xhci.h"
-#include "bus/usb/host/uhci.h"
+#include <bus/bus.h>
+#include <bus/pci/scan.h>
+#include <bus/usb/host/xhci.h>
+#include <bus/usb/host/uhci.h>
 
-#include "core/panic.h"
+#include <core/panic.h>
 
-#include "asm/io.h"
-#include "asm/idt.h"
-#include "asm/pic.h"
 
 extern void main(void);
 
