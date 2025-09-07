@@ -16,7 +16,7 @@ void *mm_allocate(size_t size)
     }
 
     uint8_t *ret = (uint8_t *)alloc_ptr + sizeof(size_t);
-    ((size_t*)ret)[-1] = size;
+    ((size_t *)ret)[-1] = size;
     alloc_ptr = ret + size;
 
     return ret;

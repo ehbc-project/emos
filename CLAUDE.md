@@ -97,5 +97,5 @@ make
 
 - `boot/core/main.c` - Bootloader entry point and main logic
 - `boot/arch/i686/pc/init.c` - Platform initialization
-- `boot/arch/i686/pc/ldscript.x` - Linker script for bootloader layout
+- `boot/arch/i686/pc/ldscript.lds` - Linker script for bootloader layout
 - `flowchart.md` - Detailed boot process and architecture documentation

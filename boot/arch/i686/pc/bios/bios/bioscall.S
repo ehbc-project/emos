@@ -31,9 +31,11 @@ _pc_bios_call:
     mov     %eax, .Lsi
     mov     20(%edx), %eax
     mov     %eax, .Ldi
-    mov     24(%edx), %ax
+    mov     24(%edx), %eax
+    mov     %eax, .Lbp
+    mov     28(%edx), %ax
     mov     %ax, .Lds
-    mov     26(%edx), %ax
+    mov     30(%edx), %ax
     mov     %ax, .Les
 
     call    switch_prot_to_real         # switch to real mode
@@ -63,6 +65,11 @@ _pc_bios_call:
 .Ldi:
     .long   0
     mov     %eax, %edi
+
+    .byte   0x66, 0xB8                  # mov imm32, %eax
+.Lbp:
+    .long   0
+    mov     %eax, %ebp
 
     .byte   0xB8                        # mov imm16, %ax
 .Les:
@@ -96,6 +103,11 @@ _pc_bios_call:
     mov     %edx, .Ldx
     mov     %esi, .Lsi
     mov     %edi, .Ldi
+    mov     %ebp, .Lbp
+    mov     %es, %ax
+    mov     %ax, .Les
+    mov     %ds, %ax
+    mov     %ax, .Lds
 
     call    switch_real_to_prot         # switch back to protected mode
     .code32 
@@ -116,6 +128,12 @@ _pc_bios_call:
     mov     %eax, 16(%edx)
     mov     .Ldi, %eax
     mov     %eax, 20(%edx)
+    mov     .Lbp, %eax
+    mov     %eax, 24(%edx)
+    mov     .Lds, %ax
+    mov     %ax, 28(%edx)
+    mov     .Les, %ax
+    mov     %ax, 30(%edx)
 
     popfl
     popal                               # pop registers

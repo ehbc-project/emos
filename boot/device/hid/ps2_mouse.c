@@ -207,6 +207,10 @@ static int probe(struct device *dev)
 
 static int remove(struct device *dev)
 {
+    struct ps2_mouse_data *data = (struct ps2_mouse_data *)dev->data;
+
+    mm_free(data);
+
     return 0;
 }
 

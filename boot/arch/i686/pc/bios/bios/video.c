@@ -87,6 +87,27 @@ uint8_t _pc_bios_read_pixel(uint8_t page, uint16_t x, uint16_t y)
     return regs.a.b.l;
 }
 
+int _pc_bios_get_vga_font_data(uint8_t font_type, const void **data, uint16_t *len)
+{
+    struct bioscall_regs regs = {
+        .a.w = 0x1130,
+        .b.b.h = font_type,
+    };
+
+    int err = _pc_bios_call(0x10, &regs);
+    if (err) return err;
+
+    if (data) {
+        *data = (const void *)(((uint32_t)regs.es.w << 4) + (uint32_t)regs.bp.w);
+    }
+
+    if (len) {
+        *len = regs.c.w;
+    }
+
+    return 0;
+}
+
 int _pc_bios_get_vbe_controller_info(struct vbe_controller_info *buf)
 {
     struct bioscall_regs regs = {

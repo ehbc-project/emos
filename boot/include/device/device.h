@@ -42,6 +42,8 @@ struct device {
 };
 
 int register_device(struct device *dev);
+int unregister_device(struct device *dev);
+
 struct device *get_first_device(void);
 struct device *find_device(const char *id);
 

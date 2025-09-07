@@ -828,7 +828,7 @@ static void put_char(struct device *dev, wchar_t ch)
     data->condev_conif->set_cursor_pos(data->condev, cursor_x, cursor_y);
 }
 
-static int get_seq_char(struct device *dev, const char *buf, unsigned long len, int idx)
+static int get_seq_char(struct device *dev, const char *buf, long len, int idx)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
 
@@ -841,11 +841,11 @@ static int get_seq_char(struct device *dev, const char *buf, unsigned long len, 
     return -1;
 }
 
-static long write(struct device *dev, const char *buf, unsigned long len)
+static long write(struct device *dev, const char *buf, long len)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
 
-    unsigned long written_len = 0;
+    long written_len = 0;
     int char_len, seq_char;
 
     wchar_t wch;
@@ -881,11 +881,8 @@ static long write(struct device *dev, const char *buf, unsigned long len)
             seq_char = get_seq_char(dev, buf, len, i);
             if ((seq_char & 0xC0) != 0x80) {
                 wch = 0xFFFD;
-                buf += i - 1 - data->utf8_fragment_len;
-                len -= i - 1 - data->utf8_fragment_len;
-                written_len += i - 1 - data->utf8_fragment_len;
-                data->utf8_fragment_len = 0;
-                continue;
+                char_len = i;
+                break;
             } 
             wch |= (wchar_t)(seq_char & 0x3F) << ((char_len - i - 1) * 6);
         }
@@ -961,6 +958,10 @@ static int probe(struct device *dev)
 
 static int remove(struct device *dev)
 {
+    struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
+
+    mm_free(data);
+
     return 0;
 }
 

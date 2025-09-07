@@ -467,7 +467,7 @@ static int translate_scancode(struct device *dev)
     return (flags & KEY_FLAG_BREAK) ? 0 : ch;
 }
 
-static long read(struct device *dev, char *buf, unsigned long len)
+static long read(struct device *dev, char *buf, long len)
 {
     struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
 
@@ -601,6 +601,10 @@ static int probe(struct device *dev)
 
 static int remove(struct device *dev)
 {
+    struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
+
+    mm_free(data);
+
     return 0;
 }
 

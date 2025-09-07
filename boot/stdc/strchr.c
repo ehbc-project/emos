@@ -6,7 +6,7 @@ char *strchr(const char *str, int ch)
 {
     while (*str) {
         if (*str == ch) {
-            return (char*)str;
+            return (char *)str;
         }
         str++;
     }

@@ -1,47 +1,253 @@
-#include <stdint.h>
+#include <font.h>
 
-extern uint8_t build_boot_unifont_bfn[];
+#include <stdint.h>
+#include <string.h>
+#include <stdio.h>
+
+#include <mm/mm.h>
+#include <asm/bios/video.h>
+
+static const void *vbios_font = NULL;
+static void *font_file_data = NULL;
 
 struct font_header {
-  char signature[4];
-  uint32_t max_codepoint;
-  uint32_t glyph_offset_table_offset;
-  uint8_t reserved[4];
+    char signature[4];
+    uint32_t max_codepoint;
+    uint32_t glyph_offset_table_offset;
+    uint8_t reserved[4];
 } __attribute__((packed));
 
 struct glyph_header {
-  uint8_t is_full_width : 1;
-  uint8_t : 7;
-  uint8_t reserved[3];
+    uint8_t is_full_width : 1;
+    uint8_t : 7;
+    uint8_t reserved[3];
 } __attribute__((packed));
 
-int font_is_glyph_full_width(uint32_t codepoint)
+static const uint8_t unicode_cp437_table_1[] = {
+    0xFF, 0xAD, 0x9B, 0x9C, 0x00, 0x9D, 0x00, 0x15,  /* U+00A0 */
+    0x00, 0x00, 0xA6, 0xAE, 0xAA, 0x00, 0x00, 0x00,
+    0xF8, 0xF1, 0xFD, 0x00, 0x00, 0xE6, 0x14, 0xFA,
+    0x00, 0x00, 0xA7, 0xAF, 0xAC, 0xAB, 0x00, 0xA8,
+    0x00, 0x00, 0x00, 0x00, 0x8E, 0x8F, 0x92, 0x80,
+    0x00, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xA5, 0x00, 0x00, 0x00, 0x00, 0x99, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x9A, 0x00, 0x00, 0xE1,
+    0x85, 0xA0, 0x83, 0x00, 0x84, 0x86, 0x91, 0x87,
+    0x8A, 0x82, 0x88, 0x89, 0x8D, 0xA1, 0x8C, 0x8B,
+    0x00, 0xA4, 0x95, 0xA2, 0x93, 0x00, 0x94, 0xF6,
+    0x00, 0x97, 0xA3, 0x96, 0x81, 0x00, 0x00, 0x98,
+};
+
+static const uint8_t unicode_cp437_table_2[] = {
+    0x00, 0x00, 0x00, 0xE2, 0x00, 0x00, 0x00, 0x00,  /* U+0390 */
+    0xE9, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xE4, 0x00, 0x00, 0xE8, 0x00,
+    0x00, 0xEA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xE0, 0x00, 0x00, 0xEB, 0xEE, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xE3, 0x00, 0x00, 0xE5, 0xE7, 0x00, 0xED, 0x00,
+};
+
+static const uint8_t unicode_cp437_table_3[] = {
+    0xC4, 0x00, 0xB3, 0x00, 0x00, 0x00, 0x00, 0x00,  /* U+2500 */
+    0x00, 0x00, 0x00, 0x00, 0xDA, 0x00, 0x00, 0x00,
+    0xBF, 0x00, 0x00, 0x00, 0xC0, 0x00, 0x00, 0x00,
+    0xD9, 0x00, 0x00, 0x00, 0xC3, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xB4, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xC2, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xC1, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xC5, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xCD, 0xBA, 0xD5, 0xD6, 0xC9, 0xB8, 0xB7, 0xBB,
+    0xD4, 0xD3, 0xC8, 0xBE, 0xBD, 0xBC, 0xC6, 0xC7,
+    0xCC, 0xB5, 0xB6, 0xB9, 0xD1, 0xD2, 0xCB, 0xCF,
+    0xD0, 0xCA, 0xD8, 0xD7, 0xCE, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xDF, 0x00, 0x00, 0x00, 0xDC, 0x00, 0x00, 0x00,
+    0xDB, 0x00, 0x00, 0x00, 0xDD, 0x00, 0x00, 0x00,
+    0xDE, 0xB0, 0xB1, 0xB2, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xFE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x10, 0x00, 0x1F, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x08, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+static const uint8_t unicode_cp437_table_4[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  /* U+2630 */
+    0x00, 0x00, 0x01, 0x02, 0x0F, 0x00, 0x00, 0x00,
+    0x0C, 0x00, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x06, 0x00, 0x00, 0x05, 0x00, 0x03, 0x04, 0x00,
+    0x00, 0x00, 0x0D, 0x0E, 0x00, 0x00, 0x00, 0x00,
+};
+
+static int unicode_to_cp437(wchar_t codepoint)
 {
-    struct font_header *header = (struct font_header*)build_boot_unifont_bfn;
-    if (codepoint >= header->max_codepoint || !((uint32_t*)(build_boot_unifont_bfn + header->glyph_offset_table_offset))[codepoint]) return -1;
-    struct glyph_header *glyph_header = (struct glyph_header*)((uint8_t*)build_boot_unifont_bfn + ((uint32_t*)(build_boot_unifont_bfn + header->glyph_offset_table_offset))[codepoint]);
-    return glyph_header->is_full_width;
+    if (codepoint == 0) {
+        return 0;
+    } else if (codepoint < 0x20) {
+        return -1;
+    } else if (codepoint < 0x7F) {
+        return codepoint;
+    } else if (codepoint < 0x00A0) {
+        return -1;
+    } else if (codepoint < 0x0192) {
+        return codepoint < 0x00A0 + sizeof(unicode_cp437_table_1)
+            ? unicode_cp437_table_1[codepoint - 0x00A0]
+            : -1;
+    } else if (codepoint < 0x2321) {
+        switch (codepoint >> 8) {
+            case 0x01:
+                return codepoint == 0x0192 ? 0x9F : -1;
+            case 0x20:
+                switch (codepoint & 0xFF) {
+                    case 0x22: return 0x07;
+                    case 0x3C: return 0x13;
+                    case 0x7F: return 0xFC;
+                    case 0xA7: return 0x9E;
+                    default: return -1;
+                }
+            case 0x21:
+                switch (codepoint & 0xFF) {
+                    case 0x90: return 0x1B;
+                    case 0x91: return 0x18;
+                    case 0x92: return 0x1A;
+                    case 0x93: return 0x19;
+                    case 0x94: return 0x1D;
+                    case 0x95: return 0x12;
+                    case 0x98: return 0x17;
+                    default: return -1;
+                }
+            case 0x22:
+                switch (codepoint & 0xFF) {
+                    case 0x19: return 0xF9;
+                    case 0x1A: return 0xFB;
+                    case 0x1E: return 0xEC;
+                    case 0x1F: return 0x1C;
+                    case 0x29: return 0xEF;
+                    case 0x48: return 0xF7;
+                    case 0x61: return 0xF0;
+                    case 0x64: return 0xF3;
+                    case 0x65: return 0xF2;
+                    default: return -1;
+                }
+            case 0x23:
+                switch (codepoint & 0xFF) {
+                    case 0x02: return 0x7F;
+                    case 0x10: return 0xA9;
+                    case 0x20: return 0xF4;
+                    case 0x21: return 0xF5;
+                    default: return -1;
+                }
+            default:
+                return -1;
+        }
+    } else if (codepoint < 0x2500) {
+        return codepoint < 0x0390 + sizeof(unicode_cp437_table_2)
+            ? unicode_cp437_table_2[codepoint - 0x0390]
+            : -1;
+    } else if (codepoint < 0x2630) {
+        return codepoint < 0x2500 + sizeof(unicode_cp437_table_3)
+            ? unicode_cp437_table_3[codepoint - 0x2500]
+            : -1;
+    } else {
+        return codepoint < 0x2630 + sizeof(unicode_cp437_table_4)
+            ? unicode_cp437_table_4[codepoint - 0x2630]
+            : -1;
+    }
 }
 
-static void *memcpy(void *dest, const void *src, long n)
+int font_use(const char *path)
 {
-    uint8_t *d = (uint8_t*)dest;
-    const uint8_t *s = (const uint8_t*)src;
-    for (long i = 0; i < n; i++) d[i] = s[i];
-    return dest;
-}
+    if (!path) {
+        mm_free(font_file_data);
+        font_file_data = NULL;
+        return 0;
+    }
 
-int font_get_glyph(uint32_t codepoint, uint8_t *buf, long size)
-{
-    struct font_header *header = (struct font_header*)build_boot_unifont_bfn;
-    if (codepoint >= header->max_codepoint || !((uint32_t*)(build_boot_unifont_bfn + header->glyph_offset_table_offset))[codepoint]) return -1;
-    struct glyph_header *glyph_header = (struct glyph_header*)((uint8_t*)build_boot_unifont_bfn + ((uint32_t*)(build_boot_unifont_bfn + header->glyph_offset_table_offset))[codepoint]);
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        return 1;
+    }
 
-    if (glyph_header->is_full_width && size < 32) return -1;
-    if (!glyph_header->is_full_width && size < 16) return -1;
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
 
-    memcpy(buf, ((uint8_t*)glyph_header) + sizeof(struct glyph_header), glyph_header->is_full_width ? 32 : 16);
+    if (font_file_data) {
+        mm_free(font_file_data);
+    }
+    font_file_data = mm_allocate(file_size);
+    if (fread(font_file_data, file_size, 1, fp) != 1) {
+        mm_free(font_file_data);
+        font_file_data = NULL;
+    }
+    
+    fclose(fp);
     return 0;
 }
 
+int font_get_glyph_dimension(wchar_t codepoint, int *width, int *height)
+{
+    if (!font_file_data) {
+        if (width) {
+            *width = 8;
+        }
+        if (height) {
+            *height = 16;
+        }
 
+        return 0;
+    } else {
+        struct font_header *header = (struct font_header *)font_file_data;
+        if (codepoint >= header->max_codepoint || !((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]) return 1;
+        struct glyph_header *glyph_header = (struct glyph_header *)((uint8_t *)font_file_data + ((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]);
+
+        if (width) {
+            *width = glyph_header->is_full_width ? 16 : 8;
+        }
+        if (height) {
+            *height = 16;
+        }
+
+        return 0;
+    }
+}
+
+int font_get_glyph_data(wchar_t codepoint, uint8_t *buf, long size)
+{
+    if (!font_file_data) {
+        if (size < 16) return 1;
+
+        int cp437_char = unicode_to_cp437(codepoint);
+        if (cp437_char < 0) return 1;
+        
+        memcpy(buf, (const uint8_t *)vbios_font + 16 * cp437_char, 16);
+        return 0;
+    } else {
+        struct font_header *header = (struct font_header *)font_file_data;
+        if (codepoint >= header->max_codepoint || !((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]) return -1;
+        struct glyph_header *glyph_header = (struct glyph_header *)((uint8_t *)font_file_data + ((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]);
+    
+        if (glyph_header->is_full_width && size < 32) return 1;
+        if (!glyph_header->is_full_width && size < 16) return 1;
+    
+        memcpy(buf, ((uint8_t *)glyph_header) + sizeof(struct glyph_header), glyph_header->is_full_width ? 32 : 16);
+        return 0;
+    }
+}
+
+__attribute__((constructor))
+static void _init_vbios_font(void)
+{
+    _pc_bios_get_vga_font_data(0x06, &vbios_font, NULL);
+}

@@ -121,6 +121,10 @@ static int probe(struct device *dev)
 
 static int remove(struct device *dev)
 {
+    struct ata_data *data = (struct ata_data *)dev->data;
+
+    mm_free(data);
+
     return 0;
 }
 

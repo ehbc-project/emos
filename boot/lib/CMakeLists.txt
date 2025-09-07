@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 
-if (${TARGET_FIRMWARE} STREQUAL "uefi")
+if ("${TARGET_FIRMWARE}" STREQUAL "uefi")
     ExternalProject_Add(gnu-efi
         SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/gnu-efi"
         INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/gnu-efi"

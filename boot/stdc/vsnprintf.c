@@ -339,7 +339,7 @@ static int print_char(char *buf, size_t len, struct fmt_spec spec, va_list *args
 static int print_wstr(char *buf, size_t len, struct fmt_spec spec, va_list *args)
 {
     // we do not print wstr
-    va_arg(*args, wchar_t*);
+    va_arg(*args, wchar_t *);
 
     if (spec.width == WIDTH_ARG) {
         va_arg(*args, int);
@@ -369,7 +369,7 @@ static int print_str(char *buf, size_t len, struct fmt_spec spec, va_list *args)
     }
 
     // get str
-    str = va_arg(*args, const char*);
+    str = va_arg(*args, const char *);
 
     // null fallback
     if (str == NULL)
@@ -610,7 +610,7 @@ int vsnprintf(char *buf, size_t len, const char *fmt, va_list args)
 
     if (len > INT_MAX) return 0;
     if (buf + len < buf) {
-        len= ((char*)-1) - buf;
+        len = ((char *)-1) - buf;
     }
 
     while (*fmt && len > 0) {

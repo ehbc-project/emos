@@ -7,6 +7,8 @@
 #include <interface/framebuffer.h>
 #include <interface/hid.h>
 #include <asm/bios/misc.h>
+#include <asm/bios/video.h>
+#include <macros.h>
 #include <shell.h>
 
 extern int __text_start;
@@ -42,10 +44,6 @@ void main(void)
 
     printf("\x1b[3J\x1b[0;0f\x1b[?25lEMOS Bootloader\n");
     printf("═══════════════\n");
-    printf("\xea");
-    printf("\xb0");
-    printf("\x80");
-    printf("\n");
 
     // printf(".text=0x%p, .data=0x%p, .bss=0x%p\n", (void *)&__text_start, (void *)&__data_start, (void *)&__bss_start);
 
@@ -84,7 +82,7 @@ void main(void)
                 }
                 break;
             case KEY_DOWN:
-                if (selection < sizeof(options) / sizeof(*options) - 1) {
+                if (selection < ARRAY_SIZE(options) - 1) {
                     selection++;
                 }
                 break;
@@ -96,14 +94,14 @@ void main(void)
                 break;
         }
 
-        for (int i = 0; i < sizeof(options) / sizeof(*options); i++) {
+        for (int i = 0; i < ARRAY_SIZE(options); i++) {
             if (selection == i) {
                 printf("\x1b[7m%s\x1b[0m\n", options[i]);
             } else {
                 printf("%s\n", options[i]);
             }
         }
-        printf("\x1b[%ldA", sizeof(options) / sizeof(*options));
+        printf("\x1b[%ldA", ARRAY_SIZE(options));
     }
 
     switch (selection) {

@@ -12,3 +12,7 @@ _start:
 .jump:
     call    _pc_init                    # jump to c code.
                                         # this function should not return
+
+.halt:
+    hlt
+    jmp     .halt

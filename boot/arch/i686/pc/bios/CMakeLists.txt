@@ -19,8 +19,8 @@ if (BUILD_FDIMAGE OR BUILD_CDIMAGE)
             -pedantic-errors
         >
     )
-    target_link_options(fdboot PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.x")
-    set_target_properties(fdboot PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.x")
+    target_link_options(fdboot PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
+    set_target_properties(fdboot PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
     target_sources(fdboot PRIVATE fdboot.S)
 
     add_custom_target(fdboot_bin ALL
@@ -46,8 +46,8 @@ if (BUILD_FDIMAGE OR BUILD_CDIMAGE)
             -pedantic-errors
         >
     )
-    target_link_options(mbrboot PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.x")
-    set_target_properties(mbrboot PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.x")
+    target_link_options(mbrboot PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
+    set_target_properties(mbrboot PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
     target_sources(mbrboot PRIVATE mbrboot.S)
 
     add_custom_target(mbrboot_bin ALL
@@ -84,8 +84,8 @@ target_include_directories(stage1 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../
 target_include_directories(stage1 PRIVATE "${CMAKE_BINARY_DIR}")
 
 target_sources(stage1 PRIVATE stage1.S stage1.c chainload.S ../../cpu_mode.S ../../io.S ../../interrupt.S ../../breakpoint.S pic.c)
-target_link_options(stage1 PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_stage1.x")
-set_target_properties(stage1 PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_stage1.x")
+target_link_options(stage1 PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_stage1.lds")
+set_target_properties(stage1 PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_stage1.lds")
 
 add_custom_target(stage1_bin ALL
     COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:stage1>" stage1.bin
@@ -104,8 +104,8 @@ target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/inclu
 target_include_directories(bootloader PRIVATE "${CMAKE_BINARY_DIR}")
 
 target_sources(bootloader PRIVATE start.S reboot.c poweroff.c halt.S isr.c isr.S init.c)
-target_link_options(bootloader PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.x")
-set_target_properties(bootloader PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.x")
+target_link_options(bootloader PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds")
+set_target_properties(bootloader PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds")
 
 add_subdirectory(acpi)
 add_subdirectory(bios)

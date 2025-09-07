@@ -23,7 +23,7 @@ case $1 in
     isapc)
         CPU_TYPE=486
         MACHINE_TYPE=isapc
-        BOOT_DRIVE=d
+        BOOT_DRIVE=c
         DEVICES=(
             "floppy,drive=rd0"
             "ide-hd,drive=fd0"
@@ -37,7 +37,7 @@ case $1 in
             pc-testdev
         )
         DRIVES=(
-            "file=build/boot/floppy.img,id=rd0,if=none,format=raw"
+            # "file=build/boot/floppy.img,id=rd0,if=none,format=raw"
             "file=disk.img,id=fd0,if=none,format=raw"
             "file=build/boot/cdrom.iso,id=rd1,if=none,format=raw"
         )
@@ -69,7 +69,7 @@ case $1 in
         ;;
     pc|"")
         MACHINE_TYPE=pc
-        BOOT_DRIVE=a
+        BOOT_DRIVE=c
         DEVICES=(
             "floppy,drive=rd0"
             "ide-hd,drive=fd0"

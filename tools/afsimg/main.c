@@ -8,6 +8,7 @@
 #include <getopt.h>
 
 #include "afs.h"
+#include "command.h"
 
 extern unsigned int crc32(const unsigned char *buf, unsigned int len);
 
@@ -140,11 +141,11 @@ static int decode_uuid(const char *str, afs_uuid_t *value)
     return 0;
 }
 
-static const char *argv0;
-static int verbose = 0;
+const char *argv0;
 
 static const struct option options[] = {
     { "help", 0, NULL, 'h' },
+    { 0, 0, 0, 0 },
 };
 
 struct subcommand {
@@ -156,38 +157,43 @@ struct subcommand {
 static const struct subcommand subcommand_list[] = {
     {
         .name = "volinfo",
-        .handler = NULL,
-        .usage_str = "[-x]\n",
+        .handler = volinfo_handler,
+        .usage_str = "[-i image]\n",
     },
     {
         .name = "mkdir",
-        .handler = NULL,
-        .usage_str = "[-x]\n",
+        .handler = mkdir_handler,
+        .usage_str = "[-i image]\n",
     },
     {
         .name = "copy",
-        .handler = NULL,
-        .usage_str = "[-x]\n",
+        .handler = copy_handler,
+        .usage_str = "[-i image]\n",
     },
     {
-        .name = "rename",
-        .handler = NULL,
-        .usage_str = "[-x]\n",
+        .name = "move",
+        .handler = move_handler,
+        .usage_str = "[-i image]\n",
+    },
+    {
+        .name = "delete",
+        .handler = delete_handler,
+        .usage_str = "[-i image]\n",
     },
     {
         .name = "lsfile",
-        .handler = NULL,
-        .usage_str = "[-x]\n",
+        .handler = lsfile_handler,
+        .usage_str = "[-i image]\n",
     },
     {
         .name = "setattr",
-        .handler = NULL,
-        .usage_str = "[-x]\n",
+        .handler = setattr_handler,
+        .usage_str = "[-i image]\n",
     },
     {
         .name = "getattr",
-        .handler = NULL,
-        .usage_str = "[-x]\n",
+        .handler = getattr_handler,
+        .usage_str = "[-i image]\n",
     },
 };
 
@@ -205,7 +211,7 @@ static const struct subcommand *find_subcommand(const char *subcmd_name)
 static void print_usage(const struct subcommand *subcmd)
 {
     if (!subcmd) {
-        fprintf(stderr, "usage: %s [-h] subcommand\navailable subcommands: ", argv0);
+        fprintf(stderr, "usage: %s [-h] subcommand [args...]\navailable subcommands: ", argv0);
         for (int i = 0; i < sizeof(subcommand_list) / sizeof(*subcommand_list); i++) {
             fprintf(stderr, "%s ", subcommand_list[i].name);
         }
@@ -218,25 +224,22 @@ static void print_usage(const struct subcommand *subcmd)
 int main(int argc, char **argv)
 {
     int next_option;
-
     int help = 0;
 
     argv0 = argv[0];
 
     do {
-        next_option = getopt_long(argc, argv, "h", options, NULL);
+        next_option = getopt_long(argc, argv, ":h", options, NULL);
 
         switch (next_option) {
             case 'h':
                 help = 1;
                 break;
             case '?':
-                print_usage(NULL);
-                return 1;
             case -1:
                 break;
             default:
-                abort();
+                return 1;
         }
     } while (next_option != -1);
 
@@ -248,11 +251,24 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    const struct subcommand *subcmd = find_subcommand(subcmd_name);
     if (help) {
-        print_usage(subcmd_name ? find_subcommand(subcmd_name) : NULL);
+        print_usage(subcmd);
         return 0;
     }
 
+    if (!subcmd) {
+        print_usage(NULL);
+        return 1;
+    }
+
+    optind = 1;
+
+    int ret = subcmd->handler(argc, argv);
+    if (ret) {
+        print_usage(subcmd);
+        return 1;
+    }
     return 0;
 }
 

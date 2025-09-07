@@ -21,7 +21,7 @@
   - `subsys`: Kernel subsystems
     - `gui`: GUI subsystem
   - `syscall`: Syscall handlers
-- `modules`: Kernel modules
+- `packages`: System packages
 - `sdk`: Software Development Kit for EMOS
   - `libemos`: Common system call wrapper library
     - `conmanip`: Text console manipulation

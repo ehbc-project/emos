@@ -38,6 +38,7 @@
 #include <asm/boot.h>
 #include <core/panic.h>
 #include <fs/driver.h>
+#include <font.h>
 
 static int readline(char *buf, int len)
 {
@@ -108,6 +109,7 @@ static int lsint_handler(struct shell_instance *inst, int argc, char **argv);
 static int chainload_handler(struct shell_instance *inst, int argc, char **argv);
 static int bootnext_handler(struct shell_instance *inst, int argc, char **argv);
 static int drvinfo_handler(struct shell_instance *inst, int argc, char **argv);
+static int usefont_handler(struct shell_instance *inst, int argc, char **argv);
 static int jump_handler(struct shell_instance *inst, int argc, char **argv);
 static int help_handler(struct shell_instance *inst, int argc, char **argv);
 static int reboot_handler(struct shell_instance *inst, int argc, char **argv);
@@ -147,6 +149,7 @@ static const struct command commands[] = {
     { "testmouse", testmouse_handler, "Test mouse functions" },
     { "testtty", testtty_handler, "Test TTY functions" },
     { "tick", tick_handler, "Show current tick value" },
+    { "usefont", usefont_handler, "Change terminal font" },
     { "vmode", vmode_handler, "List or set video mode" },
     { "write", write_handler, "Write value to memory" },
 };
@@ -203,7 +206,7 @@ static int vmode_handler(struct shell_instance *inst, int argc, char **argv)
                     return 1;
                 }
             
-                uint16_t *mode_list = (uint16_t*)((vbe_info.video_modes.segment << 4) + vbe_info.video_modes.offset);
+                uint16_t *mode_list = (uint16_t *)((vbe_info.video_modes.segment << 4) + vbe_info.video_modes.offset);
                 struct vbe_video_mode_info vbe_mode_info;
                 uint16_t mode = 0xFFFF;
                 printf("Video Modes:\r\n");
@@ -613,7 +616,7 @@ static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
     int xpos = width / 2, ypos = height / 2, should_exit = 0;
     uint16_t key, flags;
 
-    puts("\x1b[3J\x1b[0;0fclose");
+    puts("\x1b[3J\x1b[0;0f\x1b[?25lclose");
 
     while (!should_exit) {
         hidif->wait_event(msdev);
@@ -671,7 +674,7 @@ static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
         }
     }
 
-    puts("\x1b[3J\x1b[0;0f");
+    puts("\x1b[3J\x1b[?25h\x1b[0;0f");
 
     return 0;
 }
@@ -1117,6 +1120,11 @@ static int bootnext_handler(struct shell_instance *inst, int argc, char **argv)
 {
     _pc_bios_bootnext();
     return 1;
+}
+
+static int usefont_handler(struct shell_instance *inst, int argc, char **argv)
+{
+    return font_use(argc < 2 ? NULL : argv[1]);
 }
 
 static int jump_handler(struct shell_instance *inst, int argc, char **argv)

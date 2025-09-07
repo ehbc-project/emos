@@ -114,6 +114,8 @@ void _pc_bios_write_pixel(uint8_t page, uint16_t x, uint16_t y, uint8_t color);
  */
 uint8_t _pc_bios_read_pixel(uint8_t page, uint16_t x, uint16_t y);
 
+int _pc_bios_get_vga_font_data(uint8_t font_type, const void **data, uint16_t *len);
+
 #define VBE_CTRL_SIGNATURE_VBE1 "VESA"
 #define VBE_CTRL_SIGNATURE_VBE2 "VBE2"
 

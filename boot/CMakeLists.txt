@@ -33,6 +33,8 @@ target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(bootloader PRIVATE "${CMAKE_BINARY_DIR}")
 
+target_compile_definitions(bootloader PRIVATE CRC32_FAST=1)
+
 # Additional Targets
 add_custom_target(bootloader_symbol_table ALL
     COMMAND ${CMAKE_NM} "$<TARGET_FILE:bootloader>" > bootloader.map
@@ -51,7 +53,7 @@ add_custom_target(bootloader_font ALL
 add_subdirectory(lib)
 add_subdirectory(arch)
 
-if (NOT ${TARGET_FIRMWARE} STREQUAL "uefi")
+if (NOT "${TARGET_FIRMWARE}" STREQUAL "uefi")
     add_subdirectory(acpi)
     add_subdirectory(bus)
     add_subdirectory(core)

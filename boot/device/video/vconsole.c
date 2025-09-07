@@ -11,6 +11,7 @@
 #include <interface/console.h>
 #include <interface/char.h>
 #include <asm/io.h>
+#include <font.h>
 
 struct vconsole_data {
     struct device *fbdev;
@@ -28,12 +29,11 @@ struct vconsole_data {
 };
 
 extern int font_is_glyph_full_width(uint32_t codepoint);
-extern int font_get_glyph(uint32_t codepoint, uint8_t *buf, long size);
 
-static int get_glyph_bit(uint8_t *glyph_data, int is_full_width, int x, int y)
+static int get_glyph_bit(const uint8_t *glyph_data, int cwidth, int x, int y)
 {
-    uint8_t current_byte = glyph_data[y * (is_full_width ? 2 : 1) + x / 8];
-    return current_byte & (0x80 >> (x % 8));
+    uint8_t current_byte = glyph_data[(y * cwidth + x) / 8];
+    return current_byte & (0x80 >> ((y * cwidth + x) % 8));
 }
 
 static void draw_char(struct device *dev, int col, int row)
@@ -46,18 +46,20 @@ static void draw_char(struct device *dev, int col, int row)
 
     struct console_char_cell *cell = &data->char_buffer[row * data->width + col];
     if (cell->codepoint == 0xFFFFFFFF) return;
-    int is_full_width = font_is_glyph_full_width(cell->codepoint);
+    int cwidth, cheight;
     uint8_t glyph[32];
     int x_offset = col * 8, y_offset = row * 16;
-
-    int err = font_get_glyph(cell->codepoint, glyph, sizeof(glyph));
+    
+    int err = font_get_glyph_dimension(cell->codepoint, &cwidth, &cheight);
+    if (err || cwidth > 16 || cheight > 16) return;
+    err = font_get_glyph_data(cell->codepoint, glyph, sizeof(glyph));
     if (err) return;
 
     for (int y = 0; y < 16; y++) {
-        for (int x = 0; x < (is_full_width ? 16 : 8); x++) {
-            int fg = get_glyph_bit(glyph, is_full_width, x, y);
+        for (int x = 0; x < cwidth; x++) {
+            int fg = get_glyph_bit(glyph, cwidth, x, y);
             if (cell->attr.text_bold && x > 0) {
-                fg |= get_glyph_bit(glyph, is_full_width, x - 1, y);
+                fg |= get_glyph_bit(glyph, cwidth, x - 1, y);
             }
 
             uint32_t fg_color = cell->attr.fg_color;
@@ -80,13 +82,13 @@ static void draw_char(struct device *dev, int col, int row)
         if ((cell->attr.text_overlined && y == 1) ||
             (cell->attr.text_strike && y == 8) ||
             (cell->attr.text_underline && y == 15)) {
-            for (int x = 0; x < (is_full_width ? 16 : 8); x++) {
+            for (int x = 0; x < cwidth; x++) {
                 framebuffer[(y_offset + y) * fb_width +  x_offset + x] = cell->attr.text_reversed ? cell->attr.bg_color : cell->attr.fg_color;
             }
         }
     }
     
-    data->fbdev_fbif->invalidate(data->fbdev, x_offset, y_offset, x_offset + (is_full_width ? 16 : 8), y_offset + 16);
+    data->fbdev_fbif->invalidate(data->fbdev, x_offset, y_offset, x_offset + cwidth, y_offset + 16);
 }
 
 static void draw_cursor(struct device *dev)
@@ -337,6 +339,16 @@ static int probe(struct device *dev)
 
 static int remove(struct device *dev)
 {
+    struct vconsole_data *data = (struct vconsole_data *)dev->data;
+
+    if (data->char_buffer) {
+        mm_free(data->char_buffer);
+    }
+    if (data->diff_buffer) {
+        mm_free(data->diff_buffer);
+    }
+    mm_free(data);
+
     return 0;
 }
 

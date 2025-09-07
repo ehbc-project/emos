@@ -16,6 +16,11 @@ union index_reg {
     uint16_t w;
 };
 
+union pointer_reg {
+    uint32_t l;
+    uint16_t w;
+};
+
 union segment_reg {
     uint16_t w;
 };
@@ -27,6 +32,7 @@ struct bioscall_regs {
     union data_reg d;
     union index_reg si;
     union index_reg di;
+    union pointer_reg bp;
     union segment_reg ds;
     union segment_reg es;
 };

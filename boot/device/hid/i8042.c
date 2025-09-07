@@ -7,6 +7,7 @@
 #include <asm/isr.h>
 #include <asm/io.h>
 #include <asm/time.h>
+#include <asm/pause.h>
 #include <hid/hid.h>
 #include <bus/bus.h>
 
@@ -27,6 +28,7 @@ static int wait_output_buffer_full(struct device *dev, unsigned int timeout)
 
     while (_i686_in8(data->res[1]->base) & 0x01) {
         if (get_global_tick() - tick_start > timeout) return 1;
+        _i686_pause();
     }
 
     return 0;
@@ -40,6 +42,7 @@ static int wait_output_buffer_empty(struct device *dev, unsigned int timeout)
 
     while (!(_i686_in8(data->res[1]->base) & 0x01)) {
         if (get_global_tick() - tick_start > timeout) return 1;
+        _i686_pause();
     }
 
     return 0;
@@ -53,6 +56,7 @@ static int wait_input_buffer_full(struct device *dev, unsigned int timeout)
 
     while (_i686_in8(data->res[1]->base) & 0x02) {
         if (get_global_tick() - tick_start > timeout) return 1;
+        _i686_pause();
     }
 
     return 0;
@@ -251,6 +255,10 @@ static int probe(struct device *dev)
 
 static int remove(struct device *dev)
 {
+    struct i8042_data *data = (struct i8042_data *)dev->data;
+
+    mm_free(data);
+
     return 0;
 }
 

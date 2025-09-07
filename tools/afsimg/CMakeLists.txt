@@ -22,8 +22,9 @@ target_compile_options(afsimg PUBLIC
         -Wno-unused-but-set-variable
         -pedantic
         -pedantic-errors
-    >)
-target_sources(afsimg PRIVATE main.c volinfo.c mkdir.c copy.c rename.c lsfile.c setattr.c getattr.c)
+    >
+)
+target_sources(afsimg PRIVATE main.c volinfo.c mkdir.c copy.c move.c delete.c lsfile.c setattr.c getattr.c)
 target_compile_definitions(afsimg PRIVATE CRC32_FAST)
 
 target_include_directories(afsimg PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

@@ -8,6 +8,7 @@
 #include <asm/io.h>
 #include <bus/ide/atapi.h>
 #include <asm/isr.h>
+#include <asm/pause.h>
 
 struct ide_data {
     struct bus *ide_bus;
@@ -45,6 +46,7 @@ static int bus_soft_reset(struct device *dev)
         return 1;
     }
     do {
+        _i686_pause();
         status = _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
     } while (status & 0x80);
 
@@ -57,6 +59,7 @@ static int send_command(struct device *dev, struct ata_command *cmd)
 
     uint8_t status;
     do {
+        _i686_pause();
         status = _i686_in8(data->res[0]->base + IDEREG_STATUS);
     } while (status & 0x80);
 
@@ -87,6 +90,7 @@ static int send_command(struct device *dev, struct ata_command *cmd)
     _i686_out8(data->res[0]->base + IDEREG_COMMAND, cmd->command);
 
     do {
+        _i686_pause();
         status = _i686_in8(data->res[0]->base + IDEREG_STATUS);
     } while (status & 0x80);
 
@@ -110,6 +114,7 @@ static int send_command_pio_input(struct device *dev, struct ata_command *cmd, v
     uint16_t *buf16 = buf;
     do {
         do {
+            _i686_pause();
             status = _i686_in8(data->res[0]->base + IDEREG_STATUS);
             if (status & 0x21) break;
         } while (status & 0x80);
@@ -136,6 +141,7 @@ static int send_command_pio_output(struct device *dev, struct ata_command *cmd, 
     uint8_t status;
     const uint16_t *buf16 = buf;
     do {
+        _i686_pause();
         status = _i686_in8(data->res[0]->base + IDEREG_STATUS);
         if (status & 0x01) break;
 
@@ -292,6 +298,10 @@ static int probe(struct device *dev)
 
 static int remove(struct device *dev)
 {
+    struct ide_data *data = (struct ide_data *)dev->data;
+
+    mm_free(data);
+
     return 0;
 }
 

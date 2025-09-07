@@ -444,6 +444,19 @@ static int probe(struct device *dev)
 
 static int remove(struct device *dev)
 {
+    struct vbe_data *data = (struct vbe_data *)dev->data;
+
+    if (data->char_buffer) {
+        mm_free(data->char_buffer);
+    }
+    if (data->frame_buffer) {
+        mm_free(data->frame_buffer);
+    }
+    if (data->diff_buffer) {
+        mm_free(data->diff_buffer);
+    }
+    mm_free(data);
+
     return 0;
 }
 

@@ -16,7 +16,7 @@
 
 #define DIFF_REGION_SIZE 16
 
-struct vbe_data {
+struct vga_data {
     struct console_char_cell *char_buffer;
     uint8_t *diff_buffer;
     int current_page;
@@ -54,7 +54,7 @@ static uint8_t rgb_to_irgb(uint32_t color)
 
 static int set_dimension(struct device *dev, int width, int height)
 {
-    struct vbe_data *data = (struct vbe_data*)dev->data;
+    struct vga_data *data = (struct vga_data*)dev->data;
 
     uint8_t new_mode;
     if (width == 80 && height == 25) {
@@ -88,7 +88,7 @@ static int set_dimension(struct device *dev, int width, int height)
 
 static int get_dimension(struct device *dev, int *width, int *height)
 {
-    struct vbe_data *data = (struct vbe_data*)dev->data;
+    struct vga_data *data = (struct vga_data*)dev->data;
 
     if (data->video_mode == 0xFF) {
         return 1;
@@ -102,14 +102,14 @@ static int get_dimension(struct device *dev, int *width, int *height)
 
 static struct console_char_cell *get_buffer(struct device *dev)
 {
-    struct vbe_data *data = (struct vbe_data*)dev->data;
+    struct vga_data *data = (struct vga_data*)dev->data;
 
     return data->char_buffer;
 }
 
 static void con_invalidate(struct device *dev, int x0, int y0, int x1, int y1)
 {
-    struct vbe_data *data = (struct vbe_data*)dev->data;
+    struct vga_data *data = (struct vga_data*)dev->data;
 
     for (int y = y0; y <= y1; y++) {
         for (int x = x0; x <= x1; x++) {
@@ -122,7 +122,7 @@ static void con_flush(struct device *dev) {}
 
 static void con_present(struct device *dev)
 {
-    struct vbe_data *data = (struct vbe_data*)dev->data;
+    struct vga_data *data = (struct vga_data*)dev->data;
 
     for (int y = 0; y < data->height; y++) {
         for (int x = 0; x < data->width; x++) {
@@ -185,7 +185,7 @@ static int probe(struct device *dev)
     dev->name = "video";
     dev->id = generate_device_id(dev->name);
 
-    struct vbe_data *data = mm_allocate(sizeof(*data));
+    struct vga_data *data = mm_allocate(sizeof(*data));
     data->char_buffer = NULL;
     data->diff_buffer = NULL;
     data->current_page = 0;
@@ -200,6 +200,16 @@ static int probe(struct device *dev)
 
 static int remove(struct device *dev)
 {
+    struct vga_data *data = (struct vga_data *)dev->data;
+
+    if (data->char_buffer) {
+        mm_free(data->char_buffer);
+    }
+    if (data->diff_buffer) {
+        mm_free(data->diff_buffer);
+    }
+    mm_free(data);
+
     return 0;
 }
 

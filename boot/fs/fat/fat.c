@@ -405,7 +405,7 @@ static int get_next_cluster16(struct filesystem *fs, fatcluster_t *cluster, unsi
 
         read_fat(fs, sector_idx);
 
-        *cluster = ((uint16_t*)data->fatbuf)[fatentry_idx];
+        *cluster = ((uint16_t *)data->fatbuf)[fatentry_idx];
         if (*cluster > FAT16_MAX_CLUSTER) {
             return 1;
         }
@@ -429,7 +429,7 @@ static int get_next_cluster32(struct filesystem *fs, fatcluster_t *cluster, unsi
 
         read_fat(fs, sector_idx);
 
-        *cluster = ((uint32_t*)data->fatbuf)[fatentry_idx] & 0x0FFFFFFF;
+        *cluster = ((uint32_t *)data->fatbuf)[fatentry_idx] & 0x0FFFFFFF;
         if (*cluster > FAT32_MAX_CLUSTER) {
             return 1;
         }

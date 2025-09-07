@@ -4,7 +4,7 @@
 
 struct acpi_rsdp *acpi_find_rsdp(void) {
 
-    uint16_t rsdp_base_seg = *(uint16_t*)0x40E;
+    uint16_t rsdp_base_seg = *(uint16_t *)0x40E;
     const char *ptr = (const char *)(rsdp_base_seg << 4);
 
     int match = 1;

@@ -5,18 +5,18 @@
 #include <device/driver.h>
 #include <interface/block.h>
 
-struct ata_data {
+struct atapi_data {
     int slave;
 };
 
 static long read(struct device *dev, lba_t lba, void *buf, long count)
 {
-    return count;
+    return -1;
 }
 
 static long write(struct device *dev, lba_t lba, const void *buf, long count)
 {
-    return count;
+    return -1;
 }
 
 static const struct block_interface blkif = {
@@ -40,7 +40,7 @@ static int probe(struct device *dev)
     dev->name = "rd";
     dev->id = generate_device_id(dev->name);
 
-    struct ata_data *data = mm_allocate(sizeof(*data));
+    struct atapi_data *data = mm_allocate(sizeof(*data));
     data->slave = 0;
 
     dev->data = data;
@@ -50,6 +50,10 @@ static int probe(struct device *dev)
 
 static int remove(struct device *dev)
 {
+    struct atapi_data *data = (struct atapi_data *)dev->data;
+
+    mm_free(data);
+
     return 0;
 }
 

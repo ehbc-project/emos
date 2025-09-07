@@ -22,7 +22,8 @@ target_compile_options(mkfs.afs PUBLIC
         -Wno-unused-but-set-variable
         -pedantic
         -pedantic-errors
-    >)
+    >
+)
 target_sources(mkfs.afs PRIVATE main.c crc32.c)
 target_compile_definitions(mkfs.afs PRIVATE CRC32_FAST)
 

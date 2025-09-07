@@ -56,7 +56,7 @@ unsigned long strtoul(const char *str, char **endptr, int base)
     }
 
     if (endptr) {
-        *endptr = (char*)str;
+        *endptr = (char *)str;
     }
 
     return ret;

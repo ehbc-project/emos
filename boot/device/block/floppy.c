@@ -49,6 +49,10 @@ static int probe(struct device *dev)
 
 static int remove(struct device *dev)
 {
+    struct floppy_data *data = (struct floppy_data *)dev->data;
+
+    mm_free(data);
+
     return 0;
 }
 

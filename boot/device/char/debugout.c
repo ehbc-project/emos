@@ -6,7 +6,7 @@
 
 #include <asm/io.h>
 
-static long write(struct device *dev, const char *buf, unsigned long len)
+static long write(struct device *dev, const char *buf, long len)
 {
     for (int i = 0; i < len; i++) {
         switch (dev->resource->type) {
