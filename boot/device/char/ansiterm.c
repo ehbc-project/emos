@@ -910,6 +910,31 @@ static const struct char_interface charif = {
     .write = write,
 };
 
+static long wwrite(struct device *dev, const wchar_t *buf, long len)
+{
+    struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
+
+    long written_len = 0;
+    int char_len, seq_char;
+
+    while (len > 0) {
+        put_char(dev, *buf);
+
+        buf++;
+        len--;
+        written_len++;
+    }
+
+    data->condev_conif->flush(data->condev);
+    data->condev_conif->present(data->condev);
+
+    return written_len;
+}
+
+static const struct wchar_interface wcharif = {
+    .write = wwrite,
+};
+
 static int probe(struct device *dev);
 static int remove(struct device *dev);
 static const void *get_interface(struct device *dev, const char *name);
@@ -969,13 +994,11 @@ static const void *get_interface(struct device *dev, const char *name)
 {
     if (strcmp(name, "char") == 0) {
         return &charif;
+    } else if (strcmp(name, "wchar") == 0) {
+        return &wcharif;
     }
 
     return NULL;
 }
 
-__attribute__((constructor))
-static void _register_driver(void)
-{
-    register_device_driver(&drv);
-}
+DEVICE_DRIVER(drv)

@@ -5,7 +5,6 @@
 #include <bus/bus.h>
 #include <device/driver.h>
 #include <interface/block.h>
-#include <bus/ide/ata.h>
 
 struct part_data {
     struct device *blkdev;
@@ -17,12 +16,28 @@ static long read(struct device *dev, lba_t lba, void *buf, long count)
 {
     struct part_data *data = (struct part_data *)dev->data;
 
+    if (data->part_base + lba + count > data->part_limit) {
+        count -= data->part_base + lba + count - data->part_limit;
+    }
+
+    if (count < 1) {
+        return 0;
+    }
+
     return data->blkif->read(data->blkdev, data->part_base + lba, buf, count);
 }
 
 static long write(struct device *dev, lba_t lba, const void *buf, long count)
 {
     struct part_data *data = (struct part_data *)dev->data;
+
+    if (data->part_base + lba + count > data->part_limit) {
+        count -= data->part_base + lba + count - data->part_limit;
+    }
+
+    if (count < 1) {
+        return 0;
+    }
 
     return data->blkif->write(data->blkdev, data->part_base + lba, buf, count);
 }
@@ -95,8 +110,4 @@ static const void *get_interface(struct device *dev, const char *name)
     return NULL;
 }
 
-__attribute__((constructor))
-static void _register_driver(void)
-{
-    register_device_driver(&drv);
-}
+DEVICE_DRIVER(drv)

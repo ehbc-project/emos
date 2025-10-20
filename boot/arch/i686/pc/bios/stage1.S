@@ -44,6 +44,7 @@ _s1start.1:
     .code32
 
 .jump:
+    xor     %ebp, %ebp
     call    s1main
 
 .halt:                                  # if the function returns,

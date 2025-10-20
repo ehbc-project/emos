@@ -10,7 +10,7 @@
 #include <interface/framebuffer.h>
 #include <interface/console.h>
 #include <interface/char.h>
-#include <asm/io.h>
+#include <sys/io.h>
 #include <font.h>
 
 struct vconsole_data {
@@ -49,7 +49,7 @@ static void draw_char(struct device *dev, int col, int row)
     int cwidth, cheight;
     uint8_t glyph[32];
     int x_offset = col * 8, y_offset = row * 16;
-    
+
     int err = font_get_glyph_dimension(cell->codepoint, &cwidth, &cheight);
     if (err || cwidth > 16 || cheight > 16) return;
     err = font_get_glyph_data(cell->codepoint, glyph, sizeof(glyph));
@@ -361,8 +361,4 @@ static const void *get_interface(struct device *dev, const char *name)
     return NULL;
 }
 
-__attribute__((constructor))
-static void _register_driver(void)
-{
-    register_device_driver(&drv);
-}
+DEVICE_DRIVER(drv)

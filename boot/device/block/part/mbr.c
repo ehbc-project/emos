@@ -5,22 +5,8 @@
 #include <bus/bus.h>
 #include <device/driver.h>
 #include <interface/block.h>
-#include <bus/ide/ata.h>
 
-struct mbr_partition_entry {
-    uint8_t status;
-    uint8_t base_chs[3];
-    uint8_t type;
-    uint8_t limit_chs[3];
-    uint32_t base_lba;
-    uint32_t sector_count;
-} __attribute__((packed));
-
-struct mbr {
-    uint8_t bootcode[446];
-    struct mbr_partition_entry partition_entries[4];
-    uint16_t boot_signature;
-} __attribute__((packed));
+#include "mbr.h"
 
 struct mbr_data {
     struct device *blkdev;
@@ -72,18 +58,17 @@ static int register_partitions(struct device *dev, lba_t base)
     struct mbr_data *data = (struct mbr_data *)dev->data;
 
     uint8_t buf[512];
-    struct mbr *mbr_sect = (void *)buf;
+    struct mbr *mbr_sect = (struct mbr *)buf;
     data->blkif->read(data->blkdev, base, buf, 1);
 
-    if (mbr_sect->boot_signature != 0xAA55) return 1;
-
-    if (mbr_sect->partition_entries[0].type == 0xEE) return 1; /* GUID Partition Table */
+    if (mbr_sect->boot_signature != MBR_SIGNATURE) return 1;
+    if (mbr_sect->partition_entries[0].type == MBR_PART_TYPE_GPT) return 1;
 
     for (int i = 0; i < 4; i++) {
         struct mbr_partition_entry *entry = &mbr_sect->partition_entries[i];
         if (!entry->type) continue;
 
-        if (entry->type == 0x05) {
+        if (entry->type == MBR_PART_TYPE_EXTENDED) {
             register_partitions(dev, base + entry->base_lba);
         } else {
             struct device *partdev = mm_allocate_clear(1, sizeof(struct device));
@@ -138,8 +123,4 @@ static const void *get_interface(struct device *dev, const char *name)
     return NULL;
 }
 
-__attribute__((constructor))
-static void _register_driver(void)
-{
-    register_device_driver(&drv);
-}
+DEVICE_DRIVER(drv)

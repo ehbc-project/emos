@@ -1,102 +1,117 @@
 #ifndef __CTYPE_H__
 #define __CTYPE_H__
 
-/**
- * @brief Check if character is alphanumeric.
- * @param c The character to check.
- * @return Non-zero if the character is alphanumeric, 0 otherwise.
- */
 int isalnum(int c);
-
-/**
- * @brief Check if character is alphabetic.
- * @param c The character to check.
- * @return Non-zero if the character is alphabetic, 0 otherwise.
- */
 int isalpha(int c);
-
-/**
- * @brief Check if character is a control character.
- * @param c The character to check.
- * @return Non-zero if the character is a control character, 0 otherwise.
- */
 int iscntrl(int c);
-
-/**
- * @brief Check if character is a digit.
- * @param c The character to check.
- * @return Non-zero if the character is a digit, 0 otherwise.
- */
 int isdigit(int c);
-
-/**
- * @brief Check if character is a graphic character.
- * @param c The character to check.
- * @return Non-zero if the character is a graphic character, 0 otherwise.
- */
 int isgraph(int c);
-
-/**
- * @brief Check if character is lowercase.
- * @param c The character to check.
- * @return Non-zero if the character is lowercase, 0 otherwise.
- */
 int islower(int c);
-
-/**
- * @brief Check if character is printable.
- * @param c The character to check.
- * @return Non-zero if the character is printable, 0 otherwise.
- */
 int isprint(int c);
-
-/**
- * @brief Check if character is a punctuation character.
- * @param c The character to check.
- * @return Non-zero if the character is a punctuation character, 0 otherwise.
- */
 int ispunct(int c);
-
-/**
- * @brief Check if character is a whitespace character.
- * @param c The character to check.
- * @return Non-zero if the character is a whitespace character, 0 otherwise.
- */
 int isspace(int c);
-
-/**
- * @brief Check if character is uppercase.
- * @param c The character to check.
- * @return Non-zero if the character is uppercase, 0 otherwise.
- */
 int isupper(int c);
-
-/**
- * @brief Check if character is a hexadecimal digit.
- * @param c The character to check.
- * @return Non-zero if the character is a hexadecimal digit, 0 otherwise.
- */
 int isxdigit(int c);
-
-/**
- * @brief Check if character is a blank character.
- * @param c The character to check.
- * @return Non-zero if the character is a blank character, 0 otherwise.
- */
 int isblank(int c);
-
-/**
- * @brief Convert character to lowercase.
- * @param c The character to convert.
- * @return The lowercase equivalent of the character, or the character itself if no lowercase equivalent.
- */
 int tolower(int c);
-
-/**
- * @brief Convert character to uppercase.
- * @param c The character to convert.
- * @return The uppercase equivalent of the character, or the character itself if no uppercase equivalent.
- */
 int toupper(int c);
+
+#if __has_builtin(__builtin_isalnum)
+#   define __HAVE_BUILTIN_ISALNUM
+#   define isalnum(c) __builtin_isalnum(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_isalpha)
+#   define __HAVE_BUILTIN_ISALPHA
+#   define isalpha(c) __builtin_isalpha(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_iscntrl)
+#   define __HAVE_BUILTIN_ISCNTRL
+#   define iscntrl(c) __builtin_iscntrl(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_isdigit)
+#   define __HAVE_BUILTIN_ISDIGIT
+#   define isdigit(c) __builtin_isdigit(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_isgraph)
+#   define __HAVE_BUILTIN_ISGRAPH
+#   define isgraph(c) __builtin_isgraph(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_islower)
+#   define __HAVE_BUILTIN_ISLOWER
+#   define islower(c) __builtin_islower(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_isprint)
+#   define __HAVE_BUILTIN_ISPRINT
+#   define isprint(c) __builtin_isprint(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_ispunct)
+#   define __HAVE_BUILTIN_ISPUNCT
+#   define ispunct(c) __builtin_ispunct(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_isspace)
+#   define __HAVE_BUILTIN_ISSPACE
+#   define isspace(c) __builtin_isspace(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_isupper)
+#   define __HAVE_BUILTIN_ISUPPER
+#   define isupper(c) __builtin_isupper(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_isxdigit)
+#   define __HAVE_BUILTIN_ISXDIGIT
+#   define isxdigit(c) __builtin_isxdigit(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_isblank)
+#   define __HAVE_BUILTIN_ISBLANK
+#   define isablank(c) __builtin_isblank(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_islower)
+#   define __HAVE_BUILTIN_ISLOWER
+#   define islower(c) __builtin_islower(c)
+
+#endif
+
+
+#if __has_builtin(__builtin_isupper)
+#   define __HAVE_BUILTIN_ISUPPER
+#   define isupper(c) __builtin_isupper(c)
+
+#endif
+
 
 #endif // __CTYPE_H__

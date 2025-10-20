@@ -35,6 +35,18 @@ int register_device(struct device *dev)
         current->next = dev;
     }
 
+    if (dev->parent) {
+        if (!dev->parent->first_child) {
+            dev->parent->first_child = dev;
+        } else {
+            struct device *current = dev->parent->first_child;
+            while (current->sibling) {
+                current = current->sibling;
+            }
+            current->sibling = dev;
+        }
+    }
+
     return 0;
 }
 

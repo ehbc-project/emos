@@ -29,6 +29,7 @@ struct device {
     struct device *next;
     struct device *sibling;
     struct device *parent;
+    struct device *first_child;
 
     const char *name;
     int id;

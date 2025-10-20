@@ -3,115 +3,33 @@
 
 #include <stdint.h>
 
+#include <compiler.h>
 #include <asm/farptr.h>
 
-/**
- * @brief Set the video mode.
- * @param mode The video mode to set.
- * @return 0 on success, otherwise an error code.
- */
 int _pc_bios_set_video_mode(uint8_t mode);
 
-/**
- * @brief Set the text cursor shape.
- * @param shape The cursor shape.
- */
 void _pc_bios_set_text_cursor_shape(uint16_t shape);
 
-/**
- * @brief Set the text cursor position.
- * @param page The video page.
- * @param row The row.
- * @param col The column.
- */
 void _pc_bios_set_text_cursor_pos(uint8_t page, uint8_t row, uint8_t col);
 
-/**
- * @brief Get the text cursor position and shape.
- * @param page The video page.
- * @param shape A pointer to store the cursor shape.
- * @param row A pointer to store the row.
- * @param col A pointer to store the column.
- */
 void _pc_bios_get_text_cursor(uint8_t page, uint16_t *shape, uint8_t *row, uint8_t *col);
 
-/**
- * @brief Scroll up text.
- * @param amount The number of lines to scroll.
- * @param left The left column.
- * @param right The right column.
- * @param top The top row.
- * @param bottom The bottom row.
- * @param attr The attribute for the new lines.
- */
 void _pc_bios_scroll_up_text(uint8_t amount, uint8_t left, uint8_t right, uint8_t top, uint8_t bottom, uint8_t attr);
 
-/**
- * @brief Scroll down text.
- * @param amount The number of lines to scroll.
- * @param left The left column.
- * @param right The right column.
- * @param top The top row.
- * @param bottom The bottom row.
- * @param attr The attribute for the new lines.
- */
 void _pc_bios_scroll_down_text(uint8_t amount, uint8_t left, uint8_t right, uint8_t top, uint8_t bottom, uint8_t attr);
 
-/**
- * @brief Read the character and attribute at the current cursor position.
- * @param ch A pointer to store the character.
- * @param attr A pointer to store the attribute.
- */
 void _pc_bios_read_text_attr_at_cur(uint8_t *ch, uint8_t *attr);
 
-/**
- * @brief Write a character and attribute at the current cursor position.
- * @param ch The character to write.
- * @param attr The attribute to use.
- * @param count The number of times to write the character.
- */
 void _pc_bios_write_text_attr_at_cur(uint8_t ch, uint8_t attr, uint16_t count);
 
-/**
- * @brief Write a character at the current cursor position.
- * @param ch The character to write.
- * @param count The number of times to write the character.
- */
 void _pc_bios_write_text_at_cur(uint8_t ch, uint16_t count);
 
-/**
- * @brief TTY output.
- * @param ch The character to output.
- */
 void _pc_bios_tty_output(uint8_t ch);
 
-/**
- * @brief Write a string to the screen.
- * @param mode The write mode.
- * @param attr The attribute to use.
- * @param row The row to write to.
- * @param col The column to write to.
- * @param str A pointer to the string.
- * @param len The length of the string.
- */
 void _pc_bios_write_string(uint8_t mode, uint8_t attr, uint8_t row, uint8_t col, const void *str, uint16_t len);
 
-/**
- * @brief Write a pixel to the screen.
- * @param page The video page.
- * @param x The x-coordinate.
- * @param y The y-coordinate.
- * @param color The color of the pixel.
- */
 void _pc_bios_write_pixel(uint8_t page, uint16_t x, uint16_t y, uint8_t color);
 
-/**
- * @brief Read a pixel from the screen.
- * @param page The video page.
- * @param x The x-coordinate.
- * @param y The y-coordinate.
- * @return The color of the pixel.
- */
 uint8_t _pc_bios_read_pixel(uint8_t page, uint16_t x, uint16_t y);
 
 int _pc_bios_get_vga_font_data(uint8_t font_type, const void **data, uint16_t *len);
@@ -124,7 +42,7 @@ struct vbe_palette_entry {
     uint8_t green;
     uint8_t red;
     uint8_t reserved;
-} __attribute__((packed));
+} __packed;
 
 struct vbe_crtc_info_block {
     uint16_t htotal;
@@ -137,7 +55,7 @@ struct vbe_crtc_info_block {
     uint32_t pixel_clock;
     uint16_t refresh_rate;
     uint8_t reserved[40];
-} __attribute__((packed));
+} __packed;
 
 struct vbe_pm_interface {
     uint16_t set_window;
@@ -145,7 +63,7 @@ struct vbe_pm_interface {
     uint16_t set_primary_palette_data;
     uint16_t port_mem_locations;  /* refer to VBE 3.0 spec page 57 */
     uint8_t additional_data[];
-} __attribute__((packed));
+} __packed;
 
 struct vbe_controller_info {
     /* VBE 1.0 */
@@ -166,7 +84,7 @@ struct vbe_controller_info {
 
     uint8_t oem_data[256];
     
-} __attribute__((packed));
+} __packed;
 
 enum vbe_memory_model {
     VBEMM_TEXT = 0,
@@ -234,7 +152,7 @@ struct vbe_video_mode_info {
     uint32_t max_pixel_clock;
     
     uint8_t reserved3[189];
-} __attribute__((packed));
+} __packed;
 
 struct edid_chroma_info {
     uint8_t green_red_xy;
@@ -247,7 +165,7 @@ struct edid_chroma_info {
     uint8_t blue_x;
     uint8_t white_y;
     uint8_t white_x;
-} __attribute__((packed));
+} __packed;
 
 struct edid_detailed_timings {
     uint8_t hori_freq;
@@ -268,7 +186,7 @@ struct edid_detailed_timings {
     uint8_t hborder;
     uint8_t vborder;
     uint8_t display_type;
-} __attribute__((packed));
+} __packed;
 
 struct edid {
     uint8_t padding[8];
@@ -291,74 +209,24 @@ struct edid {
     struct edid_detailed_timings detailed_timings[4];
     uint8_t unused;
     uint8_t checksum;
-} __attribute__((packed));
+} __packed;
 
-/**
- * @brief Get VBE controller information.
- * @param buf A pointer to the buffer to store the information.
- * @return 0 on success, otherwise an error code.
- */
 int _pc_bios_get_vbe_controller_info(struct vbe_controller_info *buf);
 
-/**
- * @brief Get VBE video mode information.
- * @param mode The video mode.
- * @param buf A pointer to the buffer to store the information.
- * @return 0 on success, otherwise an error code.
- */
 int _pc_bios_get_vbe_video_mode_info(uint16_t mode, struct vbe_video_mode_info *buf);
 
-/**
- * @brief Set VBE video mode.
- * @param mode The video mode to set.
- * @return 0 on success, otherwise an error code.
- */
 int _pc_bios_set_vbe_video_mode(uint16_t mode);
 
-/**
- * @brief Set VBE display start.
- * @param x The x-coordinate.
- * @param y The y-coordinate.
- * @return 0 on success, otherwise an error code.
- */
 int _pc_bios_set_vbe_display_start(uint16_t x, uint16_t y);
 
-/**
- * @brief Set VBE display start at retrace.
- * @param x The x-coordinate.
- * @param y The y-coordinate.
- * @return 0 on success, otherwise an error code.
- */
 int _pc_bios_set_vbe_display_start_at_retrace(uint16_t x, uint16_t y);
 
-/**
- * @brief Schedule VBE display start.
- * @param fboffset The framebuffer offset.
- * @return 0 on success, otherwise an error code.
- */
 int _pc_bios_schedule_vbe_display_start(uint32_t fboffset);
 
-/**
- * @brief Schedule VBE display start at retrace.
- * @param fboffset The framebuffer offset.
- * @return 0 on success, otherwise an error code.
- */
 int _pc_bios_schedule_vbe_display_start_at_retrace(uint32_t fboffset);
 
-/**
- * @brief Get VBE protected mode interface.
- * @param pmi_table A pointer to store the protected mode interface table.
- * @return 0 on success, otherwise an error code.
- */
 int _pc_bios_get_vbe_pm_interface(farptr_t *pmi_table);
 
-/**
- * @brief Get VBE EDID information.
- * @param ctrlr_unit The controller unit.
- * @param edid_block The EDID block.
- * @param buf A pointer to the buffer to store the EDID information.
- * @return 0 on success, otherwise an error code.
- */
 int _pc_bios_get_vbe_edid(uint16_t ctrlr_unit, uint16_t edid_block, struct edid *buf);
 
 #endif // __I686_PC_BIOS_VIDEO_H__

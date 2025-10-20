@@ -1,9 +1,9 @@
-#include <core/panic.h>
+#include <debug.h>
 
 #include <stdio.h>
 #include <asm/halt.h>
 
-__attribute__((noreturn))
+__noreturn
 void panic(const char *message)
 {
     fprintf(stderr, "\nPANIC: %s\n", message);

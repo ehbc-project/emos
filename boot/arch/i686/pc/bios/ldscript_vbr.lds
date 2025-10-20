@@ -5,7 +5,8 @@ ENTRY(_start)
 
 SECTIONS
 {
-    .bss 0x00000500 :
+    . = 0x00000500;
+    .bss :
     {
         PROVIDE_HIDDEN(__bss_start = .);
         *(.bss .bss.*)
@@ -13,7 +14,8 @@ SECTIONS
         PROVIDE_HIDDEN(__bss_end = .);
     }
 
-    .text 0x00007C00 :
+    . = 0x00007C00;
+    .text :
     {
         KEEP(*(.text .text.*))
     }

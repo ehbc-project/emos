@@ -1,13 +1,13 @@
 #include <asm/pci/cfgspace.h>
 
-#include <asm/io.h>
+#include <sys/io.h>
 
 uint32_t _bus_pci_cfg_read32(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset)
 {
     uint32_t address = 0x80000000 | (bus << 16) | (device << 11) | (function << 8) | (offset & 0xFC);
 
-    _i686_out32(PCI_CONFIG_ADDRESS, address);
-    return _i686_in32(PCI_CONFIG_DATA);
+    io_out32(PCI_CONFIG_ADDRESS, address);
+    return io_in32(PCI_CONFIG_DATA);
 }
 
 uint16_t _bus_pci_cfg_read16(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset)
@@ -26,8 +26,8 @@ void _bus_pci_cfg_write32(uint8_t bus, uint8_t device, uint8_t function, uint8_t
 {
     uint32_t address = 0x80000000 | (bus << 16) | (device << 11) | (function << 8) | (offset & 0xFC);
 
-    _i686_out32(PCI_CONFIG_ADDRESS, address);
-    _i686_out32(PCI_CONFIG_DATA, value);
+    io_out32(PCI_CONFIG_ADDRESS, address);
+    io_out32(PCI_CONFIG_DATA, value);
 }
 
 void _bus_pci_cfg_write16(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint16_t value)
@@ -36,7 +36,7 @@ void _bus_pci_cfg_write16(uint8_t bus, uint8_t device, uint8_t function, uint8_t
 
     value32 &= ~(0xFFFF << ((offset & 0x3) << 3));
     value32 |= (value & 0xFFFF) << ((offset & 0x3) << 3);
-    _i686_out32(PCI_CONFIG_DATA, value32);
+    io_out32(PCI_CONFIG_DATA, value32);
 
     _bus_pci_cfg_write32(bus, device, function, offset & 0xFC, value32);
 }
@@ -47,7 +47,7 @@ void _bus_pci_cfg_write8(uint8_t bus, uint8_t device, uint8_t function, uint8_t 
 
     value32 &= ~(0xFF << ((offset & 0x3) << 3));
     value32 |= (value & 0xFF) << ((offset & 0x3) << 3);
-    _i686_out32(PCI_CONFIG_DATA, value32);
+    io_out32(PCI_CONFIG_DATA, value32);
 
     _bus_pci_cfg_write32(bus, device, function, offset & 0xFC, value32);
 }

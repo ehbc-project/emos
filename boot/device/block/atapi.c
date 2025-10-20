@@ -5,6 +5,9 @@
 #include <device/driver.h>
 #include <interface/block.h>
 
+#include "ata.h"
+#include "atapi.h"
+
 struct atapi_data {
     int slave;
 };
@@ -66,8 +69,4 @@ static const void *get_interface(struct device *dev, const char *name)
     return NULL;
 }
 
-__attribute__((constructor))
-static void _register_driver(void)
-{
-    register_device_driver(&drv);
-}
+DEVICE_DRIVER(drv)

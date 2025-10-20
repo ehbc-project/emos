@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include <compiler.h>
 #include <asm/isr.h>
 
 struct idt_entry {
@@ -11,6 +12,6 @@ struct idt_entry {
     uint8_t reserved1;
     uint8_t attributes;
     uint16_t offset_high;
-} __attribute__((packed));
+} __packed;
 
 #endif // __I686_IDT_H__

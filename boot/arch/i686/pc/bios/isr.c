@@ -1,10 +1,11 @@
 #include <asm/isr.h>
 
 #include <stdio.h>
-#include <asm/io.h>
+#include <sys/io.h>
 #include <asm/idt.h>
 #include <mm/mm.h>
-#include <core/panic.h>
+#include <debug.h>
+#include <macros.h>
 
 #define DECLARE_ISRxy(x, y) extern void _pc_isr_##x##y(void);
 #define DECLARE_ISRx(x) \
@@ -38,16 +39,6 @@ DECLARE_ISRx(c) DECLARE_ISRx(d) DECLARE_ISRx(e) DECLARE_ISRx(f)
         .offset_high = ((uint32_t)_pc_isr_##num >> 16) & 0xFFFF, \
     }
 
-struct isr_table_entry {
-    struct isr_table_entry *next;
-    struct device *dev;
-    int is_interrupt;
-    union {
-        interrupt_handler_t interrupt_handler;
-        trap_handler_t trap_handler;
-    };
-};
-
 extern struct idt_entry *_i686_idt_ptr;
 
 struct idt_entry _pc_idt[256];
@@ -65,6 +56,10 @@ void _pc_init_idt(void)
         : "m"(_pc_idt)
         :
     );
+
+    for (int i = 0; i < ARRAY_SIZE(_pc_isr_table); i++) {
+        _pc_isr_table[i] = NULL;
+    }
 
     SET_INT_ENTRY(00);  /* #DE */
     SET_TRAP_ENTRY(01);  /* #DB */
@@ -180,7 +175,7 @@ void _pc_set_interrupt_handler(int num, struct device *dev, interrupt_handler_t 
     entry->is_interrupt = 1;
 }
 
-void _pc_set_trap_handler(int num, struct device *dev, trap_handler_t func)
+void _pc_set_trap_handler(int num, trap_handler_t func)
 {
     struct isr_table_entry *entry;
     if (!_pc_isr_table[num]) {
@@ -198,6 +193,11 @@ void _pc_set_trap_handler(int num, struct device *dev, trap_handler_t func)
     entry->is_interrupt = 0;
 }
 
+struct isr_table_entry *_pc_get_isr_table_entry(int num)
+{
+    return _pc_isr_table[num];
+}
+
 static uint64_t irq_count = 0;
 
 uint64_t _pc_get_irq_count(void)
@@ -205,7 +205,7 @@ uint64_t _pc_get_irq_count(void)
     return irq_count;
 }
 
-void _pc_isr_common(struct interrupt_frame *frame, struct pushal_regs *regs, int num, int error)
+void _pc_isr_common(struct interrupt_frame *frame, struct trap_regs *regs, int num, int error)
 {
     int has_error = 0, is_fault = 0;
     irq_count++;
@@ -237,9 +237,9 @@ void _pc_isr_common(struct interrupt_frame *frame, struct pushal_regs *regs, int
     } else {
         if (num < 0x30) {
             if (num >= 0x28) {
-                _i686_out8(0xA0, 0x20);
+                io_out8(0xA0, 0x20);
             }
-            _i686_out8(0x20, 0x20);
+            io_out8(0x20, 0x20);
         }
     }
 
@@ -256,9 +256,9 @@ void _pc_isr_common(struct interrupt_frame *frame, struct pushal_regs *regs, int
     struct isr_table_entry *current_isr = _pc_isr_table[num];
     if (!current_isr) {
         if (has_error) {
-            fprintf(stddbg, "Unhandled interrupt #%02X (error 0x%08X) at 0x%04X:0x%08lX\n", num, error, frame->cs, frame->eip);
+            fprintf(stderr, "Unhandled interrupt #%02X (error 0x%08X) at 0x%04X:0x%08lX\n", num, error, frame->cs, frame->eip);
         } else if (num != 0x20 && num != 0x21 && num != 0x28 && num != 0x2C) {
-            fprintf(stddbg, "Unhandled interrupt #%02X at 0x%04X:0x%08lX\n", num, frame->cs, frame->eip);
+            fprintf(stderr, "Unhandled interrupt #%02X at 0x%04X:0x%08lX\n", num, frame->cs, frame->eip);
         }
     }
 

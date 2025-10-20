@@ -1,12 +1,12 @@
 #include <string.h>
 
+#include <compiler.h>
 #include <mm/mm.h>
 #include <device/driver.h>
 #include <fs/driver.h>
 #include <interface/block.h>
 #include <disk/disk.h>
-
-#include <asm/io.h>
+#include <sys/io.h>
 
 #include "afs.h"
 
@@ -237,7 +237,7 @@ static void close_directory(struct fs_directory *dir)
     
 }
 
-__attribute__((constructor))
+__constructor
 static void _register_driver(void)
 {
     register_fs_driver(&drv);

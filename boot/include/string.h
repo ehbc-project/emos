@@ -3,204 +3,248 @@
 
 #include <stddef.h>
 
-/**
- * @brief Move a block of memory.
- * @param dest A pointer to the destination array where the content is to be copied.
- * @param src A pointer to the source of data to be copied.
- * @param len The number of bytes to copy.
- * @return A pointer to the destination.
- */
-void *memmove(void *dest, const void *src, size_t len);  // not implemented yet
+#include <compiler.h>
 
-/**
- * @brief Compare two blocks of memory.
- * @param p1 A pointer to the first block of memory.
- * @param p2 A pointer to the second block of memory.
- * @param len The number of bytes to compare.
- * @return An integer less than, equal to, or greater than zero if the first len bytes of p1 are found, respectively, to be less than, to match, or be greater than the first len bytes of p2.
- */
-int memcmp(const void *p1, const void *p2, size_t len);
-
-/**
- * @brief Locate character in block of memory.
- * @param ptr A pointer to the block of memory.
- * @param value The value to search for.
- * @param len The number of bytes to search.
- * @return A pointer to the first occurrence of value in the block of memory, or NULL if not found.
- */
-void *memchr(const void *ptr, int value, size_t len);  // not implemented yet
-
-/**
- * @brief Fill a block of memory with a specified value.
- * @param dest A pointer to the block of memory to fill.
- * @param c The value to set.
- * @param count The number of bytes to set.
- * @return A pointer to the destination.
- */
+void *memcpy(void *__restrict dest, const void *__restrict src, size_t len);
+void *memmove(void *dest, const void *src, size_t len);
+void *mempcpy(void *__restrict dest, const void *__restrict src, size_t len);
 void *memset(void *dest, int c, size_t count);
+char *strcat(char *__restrict dest, const char *__restrict src);
+char *strcpy(char *__restrict dest, const char *__restrict src);
+char *strncat(char *__restrict dest, const char *__restrict src, size_t maxlen);
+char *strncpy(char *__restrict dest, const char *__restrict src, size_t maxlen);
+char *stpcpy(char *__restrict dest, const char *__restrict src);
 
-/**
- * @brief Fill a block of memory with a specified 16-bit value.
- * @param dest A pointer to the block of memory to fill.
- * @param c The 16-bit value to set.
- * @param count The number of 16-bit words to set.
- * @return A pointer to the destination.
- */
-void *memset16(void *dest, int c, size_t count);
-
-/**
- * @brief Copy a block of memory.
- * @param dest A pointer to the destination array where the content is to be copied.
- * @param src A pointer to the source of data to be copied.
- * @param len The number of bytes to copy.
- * @return A pointer to the destination.
- */
-void *memcpy(void *dest, const void *src, size_t len);
-
-/**
- * @brief Get error message string.
- * @param error The error number.
- * @return A pointer to the error message string.
- */
-const char *strerror(int error);
-
-/**
- * @brief Concatenate a string to another, with a maximum length.
- * @param dest A pointer to the destination string.
- * @param src A pointer to the source string.
- * @param maxlen The maximum number of characters to append from src.
- * @return A pointer to the destination string.
- */
-char *strncat(char *dest, const char *src, size_t maxlen);
-
-/**
- * @brief Concatenate a string to another.
- * @param dest A pointer to the destination string.
- * @param src A pointer to the source string.
- * @return A pointer to the destination string.
- */
-char *strcat(char *dest, const char *src);
-
-/**
- * @brief Copy a string, with a maximum length.
- * @param dest A pointer to the destination string.
- * @param src A pointer to the source string.
- * @param maxlen The maximum number of characters to copy from src.
- * @return A pointer to the destination string.
- */
-char *strncpy(char *dest, const char *src, size_t maxlen);
-
-/**
- * @brief Copy a string.
- * @param dest A pointer to the destination string.
- * @param src A pointer to the source string.
- * @return A pointer to the destination string.
- */
-char *strcpy(char *dest, const char *src);
-
-/**
- * @brief Compare two strings, with a maximum length.
- * @param p1 A pointer to the first string.
- * @param p2 A pointer to the second string.
- * @param maxlen The maximum number of characters to compare.
- * @return An integer less than, equal to, or greater than zero if the first maxlen bytes of p1 are found, respectively, to be less than, to match, or be greater than the first maxlen bytes of p2.
- */
-int strncmp(const char *p1, const char *p2, size_t maxlen);
-
-/**
- * @brief Compare two strings.
- * @param p1 A pointer to the first string.
- * @param p2 A pointer to the second string.
- * @return An integer less than, equal to, or greater than zero if the first string is found, respectively, to be less than, to match, or be greater than the second string.
- */
-int strcmp(const char *p1, const char *p2);
-
-/**
- * @brief Compare two strings, ignoring case, with a maximum length.
- * @param p1 A pointer to the first string.
- * @param p2 A pointer to the second string.
- * @param maxlen The maximum number of characters to compare.
- * @return An integer less than, equal to, or greater than zero if the first maxlen bytes of p1 are found, respectively, to be less than, to match, or be greater than the first maxlen bytes of p2, ignoring case.
- */
-int strncasecmp(const char *p1, const char *p2, size_t maxlen);
-
-/**
- * @brief Compare two strings, ignoring case.
- * @param p1 A pointer to the first string.
- * @param p2 A pointer to the second string.
- * @return An integer less than, equal to, or greater than zero if the first string is found, respectively, to be less than, to match, or be greater than the second string, ignoring case.
- */
-int strcasecmp(const char *p1, const char *p2);
-
-/**
- * @brief Locate first occurrence of character in string.
- * @param str A pointer to the string.
- * @param ch The character to search for.
- * @return A pointer to the first occurrence of ch in str, or NULL if not found.
- */
+void *memchr(const void *ptr, int value, size_t len);  // not implemented yet
+int memcmp(const void *p1, const void *p2, size_t len);
 char *strchr(const char *str, int ch);
-
-/**
- * @brief Locate last occurrence of character in string.
- * @param str A pointer to the string.
- * @param ch The character to search for.
- * @return A pointer to the last occurrence of ch in str, or NULL if not found.
- */
+int strcmp(const char *p1, const char *p2);
+size_t strcspn(const char *p1, const char *p2);  // not implemented yet
+size_t strlen(const char *str);
+int strncmp(const char *p1, const char *p2, size_t maxlen);
+size_t strnlen(const char *str, size_t maxlen);
+char *strpbrk(const char *p1, const char *p2);  // not implemented yet
 char *strrchr(const char *str, int ch);
-
-/**
- * @brief Locate substring.
- * @param str A pointer to the string to search.
- * @param substr A pointer to the substring to search for.
- * @return A pointer to the first occurrence of substr in str, or NULL if not found.
- */
+size_t strspn(const char *p1, const char *p2);  // not implemented yet
 char *strstr(const char *str, const char *substr);  // not implemented yet
 
-/**
- * @brief Calculate the length of the initial segment of a string that consists of characters not in a specified set.
- * @param p1 A pointer to the string to search.
- * @param p2 A pointer to the string containing the characters to search for.
- * @return The length of the initial segment of p1 that does not contain any character from p2.
- */
-size_t strcspn(const char *p1, const char *p2);  // not implemented yet
+const char *strerror(int error);
+char *strtok(char *__restrict str, const char *__restrict delim);
 
-/**
- * @brief Calculate the length of the initial segment of a string that consists of characters in a specified set.
- * @param p1 A pointer to the string to search.
- * @param p2 A pointer to the string containing the characters to search for.
- * @return The length of the initial segment of p1 that contains only characters from p2.
- */
-size_t strspn(const char *p1, const char *p2);  // not implemented yet
+#if __has_builtin(__builtin_memcpy)
+#   define __HAVE_BUILTIN_MEMCPY
 
-/**
- * @brief Locate first occurrence of any character from a set in a string.
- * @param p1 A pointer to the string to search.
- * @param p2 A pointer to the string containing the characters to search for.
- * @return A pointer to the first occurrence in p1 of any character from p2, or NULL if not found.
- */
-char *strpbrk(const char *p1, const char *p2);  // not implemented yet
+#endif
 
-/**
- * @brief Tokenize a string.
- * @param str A pointer to the string to tokenize. On first call, this is the string to tokenize. On subsequent calls, this should be NULL.
- * @param delim A pointer to the string containing the delimiters.
- * @return A pointer to the next token, or NULL if no more tokens.
- */
-char *strtok(char *str, const char *delim);
+#if __has_builtin(__builtin___memcpy_chk)
+#   define memcpy(dest, ...) \
+    __builtin___memcpy_chk(dest, __VA_ARGS__, __builtin_object_size(dest, 0))
 
-/**
- * @brief Calculate the length of a string, with a maximum length.
- * @param str A pointer to the string.
- * @param maxlen The maximum number of characters to check.
- * @return The length of the string, or maxlen if the null terminator is not found within maxlen characters.
- */
-size_t strnlen(const char *str, size_t maxlen);
+#endif
 
-/**
- * @brief Calculate the length of a string.
- * @param str A pointer to the string.
- * @return The length of the string.
- */
-size_t strlen(const char *str);
+
+#if __has_builtin(__builtin_memmove)
+#   define __HAVE_BUILTIN_MEMMOVE
+
+#endif
+
+#if __has_builtin(__builtin___memmove_chk)
+#   define memmove(dest, ...) \
+    __builtin___memmove_chk(dest, __VA_ARGS__, __builtin_object_size(dest, 0))
+
+#endif
+
+
+#if __has_builtin(__builtin_mempcpy)
+#   define __HAVE_BUILTIN_MEMPCPY
+
+#endif
+
+#if __has_builtin(__builtin___mempcpy_chk)
+#   define mempcpy(dest, ...) \
+    __builtin___mempcpy_chk(dest, __VA_ARGS__, __builtin_object_size(dest, 0))
+
+#endif
+
+
+#if __has_builtin(__builtin_memset)
+#   define __HAVE_BUILTIN_MEMSET
+
+#endif
+
+#if __has_builtin(__builtin___memset_chk)
+#   define memset(dest, ...) \
+    __builtin___memset_chk(dest, __VA_ARGS__, __builtin_object_size(dest, 0))
+
+#endif
+
+
+#if __has_builtin(__builtin_strcat)
+#   define __HAVE_BUILTIN_STRCAT
+
+#endif
+
+#if __has_builtin(__builtin___strcat_chk)
+#   define strcat(dest, ...) \
+    __builtin___strcat_chk(dest, __VA_ARGS__, __builtin_object_size(dest, 0))
+
+#endif
+
+
+#if __has_builtin(__builtin_strcpy)
+#   define __HAVE_BUILTIN_STRCPY
+
+#endif
+
+#if __has_builtin(__builtin___strcpy_chk)
+#   define strcpy(dest, ...) \
+    __builtin___strcpy_chk(dest, __VA_ARGS__, __builtin_object_size(dest, 0))
+
+#endif
+
+
+#if __has_builtin(__builtin_strncat)
+#   define __HAVE_BUILTIN_STRNCAT
+
+#endif
+
+#if __has_builtin(__builtin___strncat_chk)
+#   define strncat(dest, ...) \
+    __builtin___strncat_chk(dest, __VA_ARGS__, __builtin_object_size(dest, 0))
+
+#endif
+
+
+#if __has_builtin(__builtin_strncpy)
+#   define __HAVE_BUILTIN_STRNCPY
+
+#endif
+
+#if __has_builtin(__builtin___strncpy_chk)
+#   define strncpy(dest, ...) \
+    __builtin___strncpy_chk(dest, __VA_ARGS__, __builtin_object_size(dest, 0))
+
+#endif
+
+
+#if __has_builtin(__builtin_stpncpy)
+#   define __HAVE_BUILTIN_STPNCPY
+
+#endif
+
+#if __has_builtin(__builtin___stpncpy_chk)
+#   define stpncpy(dest, ...) \
+    __builtin___stpncpy_chk(dest, __VA_ARGS__, __builtin_object_size(dest, 0))
+
+#endif
+
+
+#if __has_builtin(__builtin_stpcpy)
+#   define __HAVE_BUILTIN_STPCPY
+
+#endif
+
+#if __has_builtin(__builtin___stpcpy_chk)
+#   define stpcpy(dest, ...) \
+    __builtin___stpcpy_chk(dest, __VA_ARGS__, __builtin_object_size(dest, 0))
+
+#endif
+
+
+#if __has_builtin(__builtin_memchr)
+#   define __HAVE_BUILTIN_MEMCHR
+#   define memchr(p1, ...) \
+    __builtin_memchr(p1, __VA_ARGS__)
+
+#endif
+
+
+#if __has_builtin(__builtin_memcmp)
+#   define __HAVE_BUILTIN_MEMCMP
+#   define memcmp(p1, ...) \
+    __builtin_memcmp(p1, __VA_ARGS__)
+
+#endif
+
+
+#if __has_builtin(__builtin_strchr)
+#   define __HAVE_BUILTIN_STRCHR
+#   define strchr(p1, ...) \
+    __builtin_strchr(p1, __VA_ARGS__)
+
+#endif
+
+
+#if __has_builtin(__builtin_strcmp)
+#   define __HAVE_BUILTIN_STRCMP
+#   define strcmp(p1, ...) \
+    __builtin_strcmp(p1, __VA_ARGS__)
+
+#endif
+
+
+#if __has_builtin(__builtin_strcspn)
+#   define __HAVE_BUILTIN_STRCSPN
+#   define strcspn(p1, ...) \
+    __builtin_strcspn(p1, __VA_ARGS__)
+
+#endif
+
+
+#if __has_builtin(__builtin_strlen)
+#   define __HAVE_BUILTIN_STRLEN
+#   define strlen(str) \
+    __builtin_strlen(str)
+
+#endif
+
+
+#if __has_builtin(__builtin_strncmp)
+#   define __HAVE_BUILTIN_STRNCMP
+#   define strncmp(p1, ...) \
+    __builtin_strncmp(p1, __VA_ARGS__)
+
+#endif
+
+
+#if __has_builtin(__builtin_strnlen)
+#   define __HAVE_BUILTIN_STRNLEN
+#   define strnlen(p1, ...) \
+    __builtin_strnlen(p1, __VA_ARGS__)
+
+#endif
+
+
+#if __has_builtin(__builtin_strpbrk)
+#   define __HAVE_BUILTIN_STRPBRK
+#   define strpbrk(p1, ...) \
+    __builtin_strpbrk(p1, __VA_ARGS__)
+
+#endif
+
+
+#if __has_builtin(__builtin_strrchr)
+#   define __HAVE_BUILTIN_STRRCHR
+#   define strrchr(p1, ...) \
+    __builtin_strrchr(p1, __VA_ARGS__)
+
+#endif
+
+
+#if __has_builtin(__builtin_strspn)
+#   define __HAVE_BUILTIN_STRPBRK
+#   define strspn(p1, ...) \
+    __builtin_strspn(p1, __VA_ARGS__)
+
+#endif
+
+
+#if __has_builtin(__builtin_strstr)
+#   define __HAVE_BUILTIN_STRSTR
+#   define strstr(p1, ...) \
+    __builtin_strstr(p1, __VA_ARGS__)
+
+#endif
+
 
 #endif // __STRING_H__

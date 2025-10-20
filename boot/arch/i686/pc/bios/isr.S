@@ -8,13 +8,20 @@
     .macro  DEFINE_ISR num error
     .globl  _pc_isr_\num
 _pc_isr_\num:
-    push    %ebp                        # set up stack base pointer
-    mov     %esp, %ebp
-    
-    pushal                              # push all registers
     cld
 
+    pushal                              # push all registers
+    pushw   %ds
+    pushw   %es
+    pushw   %fs
+    pushw   %gs
+    pushw   %ss
+
+    push    %ebp                        # set up stack base pointer
+    mov     %esp, %ebp
+
     mov     %esp, %eax
+    add     $4, %eax
 
     .if     \error
     pushl   4(%ebp)                     # error num
@@ -35,8 +42,13 @@ _pc_isr_\num:
     call    _pc_isr_common
     add     $16, %esp
 
-    popal                               # pop all registers
     pop     %ebp                        # restore base pointer
+    popw    %ss
+    popw    %gs
+    popw    %fs
+    popw    %es
+    popw    %ds
+    popal                               # pop all registers
 
     iret                                # return from interrupt
     .endm

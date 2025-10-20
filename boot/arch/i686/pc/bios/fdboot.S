@@ -71,6 +71,8 @@ _start:
     .ascii  "FAT12   "
     
 .start1:
+    cld                                 # set string ops direction to inc
+
     xor     %ax, %ax                    # clear segment registers
     mov     %ax, %ds
     mov     %ax, %es

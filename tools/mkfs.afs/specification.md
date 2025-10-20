@@ -221,8 +221,6 @@ $$ N = \frac{(Block\ Size)}{8} - 4 $$
 | Offset    | Size      | Value            |
 |-----------|-----------|------------------|
 | 0         | 8         | Free Block Start |
-| 8         | 
-
 
 ## Formatting
 
@@ -241,5 +239,4 @@ blocks_per_block_group = 4096 * 8 - 32 = 32736
 total_block_group_count = 134217726 / 32736 = 4100
 rbb_count = (4100 + 32736 - 1) / 32736 = 1
 
-1. Create RDB
-2. 
+

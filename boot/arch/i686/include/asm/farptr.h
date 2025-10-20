@@ -6,7 +6,7 @@
 struct farptr {
     uint16_t offset;
     uint16_t segment;
-} __attribute__((packed));
+} __packed;
 
 typedef struct farptr farptr_t;
 

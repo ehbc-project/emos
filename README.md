@@ -22,18 +22,18 @@
     - `gui`: GUI subsystem
   - `syscall`: Syscall handlers
 - `packages`: System packages
-- `sdk`: Software Development Kit for EMOS
-  - `libemos`: Common system call wrapper library
-    - `conmanip`: Text console manipulation
-    - `exec`: Process, thread, and dynamic library controls
-    - `io`: I/O control functions
-    - `memory`: Memory allocation and mapping functions
-    - `ipc`: Inter-process communication functions
-  - `libemosgui`: Graphical UI / drawing library
-  - `libemosimm`: Library for Input Method Module (IMM)
-  - `libemosutil`: OS-independent utility functions library
-    - `crypto`: Simple cryptography
-    - `unicode`: Unicode string manipulation
-    - `compress`: Data compression / decompression
-  - `libstdc`: C Standard library
-  - `libstdcxx`: C++ Standard library
+  - `emossdk`: Software Development Kit for EMOS
+    - `libemos`: Common system call wrapper library
+      - `conmanip`: Text console manipulation
+      - `exec`: Process, thread, and dynamic library controls
+      - `io`: I/O control functions
+      - `memory`: Memory allocation and mapping functions
+      - `ipc`: Inter-process communication functions
+    - `libemosgui`: Graphical UI / drawing library
+    - `libemosimm`: Library for Input Method Module (IMM)
+    - `libemosutil`: OS-independent utility functions library
+      - `crypto`: Simple cryptography
+      - `unicode`: Unicode string manipulation
+      - `compress`: Data compression / decompression
+    - `libstdc`: C Standard library
+    - `libstdcxx`: C++ Standard library

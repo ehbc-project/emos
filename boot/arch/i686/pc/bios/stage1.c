@@ -1,11 +1,12 @@
 #include <asm/bios/video.h>
 #include <asm/bios/disk.h>
 #include <asm/bootinfo.h>
+#include <compiler.h>
 
 #include "../../fs/fat/fat.h"
 
-static uint8_t sect_buf[4096] __attribute__((aligned(16)));
-static uint8_t clus_buf[4096] __attribute__((aligned(16)));
+static uint8_t sect_buf[4096] __aligned(16);
+static uint8_t clus_buf[4096] __aligned(16);
 static struct fat_bpb_sector *bpb = (struct fat_bpb_sector *)0x7C00;
 static struct chs geom;
 
@@ -37,7 +38,6 @@ static void print_str(const char *str)
     }
 }
 
-__attribute__((noreturn))
 void s1main(void)
 {
     _pc_bios_get_drive_params(_pc_boot_drive, NULL, &geom, NULL);
@@ -54,7 +54,7 @@ void s1main(void)
         for (int i = 0; i < 32; i++) {
             entry = &((union fat_dir_entry *)sect_buf)[i];
             
-            if (memcmp(entry->file.name, "BOOTLDR X86", sizeof(entry->file.name) + sizeof(entry->file.extension)) == 0) {
+            if (memcmp(entry->file.name_ext, "BOOTLDR X86", sizeof(entry->file.name) + sizeof(entry->file.extension)) == 0) {
                 goto file_found;
             } else if (!entry->file.name[0]) {
                 goto file_not_found;
@@ -63,7 +63,7 @@ void s1main(void)
     }
 file_not_found:
     print_str("BOOTLDR.X86 not found\r\n");
-    for (;;) {}
+    return;
 
 file_found: {}
     uint16_t current_cluster = entry->file.cluster_location;
@@ -88,5 +88,5 @@ file_found: {}
 
     ((void (*)(void))0x00100000)();
 
-    for (;;) {}
+    return;
 }

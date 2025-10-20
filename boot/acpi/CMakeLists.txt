@@ -1,3 +1,3 @@
 cmake_minimum_required(VERSION 3.13)
 
-target_sources(bootloader PRIVATE rsdp.c rsdt.c sdt.c)
+target_sources(bootloader PRIVATE log.c map.c)

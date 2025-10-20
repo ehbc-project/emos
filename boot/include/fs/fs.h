@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 
+#include <compiler.h>
+
 #include <device/device.h>
 
 struct filesystem {
@@ -34,7 +36,7 @@ struct fs_directory_entry {
 
 struct filesystem *get_first_filesystem(void);
 
-int register_filesystem(struct filesystem *fs, const char *name);
+int register_filesystem(struct filesystem *__restrict fs, const char *__restrict name);
 
 struct filesystem *find_filesystem(const char *name);
 

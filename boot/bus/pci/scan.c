@@ -3,6 +3,7 @@
 #include <asm/pci/cfgspace.h>
 
 #include <bus/pci/device.h>
+#include <bus/pci/cfgspace.h>
 
 struct pci_device_list {
     struct pci_device *devices;
@@ -22,6 +23,7 @@ int _bus_pci_function_scan(struct pci_device_list *list, int bus, int device, in
         return -1;
     }
 
+    /*
     list->devices[list->count] = (struct pci_device){
         .bus = bus,
         .device = device,
@@ -32,6 +34,7 @@ int _bus_pci_function_scan(struct pci_device_list *list, int bus, int device, in
         .sub_class = sub_class,
         .interface = interface,
     };
+    */
 
     list->count++;
 
@@ -40,7 +43,10 @@ int _bus_pci_function_scan(struct pci_device_list *list, int bus, int device, in
 
 int _bus_pci_device_scan(struct pci_device_list *list, int bus, int device)
 {
-    _bus_pci_function_scan(list, bus, device, 0);
+    int ret;
+
+    ret = _bus_pci_function_scan(list, bus, device, 0);
+    if (ret) return ret;
 
     uint8_t header_type = _bus_pci_cfg_read8(bus, device, 0, PCI_CFGSPACE_HEADER_TYPE);
     if (!(header_type & 0x80)) {
@@ -53,10 +59,8 @@ int _bus_pci_device_scan(struct pci_device_list *list, int bus, int device)
             continue;
         }
         
-        int err = _bus_pci_function_scan(list, bus, device, function);
-        if (err) {
-            return err;
-        }
+        ret = _bus_pci_function_scan(list, bus, device, function);
+        if (ret) return ret;
     }
 
     return 0;
@@ -64,16 +68,16 @@ int _bus_pci_device_scan(struct pci_device_list *list, int bus, int device)
 
 int _bus_pci_bus_scan(struct pci_device_list *list, int bus)
 {
+    int ret;
+
     for (int device = 0; device < 32; device++) {
         uint16_t vendor_id = _bus_pci_cfg_read16(bus, device, 0, PCI_CFGSPACE_VENDORID);
         if (vendor_id == 0xFFFF) {
             continue;
         }
         
-        int err = _bus_pci_device_scan(list, bus, device);
-        if (err) {
-            return err;
-        }
+        ret = _bus_pci_device_scan(list, bus, device);
+        if (ret) return ret;
     }
 
     return 0;
@@ -81,6 +85,7 @@ int _bus_pci_bus_scan(struct pci_device_list *list, int bus)
 
 int pci_host_scan(struct pci_device *buf, int max_count)
 {
+    int ret;
     struct pci_device_list list;
     list.devices = buf;
     list.count = 0;
@@ -89,7 +94,8 @@ int pci_host_scan(struct pci_device *buf, int max_count)
     uint8_t header_type = _bus_pci_cfg_read8(0, 0, 0, PCI_CFGSPACE_HEADER_TYPE);
 
     if (!(header_type & 0x80)) {
-        _bus_pci_bus_scan(&list, 0);
+        ret = _bus_pci_bus_scan(&list, 0);
+        if (ret) return ret;
         return list.count;
     }
 
@@ -99,10 +105,8 @@ int pci_host_scan(struct pci_device *buf, int max_count)
             continue;
         }
 
-        int err = _bus_pci_function_scan(&list, 0, 0, function);
-        if (err) {
-            return err;
-        }
+        ret = _bus_pci_function_scan(&list, 0, 0, function);
+        if (ret) return ret;
     }
 
     return list.count;

@@ -20,11 +20,10 @@ target_compile_options(bootloader PUBLIC
     $<$<COMPILE_LANGUAGE:C,CXX>:
         -Werror
         -Wall
+        -Wunused-result
         -Wno-unused-function
         -Wno-unused-variable
         -Wno-unused-but-set-variable
-        -pedantic
-        -pedantic-errors
     >
 )
 target_link_libraries(bootloader gcc)
@@ -44,13 +43,16 @@ add_custom_target(bootloader_symbol_table ALL
 )
 
 add_custom_target(bootloader_font ALL
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/hex2binfont/hex2binfont.py" "${CMAKE_CURRENT_SOURCE_DIR}/unifont.hex" "unifont.bfn"
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/hex2bfn/hex2bfn.py" "${CMAKE_CURRENT_SOURCE_DIR}/unifont.hex" "unifont.bfn"
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     COMMENT "Generating font data"
 )
 
-# Subdirectories
+# libraries
 add_subdirectory(lib)
+target_link_libraries(bootloader uacpi.lib zlib.lib)
+
+# Subdirectories
 add_subdirectory(arch)
 
 if (NOT "${TARGET_FIRMWARE}" STREQUAL "uefi")
@@ -59,6 +61,7 @@ if (NOT "${TARGET_FIRMWARE}" STREQUAL "uefi")
     add_subdirectory(core)
     add_subdirectory(device)
     add_subdirectory(disk)
+    add_subdirectory(elf)
     add_subdirectory(font)
     add_subdirectory(fs)
     add_subdirectory(mm)

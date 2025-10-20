@@ -5,7 +5,9 @@ ENTRY(_start)
 
 SECTIONS
 {
-    .text 0x00200000 :
+    . = 0x00200000;
+    
+    .text :
     {
         PROVIDE_HIDDEN(__text_start = .);
         KEEP(*(.text.startup .text.startup.*))
@@ -15,56 +17,48 @@ SECTIONS
 
     .data :
     {
+        . = ALIGN(16);
         PROVIDE_HIDDEN(__data_start = .);
         *(.data .data.*)
         PROVIDE_HIDDEN(__data_end = .);
+
+        . = ALIGN(16);
+        PROVIDE(__init_array_start = .);
+        KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
+        KEEP(*(.init_array .ctors))
+        PROVIDE(__init_array_end = .);
+
+        . = ALIGN(16);
+        PROVIDE_HIDDEN(__fini_array_start = .);
+        KEEP(*(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*)))
+        KEEP(*(.fini_array .dtors))
+        PROVIDE_HIDDEN(__fini_array_end = .);
+
+        . = ALIGN(16);
+        KEEP(*(SORT_NONE(.init)))
+
+        . = ALIGN(16);
+        KEEP(*(SORT_NONE(.fini)))
+
+        . = ALIGN(16);
+        KEEP(*(SORT(.ctors.*)))
+        KEEP(*(.ctors))
+
+        . = ALIGN(16);
+        KEEP(*(SORT(.dtors.*)))
+        KEEP(*(.dtors))
     }
 
+    . = ALIGN(4096);
     .rodata :
     {
+        . = ALIGN(16);
         PROVIDE_HIDDEN(__rodata_start = .);
         KEEP(*(.rodata .rodata.*))
         PROVIDE_HIDDEN(__rodata_end = .);
     }
 
-    .init_array : ALIGN(4)
-    {
-        PROVIDE(__init_array_start = .);
-        KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
-        KEEP(*(.init_array .ctors))
-        PROVIDE(__init_array_end = .);
-    }
-
-    .fini_array : ALIGN(4)
-    {
-        PROVIDE_HIDDEN(__fini_array_start = .);
-        KEEP(*(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*)))
-        KEEP(*(.fini_array .dtors))
-        PROVIDE_HIDDEN(__fini_array_end = .);
-    }
-    
-    .init :
-    {
-        KEEP(*(SORT_NONE(.init)))
-    }
-
-    .fini :
-    {
-        KEEP(*(SORT_NONE(.fini)))
-    }
-
-    .ctors :
-    {
-        KEEP(*(SORT(.ctors.*)))
-        KEEP(*(.ctors))
-    }
-
-    .dtors :
-    {
-        KEEP(*(SORT(.dtors.*)))
-        KEEP(*(.dtors))
-    }
-
+    . = ALIGN(4096);
     .bss :
     {
         PROVIDE_HIDDEN(__bss_start = .);

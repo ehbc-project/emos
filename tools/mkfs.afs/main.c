@@ -260,11 +260,11 @@ static int make_fs(const char *file, const char *boot_code_file, const char *os_
         ((struct afs_rdb *)buf)->rdb_copy_count = rdb_count;
         ((struct afs_rdb *)buf)->bytes_per_sector = bytes_per_sector;
         ((struct afs_rdb *)buf)->flags = 0;
-        ((struct afs_rdb *)buf)->root_mdb_pointer = 2 + rbb_count;
+        ((struct afs_rdb *)buf)->root_mdb_pointer = rdb_count + rbb_count + 1;
         ((struct afs_rdb *)buf)->udb_pointer = 0;
         ((struct afs_rdb *)buf)->jbb_pointer = 0;
         ((struct afs_rdb *)buf)->rbb_pointer = 1;
-        ((struct afs_rdb *)buf)->group0_gbb_pointer = 1 + rbb_count;
+        ((struct afs_rdb *)buf)->group0_gbb_pointer = rdb_count + rbb_count;
         ((struct afs_rdb *)buf)->volume_uuid = uuid;
         strncpy(((struct afs_rdb *)buf)->formatted_os, os_name, sizeof(((struct afs_rdb *)buf)->formatted_os));
         ((struct afs_rdb *)buf)->filesystem_version = 0x0001;
@@ -296,30 +296,36 @@ static int make_fs(const char *file, const char *boot_code_file, const char *os_
     fflush(image_fp);
 
     /* write root MDB */
-    if (!label) label = "NO_NAME";
-    label_len = strnlen(label, 255);
     fseek(image_fp, bytes_per_sector * reserved_sectors + bytes_per_block * (rdb_count + 1 + rbb_count), SEEK_SET);
     memset(buf, 0, bytes_per_block);
     ((struct afs_mdb *)buf)->parent_mdb_pointer = 0;
     ((struct afs_mdb *)buf)->next_mdb_pointer = 0;
     ((struct afs_mdb *)buf)->flags = 1;  /* directory */
-    ((struct afs_mdb *)buf)->attribute_entry_presence_bitmap = (1 << (MDB_ENTRY_FAE - 1)) | (1 << (MDB_ENTRY_TAE - 1));
+    ((struct afs_mdb *)buf)->attribute_entry_presence_bitmap = (label ? (1 << (MDB_ENTRY_FAE - 1)) : 0) | (1 << (MDB_ENTRY_TAE - 1));
     ((struct afs_mdb *)buf)->file_size = 0;
-    ((struct afs_mdb *)buf)->dhb_ddb_pointer = 3 + rbb_count;
+    ((struct afs_mdb *)buf)->dhb_ddb_pointer = rdb_count + rbb_count + 2;
+
+    int mdb_offset = sizeof(struct afs_mdb);
 
     /* FAE */
-    ((struct afs_mdb_fae *)((uint8_t *)buf + sizeof(struct afs_mdb)))->header.entry_length = sizeof(struct afs_mdb_fae);
-    ((struct afs_mdb_fae *)((uint8_t *)buf + sizeof(struct afs_mdb)))->header.entry_type = MDB_ENTRY_FAE;
-    ((struct afs_mdb_fae *)((uint8_t *)buf + sizeof(struct afs_mdb)))->filename_length = label_len;
-    ((struct afs_mdb_fae *)((uint8_t *)buf + sizeof(struct afs_mdb)))->filename_hash = crc32((void *)label, label_len);
-    strncpy(((struct afs_mdb_fae *)((uint8_t *)buf + sizeof(struct afs_mdb)))->filename, label, label_len);
+    if (label) {
+        label_len = strnlen(label, 255);
+
+        ((struct afs_mdb_fae *)((uint8_t *)buf + mdb_offset))->header.entry_length = sizeof(struct afs_mdb_fae);
+        ((struct afs_mdb_fae *)((uint8_t *)buf + mdb_offset))->header.entry_type = MDB_ENTRY_FAE;
+        ((struct afs_mdb_fae *)((uint8_t *)buf + mdb_offset))->filename_length = label_len;
+        ((struct afs_mdb_fae *)((uint8_t *)buf + mdb_offset))->filename_hash = crc32((void *)label, label_len);
+        strncpy(((struct afs_mdb_fae *)((uint8_t *)buf + mdb_offset))->filename, label, label_len);
+
+        mdb_offset += sizeof(struct afs_mdb_fae);
+    }
 
     /* TAE */
-    ((struct afs_mdb_tae *)((uint8_t *)buf + sizeof(struct afs_mdb) + sizeof(struct afs_mdb_fae)))->header.entry_length = sizeof(struct afs_mdb_tae);
-    ((struct afs_mdb_tae *)((uint8_t *)buf + sizeof(struct afs_mdb) + sizeof(struct afs_mdb_fae)))->header.entry_type = MDB_ENTRY_TAE;
-    ((struct afs_mdb_tae *)((uint8_t *)buf + sizeof(struct afs_mdb) + sizeof(struct afs_mdb_fae)))->create_time = time(NULL);
-    ((struct afs_mdb_tae *)((uint8_t *)buf + sizeof(struct afs_mdb) + sizeof(struct afs_mdb_fae)))->write_time = time(NULL);
-    ((struct afs_mdb_tae *)((uint8_t *)buf + sizeof(struct afs_mdb) + sizeof(struct afs_mdb_fae)))->read_time = time(NULL);
+    ((struct afs_mdb_tae *)((uint8_t *)buf + mdb_offset))->header.entry_length = sizeof(struct afs_mdb_tae);
+    ((struct afs_mdb_tae *)((uint8_t *)buf + mdb_offset))->header.entry_type = MDB_ENTRY_TAE;
+    ((struct afs_mdb_tae *)((uint8_t *)buf + mdb_offset))->create_time = time(NULL);
+    ((struct afs_mdb_tae *)((uint8_t *)buf + mdb_offset))->write_time = time(NULL);
+    ((struct afs_mdb_tae *)((uint8_t *)buf + mdb_offset))->read_time = time(NULL);
 
     *(uint32_t *)((uint8_t *)buf + bytes_per_block - 4) = crc32(buf, bytes_per_block - 4);
     afs_fwrite(buf, bytes_per_block, 1, image_fp);
@@ -368,7 +374,7 @@ int main(int argc, char **argv)
     int next_option;
 
     uint64_t tmp;
-    char *boot_code_file = NULL, *os_name = "UNKNOWN", *label = "NO NAME", *file = NULL;
+    char *boot_code_file = NULL, *os_name = "UNKNOWN", *label = NULL, *file = NULL;
     uint8_t rdb_count = 1, sectors_per_block = 8;
     uint16_t reserved_sectors = 16;
     uint64_t journal_size = 1024 * 1024, offset = 0;

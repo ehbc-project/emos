@@ -5,7 +5,7 @@
 #include <bus/bus.h>
 #include <device/driver.h>
 #include <interface/floppy.h>
-#include <asm/io.h>
+#include <sys/io.h>
 #include <asm/isr.h>
 #include <asm/time.h>
 #include <asm/pause.h>
@@ -54,18 +54,18 @@ static int send_command(struct device *dev, struct fdc_command *cmd)
     uint8_t status;
 
     for (int i = 0; i < cmd->send_size + 1; i++) {
-        while (!(_i686_in8(data->res->base + FDCREG_MSR) & 0x80)) {
+        while (!(io_in8(data->res->base + FDCREG_MSR) & 0x80)) {
             _i686_pause();
         }
-        status = _i686_in8(data->res->base + FDCREG_MSR);
+        status = io_in8(data->res->base + FDCREG_MSR);
         if (status & 0x40) {
             return 1;
         }
 
         if (i > 0) {
-            _i686_out8(data->res->base + FDCREG_FIFO, cmd->data[i - 1]);
+            io_out8(data->res->base + FDCREG_FIFO, cmd->data[i - 1]);
         } else {
-            _i686_out8(data->res->base + FDCREG_FIFO, cmd->data[0]);
+            io_out8(data->res->base + FDCREG_FIFO, cmd->data[0]);
         }
     }
 
@@ -75,18 +75,18 @@ static int send_command(struct device *dev, struct fdc_command *cmd)
     }
 
     for (int i = 0; i < cmd->recv_size; i++) {
-        while (!(_i686_in8(data->res->base + FDCREG_MSR) & 0x80)) {
+        while (!(io_in8(data->res->base + FDCREG_MSR) & 0x80)) {
             _i686_pause();
         }
-        status = _i686_in8(data->res->base + FDCREG_MSR);
+        status = io_in8(data->res->base + FDCREG_MSR);
         if (status & 0x40) {
             return 1;
         }
 
-        cmd->data[i] = _i686_in8(data->res->base + FDCREG_FIFO);
+        cmd->data[i] = io_in8(data->res->base + FDCREG_FIFO);
     }
 
-    status = _i686_in8(data->res->base + FDCREG_MSR);
+    status = io_in8(data->res->base + FDCREG_MSR);
     if (status & 0x40) {
         return 1;
     }
@@ -185,17 +185,17 @@ static int probe(struct device *dev)
     if (fdc_reset(dev)) return 1;
 
     for (int i = 0; i < 4; i++) {
-        struct device *master_drive = mm_allocate_clear(1, sizeof(*master_drive));
-        master_drive->bus = floppy_bus;
-        master_drive->parent = dev;
+        struct device *drive = mm_allocate_clear(1, sizeof(*drive));
+        drive->bus = floppy_bus;
+        drive->parent = dev;
         struct resource *res = create_resource(NULL);
         res->type = RT_BUS;
         res->base = i;
         res->limit = i;
         res->flags = 0;
-        master_drive->resource = res;
-        master_drive->driver = find_device_driver("floppy");
-        register_device(master_drive);
+        drive->resource = res;
+        drive->driver = find_device_driver("floppy");
+        register_device(drive);
     }
 
     return 0;
@@ -219,8 +219,4 @@ static const void *get_interface(struct device *dev, const char *name)
     return NULL;
 }
 
-__attribute__((constructor))
-static void _register_driver(void)
-{
-    register_device_driver(&drv);
-}
+DEVICE_DRIVER(drv)

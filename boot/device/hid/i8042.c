@@ -5,7 +5,7 @@
 #include <device/driver.h>
 #include <interface/ps2.h>
 #include <asm/isr.h>
-#include <asm/io.h>
+#include <sys/io.h>
 #include <asm/time.h>
 #include <asm/pause.h>
 #include <hid/hid.h>
@@ -26,7 +26,7 @@ static int wait_output_buffer_full(struct device *dev, unsigned int timeout)
 
     uint64_t tick_start = get_global_tick();
 
-    while (_i686_in8(data->res[1]->base) & 0x01) {
+    while (io_in8(data->res[1]->base) & 0x01) {
         if (get_global_tick() - tick_start > timeout) return 1;
         _i686_pause();
     }
@@ -40,7 +40,7 @@ static int wait_output_buffer_empty(struct device *dev, unsigned int timeout)
 
     uint64_t tick_start = get_global_tick();
 
-    while (!(_i686_in8(data->res[1]->base) & 0x01)) {
+    while (!(io_in8(data->res[1]->base) & 0x01)) {
         if (get_global_tick() - tick_start > timeout) return 1;
         _i686_pause();
     }
@@ -54,7 +54,7 @@ static int wait_input_buffer_full(struct device *dev, unsigned int timeout)
 
     uint64_t tick_start = get_global_tick();
 
-    while (_i686_in8(data->res[1]->base) & 0x02) {
+    while (io_in8(data->res[1]->base) & 0x02) {
         if (get_global_tick() - tick_start > timeout) return 1;
         _i686_pause();
     }
@@ -66,30 +66,30 @@ static void enable_port(struct device *dev, int port)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
 
-    _i686_out8(data->res[1]->base, !port ? 0xAE : 0xA8);
-    _i686_out8(data->res[1]->base, 0x20);
-    uint8_t prev_ccb = _i686_in8(data->res[0]->base);
-    _i686_out8(data->res[1]->base, 0x60);
-    _i686_out8(data->res[0]->base, prev_ccb | (!port ? 0x01 : 0x02));
+    io_out8(data->res[1]->base, !port ? 0xAE : 0xA8);
+    io_out8(data->res[1]->base, 0x20);
+    uint8_t prev_ccb = io_in8(data->res[0]->base);
+    io_out8(data->res[1]->base, 0x60);
+    io_out8(data->res[0]->base, prev_ccb | (!port ? 0x01 : 0x02));
 }
 
 static void disable_port(struct device *dev, int port)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
 
-    _i686_out8(data->res[1]->base, !port ? 0xAD : 0xA7);
-    _i686_out8(data->res[1]->base, 0x20);
-    uint8_t prev_ccb = _i686_in8(data->res[0]->base);
-    _i686_out8(data->res[1]->base, 0x60);
-    _i686_out8(data->res[0]->base, prev_ccb & ~(!port ? 0x01 : 0x02));
+    io_out8(data->res[1]->base, !port ? 0xAD : 0xA7);
+    io_out8(data->res[1]->base, 0x20);
+    uint8_t prev_ccb = io_in8(data->res[0]->base);
+    io_out8(data->res[1]->base, 0x60);
+    io_out8(data->res[0]->base, prev_ccb & ~(!port ? 0x01 : 0x02));
 }
 
 static int test_port(struct device *dev, int port)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
 
-    _i686_out8(data->res[1]->base, !port ? 0xAB : 0xA9);
-    return _i686_in8(data->res[0]->base);
+    io_out8(data->res[1]->base, !port ? 0xAB : 0xA9);
+    return io_in8(data->res[0]->base);
 }
 
 static int send_data(struct device *dev, int port, const uint8_t *buf, int len)
@@ -100,12 +100,12 @@ static int send_data(struct device *dev, int port, const uint8_t *buf, int len)
 
     for (int i = 0; i < len; i++) {
         if (port) {
-            _i686_out8(data->res[1]->base, 0xD4);
+            io_out8(data->res[1]->base, 0xD4);
         }
 
         err = wait_input_buffer_full(dev, 1);
         if (err) return err;
-        _i686_out8(data->res[0]->base, buf[i]);
+        io_out8(data->res[0]->base, buf[i]);
     }
 
     return 0;
@@ -120,7 +120,7 @@ static int recv_data(struct device *dev, int port, uint8_t *buf, int len)
     for (int i = 0; i < len; i++) {
         err = wait_output_buffer_empty(dev, 1);
         if (err) return err;
-        buf[i] = _i686_in8(data->res[0]->base);
+        buf[i] = io_in8(data->res[0]->base);
     }
 
     return 0;
@@ -130,7 +130,7 @@ static uint8_t irq_get_byte(struct device *dev)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
 
-    return _i686_in8(data->res[0]->base);
+    return io_in8(data->res[0]->base);
 }
 
 static const struct ps2_interface ps2if = {
@@ -178,34 +178,34 @@ static int probe(struct device *dev)
     dev->data = data;
 
     /* disable all devices */
-    _i686_out8(res[1]->base, 0xAD);
-    _i686_out8(res[1]->base, 0xA7);
+    io_out8(res[1]->base, 0xAD);
+    io_out8(res[1]->base, 0xA7);
     
     /* flush the output buffer*/
-    _i686_in8(res[0]->base);
+    io_in8(res[0]->base);
 
     /* disable translation & IRQ */
-    _i686_out8(res[1]->base, 0x60);
-    _i686_out8(res[0]->base, 0x00);
+    io_out8(res[1]->base, 0x60);
+    io_out8(res[0]->base, 0x00);
 
     /* perform controller self-test */
-    _i686_out8(res[1]->base, 0xAA);
+    io_out8(res[1]->base, 0xAA);
     wait_output_buffer_full(dev, 5);
-    if (_i686_in8(res[0]->base) != 0x55) {
+    if (io_in8(res[0]->base) != 0x55) {
         return 1;
     }
 
     /* disable translation & IRQ (again) */
-    _i686_out8(res[1]->base, 0x60);
-    _i686_out8(res[0]->base, 0x00);
+    io_out8(res[1]->base, 0x60);
+    io_out8(res[0]->base, 0x00);
 
     /* determine if the second port is available */
     int has_second_port = 0;
-    _i686_out8(res[1]->base, 0xA8);
-    _i686_out8(res[1]->base, 0x20);
-    if (!(_i686_in8(res[0]->base) & 0x20)) {
+    io_out8(res[1]->base, 0xA8);
+    io_out8(res[1]->base, 0x20);
+    if (!(io_in8(res[0]->base) & 0x20)) {
         has_second_port = 1;
-        _i686_out8(res[1]->base, 0xA7);
+        io_out8(res[1]->base, 0xA7);
     }
 
     /* initialize bus & child devices */
@@ -271,8 +271,4 @@ static const void *get_interface(struct device *dev, const char *name)
     return NULL;
 }
 
-__attribute__((constructor))
-static void _register_driver(void)
-{
-    register_device_driver(&drv);
-}
+DEVICE_DRIVER(drv)

@@ -11,8 +11,7 @@
 #include <interface/framebuffer.h>
 #include <interface/console.h>
 #include <asm/bios/video.h>
-#include <core/panic.h>
-#include <asm/vbe/pm_interface.h>
+#include <debug.h>
 
 #define DIFF_REGION_SIZE 16
 
@@ -222,9 +221,5 @@ static const void *get_interface(struct device *dev, const char *name)
     return NULL;
 }
 
-__attribute__((constructor))
-static void _register_driver(void)
-{
-    register_device_driver(&drv);
-}
+DEVICE_DRIVER(drv)
 

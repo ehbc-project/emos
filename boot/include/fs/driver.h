@@ -3,6 +3,8 @@
 
 #include <fs/fs.h>
 
+#include <compiler.h>
+
 struct fs_driver {
     struct fs_driver *next;
 
@@ -28,7 +30,7 @@ void register_fs_driver(struct fs_driver *drv);
 
 struct fs_driver *find_fs_driver(const char *name);
 
-int fs_auto_mount(struct device *dev, const char *name);
-int fs_mount(struct device *dev, const char *fsname, const char *name);
+int fs_auto_mount(struct device *__restrict dev, const char *__restrict name);
+int fs_mount(struct device *__restrict dev, const char *__restrict fsname, const char *__restrict name);
 
 #endif // __FS_DRIVER_H__

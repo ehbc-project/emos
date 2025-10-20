@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "types.h"
+
 typedef struct {
     uint8_t bytes[16];
 } __attribute__((packed)) afs_uuid_t;

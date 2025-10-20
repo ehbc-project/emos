@@ -14,7 +14,7 @@ struct filesystem *get_first_filesystem(void)
     return fs_list_head;
 }
 
-int register_filesystem(struct filesystem *fs, const char *name)
+int register_filesystem(struct filesystem *__restrict fs, const char *__restrict name)
 {
     if (!fs->driver) return 1;
     

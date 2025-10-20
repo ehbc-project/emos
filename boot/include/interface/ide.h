@@ -16,8 +16,8 @@ struct ata_command {
 
 struct ide_interface {
     int (*send_command)(struct device *, struct ata_command *);
-    int (*send_command_pio_input)(struct device *, struct ata_command *, void *, long);
-    int (*send_command_pio_output)(struct device *, struct ata_command *, const void *, long);
+    int (*send_command_pio_input)(struct device *, struct ata_command *, void *, long, long);
+    int (*send_command_pio_output)(struct device *, struct ata_command *, const void *, long, long);
 };
 
 #endif // __INTERFACE_IDE_H__

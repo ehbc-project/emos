@@ -23,7 +23,7 @@ if (BUILD_FDIMAGE OR BUILD_CDIMAGE)
     set_target_properties(fdboot PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
     target_sources(fdboot PRIVATE fdboot.S)
 
-    add_custom_target(fdboot_bin ALL
+    add_custom_target(fdboot_execbin ALL
         COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:fdboot>" fdboot.bin
         DEPENDS fdboot
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
@@ -50,7 +50,7 @@ if (BUILD_FDIMAGE OR BUILD_CDIMAGE)
     set_target_properties(mbrboot PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
     target_sources(mbrboot PRIVATE mbrboot.S)
 
-    add_custom_target(mbrboot_bin ALL
+    add_custom_target(mbrboot_execbin ALL
         COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:mbrboot>" mbrboot.bin
         DEPENDS mbrboot
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
@@ -83,7 +83,7 @@ target_include_directories(stage1 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../inc
 target_include_directories(stage1 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../../include")
 target_include_directories(stage1 PRIVATE "${CMAKE_BINARY_DIR}")
 
-target_sources(stage1 PRIVATE stage1.S stage1.c chainload.S ../../cpu_mode.S ../../io.S ../../interrupt.S ../../breakpoint.S pic.c)
+target_sources(stage1 PRIVATE stage1.S stage1.c chainload.S ../../cpu_mode.S ../../interrupt.S ../../breakpoint.S pic.c)
 target_link_options(stage1 PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_stage1.lds")
 set_target_properties(stage1 PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_stage1.lds")
 

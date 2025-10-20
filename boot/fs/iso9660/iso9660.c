@@ -1,11 +1,11 @@
 #include <string.h>
 
+#include <compiler.h>
 #include <mm/mm.h>
 #include <device/driver.h>
 #include <fs/driver.h>
 #include <interface/char.h>
-
-#include <asm/io.h>
+#include <sys/io.h>
 
 struct iso9660_data {
     int a;
@@ -51,7 +51,7 @@ static void unmount(struct filesystem *fs)
     
 }
 
-__attribute__((constructor))
+__constructor
 static void _register_driver(void)
 {
     register_fs_driver(&drv);

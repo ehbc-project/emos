@@ -5,150 +5,14 @@
 #include <ctype.h>
 #include <time.h>
 #include <sys/stat.h>
-#include <getopt.h>
 
 #include "afs.h"
 #include "command.h"
 
-extern unsigned int crc32(const unsigned char *buf, unsigned int len);
-
-static int decode_size(const char *str, uint64_t *value)
-{
-    uint64_t result = 0;
-
-    for (int i = 0; str[i]; i++) {
-        if (!isdigit(str[i])) {
-            if (str[i + 1]) {
-                return 1;
-            }
-
-            switch (str[i]) {
-                case 'T':
-                    result *= 1024;
-                case 'G':
-                    result *= 1024;
-                case 'M':
-                    result *= 1024;
-                case 'k':
-                    result *= 1024;
-                    break;
-                default:
-                    return 1;
-            }
-            
-            break;
-        }
-
-        result *= 10;
-        result += str[i] - '0';
-    }
-
-    *value = result;
-    return 0;
-}
-
-static int decode_uint(const char *str, uint64_t *value)
-{
-    uint64_t result = 0;
-
-    if (str[0] != '0') {
-        for (int i = 0; str[i]; i++) {
-            if (!isdigit(str[i])) {
-                return 1;
-            }
-
-            result *= 10;
-            result += str[i] - '0';
-        }
-
-        *value = result;
-        return 0;
-    }
-
-    if (str[1] == 'x') {
-        for (int i = 2; str[i]; i++) {
-            if (!isxdigit(str[i])) {
-                return 1;
-            }
-
-            result <<= 4;
-            result |= str[i] <= '9' ? str[i] - '0' : ((str[i] <= 'F' ? str[i] - 'A' : str[i] - 'a') + 10);
-        }
-
-        *value = result;
-        return 0;
-    }
-    
-    if (str[1] == 'o' || isdigit(str[1])) {
-        for (int i = str[1] == 'o' ? 2 : 1; str[i]; i++) {
-            if (!isdigit(str[i]) || str[i] >= '8') {
-                return 1;
-            }
-
-            result <<= 3;
-            result |= str[i] - '0';
-        }
-
-        *value = result;
-        return 0;
-    }
-    
-    if (str[1] == 'b') {
-        for (int i = 2; str[i]; i++) {
-            if (str[i] != '0' && str[i] != '1') {
-                return 1;
-            }
-
-            result <<= 1;
-            result |= str[i] - '0';
-        }
-
-        *value = result;
-        return 0;
-    }
-
-    *value = result;
-    return 0;
-}
-
-static int decode_uuid(const char *str, afs_uuid_t *value)
-{
-    memset(value, 0, sizeof(afs_uuid_t));
-
-    int digit_idx = 0;
-    for (int i = 0; str[i]; i++) {
-        if (!isxdigit(str[i]) && str[i] != '-') {
-            return 1;
-        }
-
-        if (str[i] == '-') {
-            if (i != 8 && i != 13 && i != 18 && i != 23) {
-                return 1;
-            } else {
-                continue;
-            }
-        }
-
-        if (digit_idx >= 32) {
-            return 1;
-        }
-
-        value->bytes[digit_idx >> 1] <<= 4;
-        value->bytes[digit_idx >> 1] |= str[i] <= '9' ? str[i] - '0' : ((str[i] <= 'F' ? str[i] - 'A' : str[i] - 'a') + 10);
-        digit_idx++;
-    }
-
-    return 0;
-}
-
 const char *argv0;
 
-static const struct option options[] = {
-    { "help", 0, NULL, 'h' },
-    { 0, 0, 0, 0 },
-};
-
 struct subcommand {
+    struct subcommand *next;
     const char *name;
     int (*handler)(int argc, char **argv);
     const char *usage_str;
@@ -211,7 +75,7 @@ static const struct subcommand *find_subcommand(const char *subcmd_name)
 static void print_usage(const struct subcommand *subcmd)
 {
     if (!subcmd) {
-        fprintf(stderr, "usage: %s [-h] subcommand [args...]\navailable subcommands: ", argv0);
+        fprintf(stderr, "usage: %s subcommand [-h] [args...]\navailable subcommands: ", argv0);
         for (int i = 0; i < sizeof(subcommand_list) / sizeof(*subcommand_list); i++) {
             fprintf(stderr, "%s ", subcommand_list[i].name);
         }
@@ -228,24 +92,9 @@ int main(int argc, char **argv)
 
     argv0 = argv[0];
 
-    do {
-        next_option = getopt_long(argc, argv, ":h", options, NULL);
-
-        switch (next_option) {
-            case 'h':
-                help = 1;
-                break;
-            case '?':
-            case -1:
-                break;
-            default:
-                return 1;
-        }
-    } while (next_option != -1);
-
     const char *subcmd_name = NULL;
-    if (optind < argc) {
-        subcmd_name = argv[optind];
+    if (argc > 1) {
+        subcmd_name = argv[1];
     } else {
         print_usage(NULL);
         return 1;
@@ -261,8 +110,6 @@ int main(int argc, char **argv)
         print_usage(NULL);
         return 1;
     }
-
-    optind = 1;
 
     int ret = subcmd->handler(argc, argv);
     if (ret) {

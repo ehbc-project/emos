@@ -7,13 +7,12 @@
 #include <interface/framebuffer.h>
 #include <interface/hid.h>
 #include <asm/bios/misc.h>
-#include <asm/bios/video.h>
 #include <macros.h>
 #include <shell.h>
+#include <zlib.h>
+#include <debug.h>
 
-extern int __text_start;
-extern int __data_start;
-extern int __bss_start;
+#include <x86gprintrin.h>
 
 void main(void)
 {
@@ -38,26 +37,15 @@ void main(void)
     ttydev->driver = find_device_driver("ansiterm");
     register_device(ttydev);
 
-    freopen_device(stdout, "tty0");
-    freopen_device(stderr, "tty0");
-    freopen_device(stdin, "kbd0");
+    freopendevice("tty0", stdout);
+    freopendevice("tty0", stderr);
+    freopendevice("kbd0", stdin);
 
     printf("\x1b[3J\x1b[0;0f\x1b[?25lEMOS Bootloader\n");
     printf("═══════════════\n");
-
-    // printf(".text=0x%p, .data=0x%p, .bss=0x%p\n", (void *)&__text_start, (void *)&__data_start, (void *)&__bss_start);
-
-    // /* List Memory Map */
-    // uint32_t cursor = 0;
-    // struct smap_entry entry;
-    // 
-    // printf("Memory Map: \r\n");
-    // do {
-    //     if (_pc_bios_query_address_map(&cursor, &entry, sizeof(entry)) < 1) {
-    //         break;
-    //     }
-    //     printf("\t0x%08lX 0x%08lX 0x%08lX\r\n", entry.base_addr_low, entry.length_low, entry.type);
-    // } while (cursor);
+    
+    uint64_t ts = __rdtsc();
+    printf("%016llX\n", ts);
 
     struct device *kbd = find_device("kbd0");
     const struct hid_interface *hidi = kbd->driver->get_interface(kbd, "hid");

@@ -1,10 +1,9 @@
 #ifndef __I686_PC_REBOOT_H__
 #define __I686_PC_REBOOT_H__
 
-/**
- * @brief Reboots the system.
- */
-__attribute__((noreturn))
+#include <compiler.h>
+
+__noreturn
 void _i686_pc_reboot();
 
 #endif // __I686_PC_REBOOT_H__

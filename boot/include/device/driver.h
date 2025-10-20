@@ -3,6 +3,8 @@
 
 #include <device/device.h>
 
+#include <compiler.h>
+
 struct device_driver {
     struct device_driver *next;
 
@@ -12,17 +14,15 @@ struct device_driver {
     const void *(*get_interface)(struct device *, const char *);
 };
 
-/**
- * @brief Register a device driver.
- * @param drv A pointer to the device driver structure to register.
- */
 void register_device_driver(struct device_driver *drv);
 
-/**
- * @brief Find a device driver by name.
- * @param name The name of the driver to find.
- * @return A pointer to the found device driver, or NULL if not found.
- */
 struct device_driver *find_device_driver(const char *name);
+
+#define DEVICE_DRIVER(drv) \
+    __constructor \
+    static void _register_driver_##drv(void) \
+    { \
+        register_device_driver(&drv); \
+    }
 
 #endif // __DEVICE_DRIVER_H__

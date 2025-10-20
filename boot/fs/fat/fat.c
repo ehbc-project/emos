@@ -1,14 +1,16 @@
 #include <string.h>
+#include <strings.h>
 #include <stdio.h>
 #include <ctype.h>
 
+#include <compiler.h>
 #include <mm/mm.h>
 #include <device/driver.h>
 #include <fs/driver.h>
 #include <interface/block.h>
 #include <disk/disk.h>
 
-#include <asm/io.h>
+#include <sys/io.h>
 
 #include "fat.h"
 
@@ -742,7 +744,11 @@ static struct fs_directory *open_directory(struct fs_directory *dir, const char 
     if (!(dir_data->direntry.attribute & FAT_ATTR_DIRECTORY)) return NULL;
 
     struct fat_dir_data *new_dir_data = mm_allocate(sizeof(*new_dir_data));
-    new_dir_data->head_cluster = (dir_data->direntry.cluster_location_high << 16) | dir_data->direntry.cluster_location;
+    if (dir_data->direntry.cluster_location == 0 && dir_data->direntry.cluster_location_high == 0) {
+        new_dir_data->head_cluster = data->root_cluster;
+    } else {
+        new_dir_data->head_cluster = (dir_data->direntry.cluster_location_high << 16) | dir_data->direntry.cluster_location;
+    }
     new_dir_data->current_cluster = new_dir_data->head_cluster;
     new_dir_data->current_entry_index = 0;
 
@@ -841,7 +847,7 @@ static void close_directory(struct fs_directory *dir)
     mm_free(dir);
 }
 
-__attribute__((constructor))
+__constructor
 static void _register_driver(void)
 {
     register_fs_driver(&drv);

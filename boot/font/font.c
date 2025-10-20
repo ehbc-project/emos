@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 
+#include <compiler.h>
 #include <mm/mm.h>
 #include <asm/bios/video.h>
 
@@ -15,13 +16,13 @@ struct font_header {
     uint32_t max_codepoint;
     uint32_t glyph_offset_table_offset;
     uint8_t reserved[4];
-} __attribute__((packed));
+} __packed;
 
 struct glyph_header {
     uint8_t is_full_width : 1;
     uint8_t : 7;
     uint8_t reserved[3];
-} __attribute__((packed));
+} __packed;
 
 static const uint8_t unicode_cp437_table_1[] = {
     0xFF, 0xAD, 0x9B, 0x9C, 0x00, 0x9D, 0x00, 0x15,  /* U+00A0 */
@@ -183,6 +184,15 @@ int font_use(const char *path)
     long file_size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
+    char signature[4];
+    fread(signature, sizeof(signature), 1, fp);
+    fseek(fp, 0, SEEK_SET);
+
+    if (signature[0] != 'b' || signature[1] != 'f' || signature[2] != 'n' || signature[3] != 't') {
+        fclose(fp);
+        return 1;
+    }
+
     if (font_file_data) {
         mm_free(font_file_data);
     }
@@ -209,7 +219,7 @@ int font_get_glyph_dimension(wchar_t codepoint, int *width, int *height)
         return 0;
     } else {
         struct font_header *header = (struct font_header *)font_file_data;
-        if (codepoint >= header->max_codepoint || !((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]) return 1;
+        if (codepoint > header->max_codepoint || !((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]) return 1;
         struct glyph_header *glyph_header = (struct glyph_header *)((uint8_t *)font_file_data + ((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]);
 
         if (width) {
@@ -235,7 +245,7 @@ int font_get_glyph_data(wchar_t codepoint, uint8_t *buf, long size)
         return 0;
     } else {
         struct font_header *header = (struct font_header *)font_file_data;
-        if (codepoint >= header->max_codepoint || !((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]) return -1;
+        if (codepoint > header->max_codepoint || !((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]) return -1;
         struct glyph_header *glyph_header = (struct glyph_header *)((uint8_t *)font_file_data + ((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]);
     
         if (glyph_header->is_full_width && size < 32) return 1;
@@ -246,7 +256,7 @@ int font_get_glyph_data(wchar_t codepoint, uint8_t *buf, long size)
     }
 }
 
-__attribute__((constructor))
+__constructor
 static void _init_vbios_font(void)
 {
     _pc_bios_get_vga_font_data(0x06, &vbios_font, NULL);

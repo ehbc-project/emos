@@ -10,6 +10,7 @@ _start:
     rep     stosb
 
 .jump:
+    xor     %ebp, %ebp
     call    _pc_init                    # jump to c code.
                                         # this function should not return
 

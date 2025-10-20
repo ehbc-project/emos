@@ -29,14 +29,12 @@ target_compile_options(bootloader PUBLIC
 target_sources(bootloader PRIVATE init.c)
 target_link_options(bootloader PUBLIC
     -T "${CMAKE_CURRENT_SOURCE_DIR}/../../../../lib/gnu-efi/gnuefi/elf_ia32_efi.lds"
-    -shared
-    -Bsymbolic
-    -nostdlib
-    -znocombreloc
-    "${CMAKE_CURRENT_BINARY_DIR}/../../../../lib/gnu-efi/ia32/gnuefi/crt0-efi-ia32.o"
+    -Wl,-shared
+    -Wl,-Bsymbolic
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../lib/gnu-efi/ia32/gnuefi/crt0-efi-ia32.o"
 )
 set_target_properties(bootloader PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../../../../lib/gnu-efi/gnuefi/elf_ia32_efi.lds")
-target_link_directories(bootloader PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/../../../../lib/gnu-efi/ia32/lib" "${CMAKE_CURRENT_BINARY_DIR}/../../../../lib/gnu-efi/ia32/gnuefi")
+target_link_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../../lib/gnu-efi/ia32/lib" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../lib/gnu-efi/ia32/gnuefi")
 target_link_libraries(bootloader gnuefi efi)
 
 add_custom_target(bootloader_efibin ALL

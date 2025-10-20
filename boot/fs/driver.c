@@ -37,7 +37,7 @@ struct fs_driver *find_fs_driver(const char *name)
     return NULL;
 }
 
-int fs_auto_mount(struct device *dev, const char *name)
+int fs_auto_mount(struct device *__restrict dev, const char *__restrict name)
 {
     struct filesystem *fs = mm_allocate(sizeof(*fs));
     fs->dev = dev;

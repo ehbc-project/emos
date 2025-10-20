@@ -37,12 +37,6 @@ struct bioscall_regs {
     union segment_reg es;
 };
 
-/**
- * @brief Perform a BIOS call.
- * @param irq The interrupt number.
- * @param regs A pointer to the structure containing the registers for the BIOS call.
- * @return The value of the EAX register after the BIOS call.
- */
 extern int _pc_bios_call(uint8_t irq, struct bioscall_regs*);
 
 #endif // __I686_PC_BIOSCALL_H__

@@ -1,3 +1,3 @@
 cmake_minimum_required(VERSION 3.13)
 
-target_sources(bootloader PRIVATE scan.c)
+target_sources(bootloader PRIVATE class.c id.c scan.c)

@@ -5,7 +5,8 @@
 #include <device/driver.h>
 #include <interface/block.h>
 #include <interface/ide.h>
-#include <bus/ide/ata.h>
+
+#include "ata.h"
 
 struct ata_data {
     struct device *idedev;
@@ -45,7 +46,7 @@ static long read(struct device *dev, lba_t lba, void *buf, long count)
         };
     }
 
-    data->ideif->send_command_pio_input(data->idedev, &cmd, buf, 512 * count);
+    data->ideif->send_command_pio_input(data->idedev, &cmd, buf, 512, count);
 
     return count;
 }
@@ -107,16 +108,20 @@ static int probe(struct device *dev)
         .drive_head = 0xA0 | (data->slave ? 0x10 : 0x00),
     };
 
-    if (ideif->send_command_pio_input(idedev, &cmd, idbuf, sizeof(idbuf))) {
+    if (ideif->send_command_pio_input(idedev, &cmd, idbuf, sizeof(idbuf), 1)) {
         return 1;
     }
 
-    struct device *mbrdev = mm_allocate_clear(1, sizeof(struct device));
-    mbrdev->parent = dev;
-    mbrdev->driver = find_device_driver("mbr");
-    register_device(mbrdev);
+    struct device *ptdev = mm_allocate_clear(1, sizeof(struct device));
+    ptdev->parent = dev;
 
-    return 0;
+    ptdev->driver = find_device_driver("mbr");
+    if (!register_device(ptdev)) return 0;
+
+    ptdev->driver = find_device_driver("gpt");
+    if (!register_device(ptdev)) return 0;
+
+    return 1;
 }
 
 static int remove(struct device *dev)
@@ -137,8 +142,4 @@ static const void *get_interface(struct device *dev, const char *name)
     return NULL;
 }
 
-__attribute__((constructor))
-static void _register_driver(void)
-{
-    register_device_driver(&drv);
-}
+DEVICE_DRIVER(drv)

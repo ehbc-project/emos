@@ -4,14 +4,14 @@
 #include <device/driver.h>
 #include <interface/char.h>
 
-#include <asm/io.h>
+#include <sys/io.h>
 
 static long write(struct device *dev, const char *buf, long len)
 {
     for (int i = 0; i < len; i++) {
         switch (dev->resource->type) {
             case RT_IOPORT:
-                _i686_out8(dev->resource->base, buf[i]);
+                io_out8(dev->resource->base, buf[i]);
                 break;
             case RT_MEMORY:
                 *(uint8_t *)(long)dev->resource->base = buf[i];
@@ -66,8 +66,4 @@ static const void *get_interface(struct device *dev, const char *name)
     return NULL;
 }
 
-__attribute__((constructor))
-static void _register_driver(void)
-{
-    register_device_driver(&drv);
-}
+DEVICE_DRIVER(drv)

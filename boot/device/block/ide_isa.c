@@ -5,8 +5,7 @@
 #include <bus/bus.h>
 #include <device/driver.h>
 #include <interface/ide.h>
-#include <asm/io.h>
-#include <bus/ide/atapi.h>
+#include <sys/io.h>
 #include <asm/isr.h>
 #include <asm/pause.h>
 
@@ -34,20 +33,20 @@ static int bus_soft_reset(struct device *dev)
 {
     struct ide_data *data = (struct ide_data *)dev->data;
 
-    _i686_out8(data->res[1]->base + IDEREG_DEVCTRL, 0x04);
-    _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
-    _i686_out8(data->res[1]->base + IDEREG_DEVCTRL, 0x00);
+    io_out8(data->res[1]->base + IDEREG_DEVCTRL, 0x04);
+    io_in8(data->res[1]->base + IDEREG_ALTSTAT);
+    io_out8(data->res[1]->base + IDEREG_DEVCTRL, 0x00);
     for (int i = 0; i < 20; i++) {
-        _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
+        io_in8(data->res[1]->base + IDEREG_ALTSTAT);
     }
 
-    uint8_t status = _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
+    uint8_t status = io_in8(data->res[1]->base + IDEREG_ALTSTAT);
     if (status == 0xFF) {
         return 1;
     }
     do {
         _i686_pause();
-        status = _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
+        status = io_in8(data->res[1]->base + IDEREG_ALTSTAT);
     } while (status & 0x80);
 
     return 0;
@@ -60,50 +59,50 @@ static int send_command(struct device *dev, struct ata_command *cmd)
     uint8_t status;
     do {
         _i686_pause();
-        status = _i686_in8(data->res[0]->base + IDEREG_STATUS);
+        status = io_in8(data->res[0]->base + IDEREG_STATUS);
     } while (status & 0x80);
 
-    if ((_i686_in8(data->res[0]->base + IDEREG_DRVHEAD) & 0x10) != (cmd->drive_head & 0x10)) {
-        _i686_out8(data->res[0]->base + IDEREG_DRVHEAD, cmd->drive_head);
-        _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
-        _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
-        _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
-        _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
+    if ((io_in8(data->res[0]->base + IDEREG_DRVHEAD) & 0x10) != (cmd->drive_head & 0x10)) {
+        io_out8(data->res[0]->base + IDEREG_DRVHEAD, cmd->drive_head);
+        io_in8(data->res[1]->base + IDEREG_ALTSTAT);
+        io_in8(data->res[1]->base + IDEREG_ALTSTAT);
+        io_in8(data->res[1]->base + IDEREG_ALTSTAT);
+        io_in8(data->res[1]->base + IDEREG_ALTSTAT);
     }
 
-    _i686_out8(data->res[0]->base + IDEREG_DRVHEAD, cmd->drive_head);
+    io_out8(data->res[0]->base + IDEREG_DRVHEAD, cmd->drive_head);
 
     if (cmd->extended) {
-        _i686_out8(data->res[0]->base + IDEREG_FEATURES, (cmd->features >> 8) & 0xFF);
-        _i686_out8(data->res[0]->base + IDEREG_COUNT, (cmd->count >> 8) & 0xFF);
-        _i686_out8(data->res[0]->base + IDEREG_SECTOR, (cmd->sector >> 8) & 0xFF);
-        _i686_out8(data->res[0]->base + IDEREG_CYLLOW, (cmd->cylinder_low >> 8) & 0xFF);
-        _i686_out8(data->res[0]->base + IDEREG_CYLHIGH, (cmd->cylinder_high >> 8) & 0xFF);
+        io_out8(data->res[0]->base + IDEREG_FEATURES, (cmd->features >> 8) & 0xFF);
+        io_out8(data->res[0]->base + IDEREG_COUNT, (cmd->count >> 8) & 0xFF);
+        io_out8(data->res[0]->base + IDEREG_SECTOR, (cmd->sector >> 8) & 0xFF);
+        io_out8(data->res[0]->base + IDEREG_CYLLOW, (cmd->cylinder_low >> 8) & 0xFF);
+        io_out8(data->res[0]->base + IDEREG_CYLHIGH, (cmd->cylinder_high >> 8) & 0xFF);
     }
 
-    _i686_out8(data->res[0]->base + IDEREG_FEATURES, cmd->features & 0xFF);
-    _i686_out8(data->res[0]->base + IDEREG_COUNT, cmd->count & 0xFF);
-    _i686_out8(data->res[0]->base + IDEREG_SECTOR, cmd->sector & 0xFF);
-    _i686_out8(data->res[0]->base + IDEREG_CYLLOW, cmd->cylinder_low & 0xFF);
-    _i686_out8(data->res[0]->base + IDEREG_CYLHIGH, cmd->cylinder_high & 0xFF);
+    io_out8(data->res[0]->base + IDEREG_FEATURES, cmd->features & 0xFF);
+    io_out8(data->res[0]->base + IDEREG_COUNT, cmd->count & 0xFF);
+    io_out8(data->res[0]->base + IDEREG_SECTOR, cmd->sector & 0xFF);
+    io_out8(data->res[0]->base + IDEREG_CYLLOW, cmd->cylinder_low & 0xFF);
+    io_out8(data->res[0]->base + IDEREG_CYLHIGH, cmd->cylinder_high & 0xFF);
     
-    _i686_out8(data->res[0]->base + IDEREG_COMMAND, cmd->command);
+    io_out8(data->res[0]->base + IDEREG_COMMAND, cmd->command);
 
     do {
         _i686_pause();
-        status = _i686_in8(data->res[0]->base + IDEREG_STATUS);
+        status = io_in8(data->res[0]->base + IDEREG_STATUS);
     } while (status & 0x80);
 
-    cmd->features = _i686_in8(data->res[0]->base + IDEREG_ERROR);
-    cmd->count = _i686_in8(data->res[0]->base + IDEREG_COUNT);
-    cmd->sector = _i686_in8(data->res[0]->base + IDEREG_SECTOR);
-    cmd->cylinder_low = _i686_in8(data->res[0]->base + IDEREG_CYLLOW);
-    cmd->cylinder_high = _i686_in8(data->res[0]->base + IDEREG_CYLHIGH);
+    cmd->features = io_in8(data->res[0]->base + IDEREG_ERROR);
+    cmd->count = io_in8(data->res[0]->base + IDEREG_COUNT);
+    cmd->sector = io_in8(data->res[0]->base + IDEREG_SECTOR);
+    cmd->cylinder_low = io_in8(data->res[0]->base + IDEREG_CYLLOW);
+    cmd->cylinder_high = io_in8(data->res[0]->base + IDEREG_CYLHIGH);
 
     return status & 0x21;
 }
 
-static int send_command_pio_input(struct device *dev, struct ata_command *cmd, void *buf, long len)
+static int send_command_pio_input(struct device *dev, struct ata_command *cmd, void *buf, long size, long count)
 {
     struct ide_data *data = (struct ide_data *)dev->data;
 
@@ -111,27 +110,23 @@ static int send_command_pio_input(struct device *dev, struct ata_command *cmd, v
     if (err) return err;
 
     uint8_t status;
-    uint16_t *buf16 = buf;
+    long transferred_count = 0;
+
     do {
         do {
             _i686_pause();
-            status = _i686_in8(data->res[0]->base + IDEREG_STATUS);
-            if (status & 0x21) break;
+            status = io_in8(data->res[0]->base + IDEREG_STATUS);
+            if (status & 0x21) goto end;
         } while (status & 0x80);
-        if (status & 0x21) break;
+    
+        io_ins16(data->res[0]->base + IDEREG_DATA, buf + transferred_count * size, size / sizeof(uint16_t));
+    } while (++transferred_count < count);
 
-        if (len > 0) {
-            *buf16++ = _i686_in16(data->res[0]->base + IDEREG_DATA);
-            len -= 2;
-        } else {
-            _i686_in16(data->res[0]->base + IDEREG_DATA);
-        }
-    } while (status & 0x08);
-
-    return _i686_in8(data->res[0]->base + IDEREG_ERROR);
+end:
+    return io_in8(data->res[0]->base + IDEREG_ERROR);
 }
 
-static int send_command_pio_output(struct device *dev, struct ata_command *cmd, const void *buf, long len)
+static int send_command_pio_output(struct device *dev, struct ata_command *cmd, const void *buf, long size, long count)
 {
     struct ide_data *data = (struct ide_data *)dev->data;
 
@@ -139,21 +134,20 @@ static int send_command_pio_output(struct device *dev, struct ata_command *cmd, 
     if (err) return err;
 
     uint8_t status;
-    const uint16_t *buf16 = buf;
+    long transferred_count = 0;
+
     do {
-        _i686_pause();
-        status = _i686_in8(data->res[0]->base + IDEREG_STATUS);
-        if (status & 0x01) break;
+        do {
+            _i686_pause();
+            status = io_in8(data->res[0]->base + IDEREG_STATUS);
+            if (status & 0x01) goto end;
+        } while (status & 0x08);
+    
+        io_outs16(data->res[0]->base + IDEREG_DATA, buf + transferred_count * size, size / sizeof(uint16_t));
+    } while (++transferred_count < count);
 
-        if (len > 0) {
-            _i686_out16(data->res[0]->base + IDEREG_DATA, *buf16++);
-            len -= 2;
-        } else {
-            _i686_out16(data->res[0]->base + IDEREG_DATA, 0);
-        }
-    } while (status & 0x08);
-
-    return _i686_in8(data->res[0]->base + IDEREG_ERROR);
+end:
+    return io_in8(data->res[0]->base + IDEREG_ERROR);
 }
 
 const struct ide_interface ideif = {
@@ -166,12 +160,12 @@ static int detect_device(struct device *dev, int slave, int *atapi)
 {
     struct ide_data *data = (struct ide_data *)dev->data;
 
-    _i686_out8(data->res[0]->base + IDEREG_DRVHEAD, 0xA0 | (slave ? 0x10 : 0x00));
-    _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
-    _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
-    _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
-    _i686_in8(data->res[1]->base + IDEREG_ALTSTAT);
-    if (_i686_in8(data->res[1]->base + IDEREG_ALTSTAT) == 0x00) return 1;
+    io_out8(data->res[0]->base + IDEREG_DRVHEAD, 0xA0 | (slave ? 0x10 : 0x00));
+    io_in8(data->res[1]->base + IDEREG_ALTSTAT);
+    io_in8(data->res[1]->base + IDEREG_ALTSTAT);
+    io_in8(data->res[1]->base + IDEREG_ALTSTAT);
+    io_in8(data->res[1]->base + IDEREG_ALTSTAT);
+    if (io_in8(data->res[1]->base + IDEREG_ALTSTAT) == 0x00) return 1;
 
     uint16_t idbuf[256];
     struct atapi_device_ident *atapi_ident = (struct atapi_device_ident *)&idbuf;
@@ -187,7 +181,7 @@ static int detect_device(struct device *dev, int slave, int *atapi)
         .drive_head = 0xA0 | (slave ? 0x10 : 0x00),
     };
     
-    if (send_command_pio_input(dev, &cmd, idbuf, 512)) {
+    if (send_command_pio_input(dev, &cmd, idbuf, sizeof(idbuf), 1)) {
         if (cmd.cylinder_low != 0x14 || cmd.cylinder_high != 0xEB) {
             return 1;
         }
@@ -209,7 +203,7 @@ static int detect_device(struct device *dev, int slave, int *atapi)
         .drive_head = 0xA0 | (slave ? 0x10 : 0x00),
     };
 
-    if (send_command_pio_input(dev, &cmd, idbuf, 512)) {
+    if (send_command_pio_input(dev, &cmd, idbuf, sizeof(idbuf), 1)) {
         return 1;
     }
 
@@ -314,8 +308,4 @@ static const void *get_interface(struct device *dev, const char *name)
     return NULL;
 }
 
-__attribute__((constructor))
-static void _register_driver(void)
-{
-    register_device_driver(&drv);
-}
+DEVICE_DRIVER(drv)

@@ -6,10 +6,11 @@
 #include <string.h>
 #include <macros.h>
 #include <stdlib.h>
-#include <cpuid.h>
 #include <ctype.h>
 #include <getopt.h>
 #include <path.h>
+
+#include <zlib.h>
 
 #include <mm/mm.h>
 #include <device/driver.h>
@@ -19,10 +20,12 @@
 #include <interface/block.h>
 #include <interface/hid.h>
 #include <bus/pci/scan.h>
-#include <acpi/rsdp.h>
-#include <acpi/rsdt.h>
-#include <acpi/fadt.h>
-#include <acpi/madt.h>
+#include <bus/pci/class.h>
+#include <bus/pci/cfgspace.h>
+#include <uacpi/acpi.h>
+#include <uacpi/kernel_api.h>
+#include <uacpi/tables.h>
+#include <asm/cpuid.h>
 #include <asm/bios/video.h>
 #include <asm/bios/disk.h>
 #include <asm/bios/misc.h>
@@ -30,15 +33,17 @@
 #include <asm/poweroff.h>
 #include <asm/pci/cfgspace.h>
 #include <asm/bootinfo.h>
-#include <asm/io.h>
+#include <sys/io.h>
 #include <asm/breakpoint.h>
 #include <asm/interrupt.h>
 #include <asm/pic.h>
 #include <asm/time.h>
 #include <asm/boot.h>
-#include <core/panic.h>
+#include <asm/isr.h>
+#include <debug.h>
 #include <fs/driver.h>
 #include <font.h>
+#include <elf.h>
 
 static int readline(char *buf, int len)
 {
@@ -56,7 +61,7 @@ static int readline(char *buf, int len)
                     break;
                 }
                 cur--;
-                puts("\b \b");
+                fputs("\b \b", stdout);
                 break;
             default:
                 if (cur >= len - 1) {
@@ -86,7 +91,9 @@ struct command {
 
 static int tick_handler(struct shell_instance *inst, int argc, char **argv);
 static int echo_handler(struct shell_instance *inst, int argc, char **argv);
+static int clear_handler(struct shell_instance *inst, int argc, char **argv);
 static int vmode_handler(struct shell_instance *inst, int argc, char **argv);
+static int dispinfo_handler(struct shell_instance *inst, int argc, char **argv);
 static int cpuid_handler(struct shell_instance *inst, int argc, char **argv);
 static int lspci_handler(struct shell_instance *inst, int argc, char **argv);
 static int lsdev_handler(struct shell_instance *inst, int argc, char **argv);
@@ -104,6 +111,7 @@ static int lsfs_handler(struct shell_instance *inst, int argc, char **argv);
 static int lsfile_handler(struct shell_instance *inst, int argc, char **argv);
 static int chdir_handler(struct shell_instance *inst, int argc, char **argv);
 static int readfile_handler(struct shell_instance *inst, int argc, char **argv);
+static int crc32_handler(struct shell_instance *inst, int argc, char **argv);
 static int dispimg_handler(struct shell_instance *inst, int argc, char **argv);
 static int lsint_handler(struct shell_instance *inst, int argc, char **argv);
 static int chainload_handler(struct shell_instance *inst, int argc, char **argv);
@@ -111,6 +119,7 @@ static int bootnext_handler(struct shell_instance *inst, int argc, char **argv);
 static int drvinfo_handler(struct shell_instance *inst, int argc, char **argv);
 static int usefont_handler(struct shell_instance *inst, int argc, char **argv);
 static int jump_handler(struct shell_instance *inst, int argc, char **argv);
+static int boot_handler(struct shell_instance *inst, int argc, char **argv);
 static int help_handler(struct shell_instance *inst, int argc, char **argv);
 static int reboot_handler(struct shell_instance *inst, int argc, char **argv);
 static int poweroff_handler(struct shell_instance *inst, int argc, char **argv);
@@ -119,15 +128,19 @@ static int shell_handler(struct shell_instance *inst, int argc, char **argv);
 
 static const struct command commands[] = {
     { "acpi", acpi_handler, "Show ACPI informations" },
+    { "boot", boot_handler, "Boot from file" },
     { "bootnext", bootnext_handler, "Boot from next device" },
     { "cd", chdir_handler, "Change working directory" },
     { "cf", chfs_handler, "Change filesystem" },
     { "chainload", chainload_handler, "Boot from other disk" },
     { "chdir", chdir_handler, "Change working directory" },
     { "chfs", chfs_handler, "Change filesystem" },
+    { "clear", clear_handler, "Clear console" },
     { "cpuid", cpuid_handler, "Invoke CPUID" },
+    { "crc32", crc32_handler, "Get CRC32 checksum of a file" },
     { "drvinfo", drvinfo_handler, "Show drive information" },
     { "dispimg", dispimg_handler, "Display a .bmp image file" },
+    { "dispinfo", dispinfo_handler, "Get information of the display" },
     { "echo", echo_handler, "Write arguments to the stanard output" },
     { "exit", exit_handler, "Exit from shell" },
     { "help", help_handler, "Print this message" },
@@ -167,6 +180,13 @@ static int echo_handler(struct shell_instance *inst, int argc, char **argv)
 
     char *message = argv[1];
     printf("%s\n", argv[1]);
+
+    return 0;
+}
+
+static int clear_handler(struct shell_instance *inst, int argc, char **argv)
+{
+    printf("\x1b[3J\x1b[0;0f");
 
     return 0;
 }
@@ -216,7 +236,11 @@ static int vmode_handler(struct shell_instance *inst, int argc, char **argv)
                         fprintf(stderr, "%s: could not get video mode info\n", argv[0]);
                         return 1;
                     }
-                    printf("Mode %03X: w=%4d h=%4d bpp=%2d addr=%08lX attr=%04X mm=%s\r\n", mode_list[i], vbe_mode_info.width, vbe_mode_info.height, vbe_mode_info.bpp, vbe_mode_info.framebuffer, vbe_mode_info.attributes, memory_models[vbe_mode_info.memory_model]);
+                    printf("Mode %03X: w=%4d h=%4d bpp=%2d addr=%08lX attr=%04X mm=%s\r\n",
+                        mode_list[i],
+                        vbe_mode_info.width, vbe_mode_info.height, vbe_mode_info.bpp,
+                        vbe_mode_info.framebuffer, vbe_mode_info.attributes, memory_models[vbe_mode_info.memory_model]
+                    );
                 }
 
                 return 0;
@@ -270,27 +294,153 @@ static int vmode_handler(struct shell_instance *inst, int argc, char **argv)
     return 0;
 }
 
-static int cpuid_handler(struct shell_instance *inst, int argc, char **argv)
+static int dispinfo_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    if (argc < 2) {
-        printf("usage: %s num\n", argv[0]);
-        return 1;
+    struct edid buf;
+    _pc_bios_get_vbe_edid(0, 0, &buf);
+
+    uint16_t manufacturer_id = ((buf.manufacturer_id & 0x00FF) << 8) | ((buf.manufacturer_id & 0xFF00) >> 8);
+
+    printf("Manufacturer: %c%c%c\n", 'A' + ((manufacturer_id & 0x7C00) >> 10), 'A' + ((manufacturer_id & 0x03E0) >> 5), 'A' + (manufacturer_id & 0x001F));
+
+    printf("EDID Version: %02X\n", buf.edid_version);
+    printf("EDID Revision: %02X\n", buf.edid_revision);
+
+    for (int i = 0; i < 4; i++) {
+        int w = buf.detailed_timings[0].hactive | ((int)(buf.detailed_timings[0].hactive_hblank & 0xF0) << 4);
+        int h = buf.detailed_timings[0].vactive | ((int)(buf.detailed_timings[0].vactive_vblank & 0xF0) << 4);
+
+        printf("Preferred resolution #%d: %dx%d\n", i, w, h);
     }
 
-    int request = atoi(argv[1]);
+
+    return 0;
+}
+
+static int cpuid_handler(struct shell_instance *inst, int argc, char **argv)
+{
+    uint32_t max_param;
 
     uint32_t eax, ebx, ecx, edx;
-    __cpuid(request, eax, ebx, ecx, edx);
+    _i686_cpuid(0, &eax, &ebx, &ecx, &edx);
 
-    if (request == 0) {
-        uint32_t vendor_str[3] = { ebx, edx, ecx };
-        printf("eax=%08lX\n", eax);
-        printf("ebx_edx_ecx=%12s\n", (char *)vendor_str);
-    } else {
-        printf("eax=%08lX\n", eax);
-        printf("ebx=%08lX\n", ebx);
-        printf("edx=%08lX\n", edx);
-        printf("ecx=%08lX\n", ecx);
+    max_param = eax;
+    uint32_t vendor_str[3] = { ebx, edx, ecx };
+    printf("Vendor String: %12s\n", (char *)vendor_str);
+
+    if (max_param >= 1) {
+        _i686_cpuid(1, &eax, &ebx, &ecx, &edx);
+
+        printf("Processor Type: %1lX\n", (eax & 0x00003000) >> 12);
+        printf("Model ID: %02lX\n", ((eax & 0x000F0000) >> 12) | ((eax & 0x000000F0) >> 4));
+        printf("Family ID: %03lX\n", ((eax & 0x0FF00000) >> 16) | ((eax & 0x00000F00) >> 8));
+        printf("Stepping ID: %1lX\n", eax & 0x0000000F);
+
+        printf("Brand Index: %02lX\n", ebx & 0x000000FF);
+        if (edx & 0x00080000) {
+            printf("CFLUSH Line Size: %ld\n", (ebx & 0x0000FF00) >> 5);
+        }
+        if (edx & 0x10000000) {
+            printf("Max Logical Processor ID: %ld\n", (ebx & 0x00FF0000) >> 16);
+        }
+        if (edx & 0x00000200) {
+            printf("Local APIC ID: %ld\n", (ebx & 0xFF000000) >> 16);
+        }
+
+        printf("CPU Features: ");
+
+        for (int i = 0; i < 32; i++) {
+            if ((ecx >> i) & 1) {
+                static const char *features[] = {
+                    "SSE3",     "PCLMUL",   "DTES64",   "MONITOR",
+                    "DS_CPL",   "VMX",      "SMX",      "EST",
+                    "TM2",      "SSSE3",    "CID",      "SDBG",
+                    "FMA",      "CX16",     "XTPR",     "PDCM",
+                    NULL,       "PCID",     "DCA",      "SSE4.1",
+                    "SSE4.2",   "X2APIC",   "MOVBE",    "POPCNT",
+                    "TSC",      "AES",      "XSAVE",    "OSXSAVE",
+                    "AVX",      "F16C",     "RDRAND",   "HYPERVISOR",
+                };
+                if (!features[i]) continue;
+
+                printf("%s ", features[i]);
+            }
+        }
+
+        for (int i = 0; i < 32; i++) {
+            if ((edx >> i) & 1) {
+                static const char *features[] = {
+                    "FPU",      "VME",      "DE",       "PSE",
+                    "TSC",      "MSR",      "PAE",      "MCE",
+                    "CX8",      "APIC",     NULL,       "SEP",
+                    "MTRR",     "PGE",      "MCA",      "CMOV",
+                    "PAT",      "PSE36",    "PSN",      "CLFLUSH",
+                    NULL,       "DS",       "ACPI",     "MMX",
+                    "FXSR",     "SSE",      "SSE2",     "SS",
+                    "HTT",      "TM",       "IA64",     "PBE",
+                };
+                if (!features[i]) continue;
+                
+                printf("%s ", features[i]);
+            }
+        }
+
+        printf("\n");
+    }
+
+    _i686_cpuid(0x80000000, &eax, &ebx, &ecx, &edx);
+    max_param = eax;
+
+    if (max_param >= 0x80000001) {
+        printf("CPU Features (More): ");
+
+        for (int i = 0; i < 32; i++) {
+            if ((ecx >> i) & 1) {
+                static const char *features[] = {
+                    "LAHF_LM",      "CMP_LEGACY",   "SVM",      "EXTAPIC",
+                    "CR8_LEGACY",   "ABM_LZCNT",    "SSE4A",    "MISALIGNSSE",
+                    "3DNOWPREFETCH","OSVW",         "IBS",      "XOP",
+                    "SKINIT",       "WDT",          NULL,       "LWP",
+                    "FMA4",         "TCE",          NULL,       "NODEID_MSR",
+                    NULL,           "TBM",          "TOPOEXT",  "PERFCTR_CORE",
+                    "PERFCTR_NB",   "STREAMPERFMON","DBX",      "PERFTSC",
+                    "PCX_L2I",      "MONITORX",     "ADDR_MASK_EXT",    NULL,
+                };
+                if (!features[i]) continue;
+
+                printf("%s ", features[i]);
+            }
+        }
+
+        for (int i = 0; i < 32; i++) {
+            if ((edx >> i) & 1) {
+                static const char *features[] = {
+                    NULL,       NULL,       NULL,       NULL,
+                    NULL,       NULL,       NULL,       NULL,
+                    NULL,       NULL,       "SYSCALL",  "SYSCALL",
+                    NULL,       NULL,       NULL,       NULL,
+                    NULL,       NULL,       NULL,       "ECC",
+                    "NX",       NULL,       "MMXEXT",   NULL,
+                    "FXSR",     "FXSR_OPT", "PDPE1GB",  "RDTSCP",
+                    NULL,       "LM",       "3DNOWEXT", "3DNOW"
+                };
+                if (!features[i]) continue;
+
+                printf("%s ", features[i]);
+            }
+        }
+
+        printf("\n");
+    }
+
+    if (max_param >= 0x80000004) {
+        uint32_t brand_str[12];
+        
+        _i686_cpuid(0x80000002, &brand_str[0], &brand_str[1], &brand_str[2], &brand_str[3]);
+        _i686_cpuid(0x80000003, &brand_str[4], &brand_str[5], &brand_str[6], &brand_str[7]);
+        _i686_cpuid(0x80000004, &brand_str[8], &brand_str[9], &brand_str[10], &brand_str[11]);
+
+        printf("Brand String: %48s\n", (char *)brand_str);
     }
 
     return 0;
@@ -298,6 +448,7 @@ static int cpuid_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int lspci_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    /*
     struct pci_device pci_devices[32];
     int pci_count = pci_host_scan(pci_devices, ARRAY_SIZE(pci_devices));
 
@@ -305,7 +456,16 @@ static int lspci_handler(struct shell_instance *inst, int argc, char **argv)
         uint8_t bus = pci_devices[i].bus;
         uint8_t device = pci_devices[i].device;
         uint8_t function = pci_devices[i].function;
-        printf("bus %d device %d function %d: vendor 0x%04X, device 0x%04X (%d, %d, %d)\n", bus, device, function, pci_devices[i].vendor_id, pci_devices[i].device_id, pci_devices[i].base_class, pci_devices[i].sub_class, pci_devices[i].interface);
+        printf("bus %d device %d function %d: vendor 0x%04X, device 0x%04X (%d, %d, %d)\n",
+            bus, device, function,
+            pci_devices[i].vendor_id, pci_devices[i].device_id,
+            pci_devices[i].base_class, pci_devices[i].sub_class, pci_devices[i].interface
+        );
+        printf("%s -> %s -> %s\n",
+            _bus_pci_device_get_class_name(pci_devices[i].base_class),
+            _bus_pci_device_get_subclass_name(pci_devices[i].base_class, pci_devices[i].sub_class),
+            _bus_pci_device_get_interface_name(pci_devices[i].base_class, pci_devices[i].sub_class, pci_devices[i].interface)
+        );
         uint32_t bar = _bus_pci_cfg_read32(bus, device, function, PCI_CFGSPACE_BAR0);
         if (bar) {
             printf("\tBAR0: %08lX\n", bar);
@@ -331,17 +491,52 @@ static int lspci_handler(struct shell_instance *inst, int argc, char **argv)
             printf("\tBAR5: %08lX\n", bar);
         }
     }
+        */
 
     return 0;
+}
+
+static void print_dev_tree(struct device *parent_dev, int indent, uint32_t chain) {
+    struct device *dev = parent_dev->first_child;
+
+    while (dev) {
+        for (int i = 0; i < indent; i++) {
+            printf(((chain >> i) & 1) ? "│   " : "    ");
+        }
+        printf(dev->sibling ? "├───" : "└───");
+        printf("%s%d: %s\n", dev->name, dev->id, dev->driver->name);
+
+        if (dev->first_child) {
+            print_dev_tree(dev, indent + 1, chain | (dev->sibling ? (1 << indent) : 0));
+        }
+
+        dev = dev->sibling;
+    }
 }
 
 static int lsdev_handler(struct shell_instance *inst, int argc, char **argv)
 {
     struct device *dev = get_first_device();
+    struct device *last_root_dev = NULL;
+
+    printf("System\n");
+
     while (dev) {
-        printf("- %s%d: %s\n", dev->name, dev->id, dev->driver->name);
+        if (!dev->parent) {
+            if (last_root_dev) {
+                printf("├───%s%d: %s\n", last_root_dev->name, last_root_dev->id, last_root_dev->driver->name);
+                print_dev_tree(last_root_dev, 1, 1);
+            }
+
+            last_root_dev = dev;
+        }
 
         dev = dev->next;
+    }
+
+    if (last_root_dev) {
+        printf("└───%s%d: %s\n", last_root_dev->name, last_root_dev->id, last_root_dev->driver->name);
+        print_dev_tree(last_root_dev, 1, 0);
     }
 
     return 0;
@@ -350,8 +545,8 @@ static int lsdev_handler(struct shell_instance *inst, int argc, char **argv)
 static int acpi_handler(struct shell_instance *inst, int argc, char **argv)
 {
     /* List ACPI Info */
-    struct acpi_rsdp *rsdp = acpi_find_rsdp();
-    if (!rsdp) {
+    struct acpi_rsdp *rsdp;
+    if (uacpi_kernel_get_rsdp((uacpi_phys_addr *)&rsdp)) {
         return 1;
     }
 
@@ -368,109 +563,111 @@ static int acpi_handler(struct shell_instance *inst, int argc, char **argv)
             printf(" Unknown\n");
             break;
     }
-    printf("\tOEM ID: %s\n", rsdp->oem_id);
+    printf("\tOEM ID: %s\n", rsdp->oemid);
 
-    struct acpi_rsdt *rsdt = (struct acpi_rsdt *)rsdp->rsdt_address;
+    struct acpi_rsdt *rsdt = (struct acpi_rsdt *)rsdp->rsdt_addr;
     printf("\tRSDT: 0x%p\n", (void *)rsdt);
-    printf("\t\tCreator ID: %4s\n", (const char *)&rsdt->header.creator_id);
-    printf("\t\tCreator Revision: 0x%08lX\n", rsdt->header.creator_revision);
-    printf("\t\tLength: 0x%08lX\n", rsdt->header.length);
+    printf("\t\tCreator ID: %4s\n", (const char *)&rsdt->hdr.creator_id);
+    printf("\t\tCreator Revision: 0x%08lX\n", rsdt->hdr.creator_revision);
+    printf("\t\tLength: 0x%08lX\n", rsdt->hdr.length);
 
     if (rsdp->revision >= 2) {
-        printf("\tXSDT: 0x%016llX\n", rsdp->xsdt_address);
+        printf("\tXSDT: 0x%016llX\n", rsdp->xsdt_addr);
     }
 
     printf("\tTables: \n");
-    for (int i = 0; i < (rsdt->header.length - sizeof(rsdt->header)) / sizeof(uint32_t); i++) {
-        struct acpi_sdt_header *header = (struct acpi_sdt_header *)(rsdt->table_pointers[i]);
+    for (int i = 0; i < (rsdt->hdr.length - sizeof(rsdt->hdr)) / sizeof(uint32_t); i++) {
+        struct acpi_sdt_hdr *header = (struct acpi_sdt_hdr *)(rsdt->entries[i]);
         printf("\t- %4s: 0x%p\n", header->signature, (void *)header);
     }
 
-    struct acpi_fadt *fadt = acpi_find_table(rsdt, ACPI_FADT_SIGNATURE);
-    if (fadt) {
+    struct acpi_fadt *fadt;
+    if (!uacpi_table_fadt(&fadt)) {
         printf("FADT: 0x%p\n", (void *)fadt);
 
         printf("\tPreferred PM Profile: %d\n", fadt->preferred_pm_profile);
-        printf("\tSCI Interrupt: %d\n", fadt->sci_interrupt);
-        printf("\tSMI Command Port: %08lX\n", fadt->smi_command_port);
+        printf("\tSCI Interrupt: %d\n", fadt->sci_int);
+        printf("\tSMI Command Port: %08lX\n", fadt->smi_cmd);
 
         printf("\tACPI Enable Port: %04X\n", fadt->acpi_enable);
         printf("\tACPI Disable Port: %04X\n", fadt->acpi_disable);
 
-        printf("\tPM1: evt_len=%d, ctl_len=%d\n", fadt->pm1_event_length, fadt->pm1_control_length);
-        printf("\tPM1a: evt_blk=0x%08lX, ctl_blk=0x%08lX\n", fadt->pm1a_event_block, fadt->pm1a_control_block);
-        printf("\tPM1b: evt_blk=0x%08lX, ctl_blk=0x%08lX\n", fadt->pm1b_event_block, fadt->pm1b_control_block);
+        printf("\tPM1: evt_len=%d, ctl_len=%d\n", fadt->pm1_evt_len, fadt->pm1_cnt_len);
+        printf("\tPM1a: evt_blk=0x%08lX, ctl_blk=0x%08lX\n", fadt->pm1a_evt_blk, fadt->pm1a_cnt_blk);
+        printf("\tPM1b: evt_blk=0x%08lX, ctl_blk=0x%08lX\n", fadt->pm1b_evt_blk, fadt->pm1b_cnt_blk);
         
-        printf("\tPM2: ctl_blk=0x%08lX, ctl_len=%d\n", fadt->pm2_control_block, fadt->pm2_control_length);
+        printf("\tPM2: ctl_blk=0x%08lX, ctl_len=%d\n", fadt->pm2_cnt_blk, fadt->pm2_cnt_len);
 
-        printf("\tPM Timer: block=0x%08lX, length=%d\n", fadt->pm_timer_block, fadt->pm_timer_length);
+        printf("\tPM Timer: block=0x%08lX, length=%d\n", fadt->pm_tmr_blk, fadt->pm_tmr_len);
 
-        printf("\tGPE0: block=0x%08lX, length=%d\n", fadt->gpe0_block, fadt->gpe0_length);
-        printf("\tGPE1: base=%d, block=0x%08lX, length=%d\n", fadt->gpe1_base, fadt->gpe1_block, fadt->gpe1_length);
+        printf("\tGPE0: block=0x%08lX, length=%d\n", fadt->gpe0_blk, fadt->gpe0_blk_len);
+        printf("\tGPE1: base=%d, block=0x%08lX, length=%d\n", fadt->gpe1_base, fadt->gpe1_blk, fadt->gpe1_blk_len);
 
-        printf("\tCSTATE Control: %02X\n", fadt->cstate_control);
-        printf("\tWorst Latency: c2=%u c3=%u\n", fadt->worst_c2_latency, fadt->worst_c3_latency);
+        printf("\tCSTATE Control: %02X\n", fadt->cst_cnt);
+        printf("\tWorst Latency: c2=%u c3=%u\n", fadt->p_lvl2_lat, fadt->p_lvl3_lat);
         printf("\tCPU Cache Flush: size=%u, stride=%u\n", fadt->flush_size, fadt->flush_stride);
         printf("\tDuty Cycle Setting: offset=%u, width=%u\n", fadt->duty_offset, fadt->duty_width);
-        printf("\tRTC Alarm Offset: day=%u, month=%u\n", fadt->day_alarm, fadt->month_alarm);
+        printf("\tRTC Alarm Offset: day=%u, month=%u\n", fadt->day_alrm, fadt->mon_alrm);
         printf("\tRTC Century Offset: %u\n", fadt->century);
 
-        if (fadt->header.revision >= 3) {
+        if (fadt->hdr.revision >= 3) {
             printf("\tIA-PC Boot Architecture Flags: %04X\n", fadt->iapc_boot_arch);
         }
     }
 
-    struct acpi_madt *madt = acpi_find_table(rsdt, ACPI_MADT_SIGNATURE);
-    if (madt) {
+    struct uacpi_table table;
+    struct acpi_madt *madt;
+    if (!uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &table)) {
+        madt = table.ptr;
         printf("MADT: 0x%p\n", (void *)madt);
 
-        printf("\tLocal APIC Address: 0x%08lX\n", madt->lapic_address);
+        printf("\tLocal APIC Address: 0x%08lX\n", madt->local_interrupt_controller_address);
         printf("\t8259 PIC Installed: %s\n", (madt->flags & 1) ? "true" : "false");
 
         union {
-            struct madt_entry_header header;
-            struct madt_entry_lapic lapic;
-            struct madt_entry_ioapic ioapic;
-            struct madt_entry_int_src_override int_src_override;
-            struct madt_entry_nmi_src nmi_src;
-            struct madt_entry_lapic_nmi lapic_nmi;
-            struct madt_entry_lapic_addr_override lapic_addr_override;
-            struct madt_entry_local_x2apic local_x2apic;
+            struct acpi_entry_hdr header;
+            struct acpi_madt_lapic lapic;
+            struct acpi_madt_ioapic ioapic;
+            struct acpi_madt_interrupt_source_override interrupt_source_override;
+            struct acpi_madt_nmi_source nmi_src;
+            struct acpi_madt_lapic_nmi lapic_nmi;
+            struct acpi_madt_lapic_address_override lapic_address_override;
+            struct acpi_madt_x2apic x2apic;
         } *entry = (void *)((uint8_t *)madt + sizeof(*madt));
 
-        while ((ptrdiff_t)entry - (ptrdiff_t)madt < madt->header.length) {
+        while ((ptrdiff_t)entry - (ptrdiff_t)madt < madt->hdr.length) {
             switch (entry->header.type) {
                 case ACPI_MADT_ENTRY_TYPE_LAPIC:
                     printf("\tProcessor Local APIC Entry:\n");
-                    printf("\t\tACPI Processor ID: 0x%02X\n", entry->lapic.acpi_processor_id);
-                    printf("\t\tLAPIC ID: 0x%02X\n", entry->lapic.apic_id);
+                    printf("\t\tACPI Processor ID: 0x%02X\n", entry->lapic.uid);
+                    printf("\t\tLAPIC ID: 0x%02X\n", entry->lapic.id);
                     printf("\t\tFlags: 0x%08lX\n", entry->lapic.flags);
                     break;
                 case ACPI_MADT_ENTRY_TYPE_IOAPIC:
                     printf("\tI/O APIC Entry:\n");
-                    printf("\t\tID: 0x%02X\n", entry->ioapic.io_apic_id);
-                    printf("\t\tAddress: 0x%08lX\n", entry->ioapic.io_apic_address);
-                    printf("\t\tGlobal System Interrupt Base: 0x%08lX\n", entry->ioapic.global_system_interrupt_base);
+                    printf("\t\tID: 0x%02X\n", entry->ioapic.id);
+                    printf("\t\tAddress: 0x%08lX\n", entry->ioapic.address);
+                    printf("\t\tGlobal System Interrupt Base: 0x%08lX\n", entry->ioapic.gsi_base);
                     break;
-                case ACPI_MADT_ENTRY_TYPE_INT_SRC_OVERRIDE:
+                case ACPI_MADT_ENTRY_TYPE_INTERRUPT_SOURCE_OVERRIDE:
                     printf("\tInterrupt Source Override Entry:\n");
-                    printf("\t\tBus: 0x%02X\n", entry->int_src_override.bus_source);
-                    printf("\t\tIRQ: 0x%02X\n", entry->int_src_override.irq_source);
-                    printf("\t\tGlobal System Interrupt: 0x%08lX\n", entry->int_src_override.global_system_interrupt);
-                    printf("\t\tFlags: 0x%04X\n", entry->int_src_override.flags);
+                    printf("\t\tBus: 0x%02X\n", entry->interrupt_source_override.bus);
+                    printf("\t\tIRQ: 0x%02X\n", entry->interrupt_source_override.source);
+                    printf("\t\tGlobal System Interrupt: 0x%08lX\n", entry->interrupt_source_override.gsi);
+                    printf("\t\tFlags: 0x%04X\n", entry->interrupt_source_override.flags);
                     break;
-                case ACPI_MADT_ENTRY_TYPE_NMI_SRC:
+                case ACPI_MADT_ENTRY_TYPE_NMI_SOURCE:
                     printf("\tNMI Source Entry:\n");
                     break;
                 case ACPI_MADT_ENTRY_TYPE_LAPIC_NMI:
                     printf("\tLocal APIC NMI Entry:\n");
-                    printf("\t\tACPI Processor ID: 0x%02X\n", entry->lapic_nmi.acpi_processor_id);
+                    printf("\t\tACPI Processor ID: 0x%02X\n", entry->lapic_nmi.uid);
                     printf("\t\tFlags: 0x%04X\n", entry->lapic_nmi.flags);
                     printf("\t\tLocal APIC LINT#: 0x%02X\n", entry->lapic_nmi.lint);
                     break;
-                case ACPI_MADT_ENTRY_TYPE_LAPIC_ADDR_OVERRIDE:
+                case ACPI_MADT_ENTRY_TYPE_LAPIC_ADDRESS_OVERRIDE:
                     printf("\tLocal APIC Address Override Entry:\n");
-                    printf("\t\tAddress: 0x%016llX\n", entry->lapic_addr_override.address);
+                    printf("\t\tAddress: 0x%016llX\n", entry->lapic_address_override.address);
                     break;
                 default:
                     break;
@@ -478,6 +675,21 @@ static int acpi_handler(struct shell_instance *inst, int argc, char **argv)
 
             entry = (void *)((uint8_t *)entry + entry->header.length);
         }
+    }
+
+    struct acpi_hpet *hpet;
+    if (!uacpi_table_find_by_signature(ACPI_HPET_SIGNATURE, &table)) {
+        hpet = table.ptr;
+        printf("HPET: 0x%p\n", (void *)hpet);
+
+        printf("\tBlock ID: %08lX\n", hpet->block_id);
+        printf("\tAddress: asp=%u width=%u offset=%u asz=%u address=%016llX\n",
+            hpet->address.address_space_id, hpet->address.register_bit_width, hpet->address.register_bit_offset,
+            hpet->address.access_size, hpet->address.address
+        );
+        printf("\tNumber: %u\n", hpet->number);
+        printf("\tMinimum Clock Tick: %u\n", hpet->min_clock_tick);
+        printf("\tFlags: %02X\n", hpet->flags);
     }
 
     return 0;
@@ -722,15 +934,15 @@ static int in_handler(struct shell_instance *inst, int argc, char **argv)
     switch (next[1]) {
         case 'b':
         case 'B':
-            printf("%02X\n", _i686_in8(addr));
+            printf("%02X\n", io_in8(addr));
             break;
         case 'w':
         case 'W':
-            printf("%04X\n", _i686_in16(addr));
+            printf("%04X\n", io_in16(addr));
             break;
         case 'd':
         case 'D':
-            printf("%08lX\n", _i686_in32(addr));
+            printf("%08lX\n", io_in32(addr));
             break;
         default:
             return 1;
@@ -750,21 +962,50 @@ static int out_handler(struct shell_instance *inst, int argc, char **argv)
     switch (next[1]) {
         case 'b':
         case 'B':
-            _i686_out8(addr, value);
+            io_out8(addr, value);
             break;
         case 'w':
         case 'W':
-            _i686_out16(addr, value);
+            io_out16(addr, value);
             break;
         case 'd':
         case 'D':
-            _i686_out32(addr, value);
+            io_out32(addr, value);
             break;
         default:
             return 1;
     }
     
     return 0;
+}
+
+static void hexdump(const void *data, long len, uint32_t offset)
+{
+    const uint8_t *addr = data;
+    long count = 0;
+    uint8_t buf[16];
+
+    while (count < len) {
+        printf("%08lX │ ", count + offset);
+
+        memcpy(buf, addr, sizeof(buf));
+
+        for (int i = 0; i < sizeof(buf) && count + i < len; i++) {
+            printf("%02X ", buf[i]);
+
+        }
+
+        printf("│ ");
+
+        for (int i = 0; i < sizeof(buf) && count + i < len; i++) {
+            printf("%c", buf[i] >= 0x20 && buf[i] < 0x80 ? (char)buf[i] : '.');
+        }
+        
+        printf("\n");
+
+        addr += 16;
+        count += 16;
+    }
 }
 
 static int readblk_handler(struct shell_instance *inst, int argc, char **argv)
@@ -787,17 +1028,7 @@ static int readblk_handler(struct shell_instance *inst, int argc, char **argv)
     uint8_t buf[512];
     blkif->read(blkdev, lba, buf, 1);
 
-    int count = sizeof(buf);
-    uint8_t *addr = buf;
-    while (count > 0) {
-        for (int i = 0; i < 16 && count > 0; i++) {
-            printf("%02X ", *(uint8_t *)addr);
-
-            addr++;
-            count--;
-        }
-        printf("\n");
-    }
+    hexdump(buf, sizeof(buf), 0);
 
     return 0;
 }
@@ -947,6 +1178,40 @@ static int readfile_handler(struct shell_instance *inst, int argc, char **argv)
     return 0;
 }
 
+static int crc32_handler(struct shell_instance *inst, int argc, char **argv)
+{
+    char path[PATH_MAX];
+    if (path_is_absolute(argv[1])) {
+        strncpy(path, argv[1], sizeof(path));
+    } else {
+        snprintf(path, sizeof(path), "%s:%s", inst->fs->name, inst->working_dir_path);
+        path_join(path, sizeof(path), argv[1]);
+
+        if (!inst->fs) {
+            fprintf(stderr, "%s: filesystem not selected\n", argv[0]);
+            return 1;
+        }
+    }
+
+    FILE *fp = fopen(path, "r");
+    if (!fp) {
+        fprintf(stderr, "%s: failed to open file\n", argv[0]);
+        return 1;
+    }
+
+    uint8_t buf[512];
+    int read_count;
+    uint32_t checksum = 0xFFFFFFFF;
+    while ((read_count = fread(buf, 1, sizeof(buf), fp)) > 0) {
+        checksum = crc32(checksum, buf, read_count);
+    }
+    printf("%08lX\n", checksum);
+    
+    fclose(fp);
+
+    return 0;
+}
+
 static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
 {
     char path[PATH_MAX];
@@ -985,7 +1250,7 @@ static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
         uint32_t file_size;
         uint8_t unused[4];
         uint32_t bitmap_offset;
-    } __attribute__((packed));
+    } __packed;
 
     struct bmp_dibheader_core {
         uint32_t header_size;
@@ -993,7 +1258,7 @@ static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
         uint32_t height;
         uint16_t color_planes;
         uint16_t bpp;
-    } __attribute__((packed));
+    } __packed;
 
     struct bmp_header header;
     fread(&header, sizeof(header), 1, fp);
@@ -1101,9 +1366,36 @@ static int drvinfo_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int lsint_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    int null_start = -1;
+
     for (int i = 0; i < 256; i++) {
-        farptr_t ptr = ((farptr_t *)0)[i];
-        printf("Interrupt %u: %04X:%04X\n", i, ptr.segment, ptr.offset);
+        struct isr_table_entry *entry = _pc_get_isr_table_entry(i);
+
+        if (null_start >= 0 && (entry || i == 255)) {
+            printf("Interrupt %d-%d: Unhandled\n", null_start, i - 1);
+            null_start = -1;
+        }
+
+        if (!entry) {
+            if (null_start < 0) {
+                null_start = i;
+            }
+        } else {
+            printf("Interrupt %d: \n", i);
+            while (entry) {
+                if (entry->interrupt_handler) {
+                    if (entry->dev) {
+                        printf("\ttype=int dev=%s%d handler=%p\n", entry->dev->name, entry->dev->id, (void *)entry->interrupt_handler);
+                    } else {
+                        printf("\ttype=int dev=none handler=%p\n", (void *)entry->interrupt_handler);
+                    }
+                } else {
+                    printf("\ttype=trap handler=%p\n", (void *)entry->trap_handler);
+                }
+
+                entry = entry->next;
+            }
+        }
     }
 
     return 0;
@@ -1124,13 +1416,104 @@ static int bootnext_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int usefont_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    return font_use(argc < 2 ? NULL : argv[1]);
+    char path[PATH_MAX];
+    if (argc > 1) {
+        if (path_is_absolute(argv[1])) {
+            strncpy(path, argv[1], sizeof(path));
+        } else {
+            snprintf(path, sizeof(path), "%s:%s", inst->fs->name, inst->working_dir_path);
+            path_join(path, sizeof(path), argv[1]);
+    
+            if (!inst->fs) {
+                fprintf(stderr, "%s: filesystem not selected\n", argv[0]);
+                return 1;
+            }
+        }
+    }
+
+    int ret = font_use(argc > 1 ? path : NULL);
+    if (ret) return 1;
+    
+    struct device *condev = find_device("console0");
+    if (!condev) {
+        return 0;
+    }
+    const struct console_interface *conif = condev->driver->get_interface(condev, "console");
+
+    int width, height;
+    conif->get_dimension(condev, &width, &height);
+
+    conif->invalidate(condev, 0, 0, width - 1, height - 1);
+    conif->flush(condev);
+    conif->present(condev);
+
+    return 0;
 }
 
 static int jump_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s addr\n", argv[0]);
+        return 1;
+    }
+
     uint32_t addr = strtol(argv[1], NULL, 16);
     return ((int (*)(void))addr)();
+}
+
+static int boot_handler(struct shell_instance *inst, int argc, char **argv)
+{
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s addr file_name\n", argv[0]);
+        return 1;
+    }
+
+    char path[PATH_MAX];
+    if (path_is_absolute(argv[1])) {
+        strncpy(path, argv[1], sizeof(path));
+    } else {
+        snprintf(path, sizeof(path), "%s:%s", inst->fs->name, inst->working_dir_path);
+        path_join(path, sizeof(path), argv[1]);
+
+        if (!inst->fs) {
+            fprintf(stderr, "%s: filesystem not selected\n", argv[0]);
+            return 1;
+        }
+    }
+
+    struct elf_file *elf = elf_open(path);
+    if (!elf) {
+        fprintf(stderr, "%s: failed to open file\n", argv[0]);
+        return 1;
+    }
+
+    int idx = 0;
+    do {
+        struct elf_program_header phdr;
+
+        int err = elf_get_current_program_header(elf, &phdr);
+        if (err) break;
+
+        printf("phdr #%d:\n", idx);
+        printf("\toffset: %08lX\n", phdr.elf32.offset);
+        printf("\tvaddr: %08lX\n", phdr.elf32.vaddr);
+        printf("\tpaddr: %08lX\n", phdr.elf32.paddr);
+        printf("\tfilesz: %08lX\n", phdr.elf32.filesz);
+        printf("\tmemsz: %08lX\n", phdr.elf32.memsz);
+
+        elf_load_current_program_header(elf);
+
+        idx++;
+    } while (!elf_advance_program_header(elf));
+
+    int ret = ((int (*)(char *))elf->ehdr.elf32.entry)(
+        "cvearly_console=acpi "
+        ""
+    );
+
+    elf_close(elf);
+    
+    return ret;
 }
 
 static int help_handler(struct shell_instance *inst, int argc, char **argv)
@@ -1155,13 +1538,13 @@ static int help_handler(struct shell_instance *inst, int argc, char **argv)
     return 0;
 }
 
-__attribute__((noreturn))
+__noreturn
 static int reboot_handler(struct shell_instance *inst, int argc, char **argv)
 {
     _i686_pc_reboot();
 }
 
-__attribute__((noreturn))
+__noreturn
 static int poweroff_handler(struct shell_instance *inst, int argc, char **argv)
 {
     _i686_pc_poweroff();

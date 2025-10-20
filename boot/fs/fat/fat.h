@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <time.h>
 
+#include <compiler.h>
+
 #define FT_UNKNOWN    0
 #define FT_FAT12      1
 #define FT_FAT16      2
@@ -77,7 +79,7 @@ struct fat_bpb_sector {
             char            fs_type[8];
 
             uint8_t         boot_code[448];
-        } __attribute__((packed)) fat;
+        } __packed fat;
 
         struct {
             uint32_t        fat_size32;
@@ -95,11 +97,11 @@ struct fat_bpb_sector {
             char            fs_type[8];
 
             uint8_t         boot_code[420];
-        } __attribute__((packed)) fat32;
-    } __attribute__((packed));
+        } __packed fat32;
+    } __packed;
 
     uint16_t        signature;
-} __attribute__((packed));
+} __packed;
 
 struct fat_fsinfo {
     uint32_t        signature1;
@@ -109,7 +111,7 @@ struct fat_fsinfo {
     uint32_t        next_free_cluster;
     uint8_t         __reserved2[14];
     uint16_t        signature3;
-} __attribute__((packed));
+} __packed;
 
 union fat_time {
     uint16_t raw;
@@ -117,7 +119,7 @@ union fat_time {
         uint16_t second_div2 : 5;
         uint16_t minute : 6;
         uint16_t hour : 5;
-    } __attribute__((packed));
+    } __packed;
 };
 
 union fat_date {
@@ -126,12 +128,17 @@ union fat_date {
         uint16_t day : 5;
         uint16_t month : 4;
         uint16_t year : 7;
-    } __attribute__((packed));
+    } __packed;
 };
 
 struct fat_direntry_file {
-    char            name[FAT_SFN_NAME];
-    char            extension[FAT_SFN_EXTENSION];
+    union {
+        struct {
+            char    name[FAT_SFN_NAME];
+            char    extension[FAT_SFN_EXTENSION];
+        } __packed;
+        char        name_ext[FAT_SFN_NAME + FAT_SFN_EXTENSION];
+    };
     uint8_t         attribute;
     uint8_t         __reserved;
     uint8_t         created_tenth;
@@ -143,7 +150,7 @@ struct fat_direntry_file {
     union fat_date  modified_date;
     uint16_t        cluster_location;
     uint32_t        size;
-} __attribute__((packed));
+} __packed;
 
 struct fat_direntry_lfn {
     uint8_t         sequence_index;
@@ -154,7 +161,7 @@ struct fat_direntry_lfn {
     uint16_t        name_fragment2[6];
     uint16_t        cluster_location;
     uint16_t        name_fragment3[2];
-} __attribute__((packed));
+} __packed;
 
 union fat_dir_entry {
     struct fat_direntry_lfn lfn;

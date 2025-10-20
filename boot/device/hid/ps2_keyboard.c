@@ -7,7 +7,7 @@
 #include <interface/hid.h>
 #include <interface/ps2.h>
 #include <asm/isr.h>
-#include <asm/io.h>
+#include <sys/io.h>
 #include <asm/time.h>
 #include <asm/pause.h>
 #include <hid/hid.h>
@@ -525,6 +525,9 @@ static void keyboard_isr(struct device *dev, int num)
     struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
 
     data->seqbuf[data->seqbuf_end] = data->ps2dev_ps2if->irq_get_byte(data->ps2dev);
+    if (data->seqbuf[data->seqbuf_end] == 0x76) {
+        fprintf(stderr, "asdf\n");
+    }
     int next_seqbuf_end = (data->seqbuf_end + 1) % sizeof(data->seqbuf);
     if (next_seqbuf_end == data->seqbuf_start) {
         return;
@@ -566,9 +569,9 @@ static int probe(struct device *dev)
 
     dev->data = data;
 
-    _pc_set_interrupt_handler(dev->resource->next->base, dev, keyboard_isr);
-    
     _i686_disable_interrupt();
+    
+    _pc_set_interrupt_handler(dev->resource->next->base, dev, keyboard_isr);
     
     int err = ps2dev_ps2if->test_port(ps2dev, dev->resource->base);
     if (err) {
@@ -619,8 +622,4 @@ static const void *get_interface(struct device *dev, const char *name)
     return NULL;
 }
 
-__attribute__((constructor))
-static void _register_driver(void)
-{
-    register_device_driver(&drv);
-}
+DEVICE_DRIVER(drv)
