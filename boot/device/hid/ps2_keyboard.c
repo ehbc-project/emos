@@ -194,7 +194,7 @@ static int translate_scancode_set1(struct device *dev, uint16_t *keycode, uint16
     int ret = 1;
     uint16_t ret_keycode = KEY_NONE, ret_flags = 0;
 
-    _i686_disable_interrupt();
+    interrupt_disable();
     uint8_t byte = data->seqbuf[data->seqbuf_start];
     switch (byte) {
         case 0xE0:  /* extend */
@@ -294,7 +294,7 @@ static int translate_scancode_set1(struct device *dev, uint16_t *keycode, uint16
     }
 
     data->seqbuf_start = (data->seqbuf_start + 1) % sizeof(data->seqbuf);
-    _i686_enable_interrupt();
+    interrupt_enable();
 
     if (!ret) {
         *keycode = ret_keycode;
@@ -311,7 +311,7 @@ static int translate_scancode_set2(struct device *dev, uint16_t *keycode, uint16
     int ret = 1;
     uint16_t ret_keycode = KEY_NONE, ret_flags = 0;
 
-    _i686_disable_interrupt();
+    interrupt_disable();
     uint8_t byte = data->seqbuf[data->seqbuf_start];
     switch (byte) {
         case 0xF0:  /* break */
@@ -434,7 +434,7 @@ static int translate_scancode_set2(struct device *dev, uint16_t *keycode, uint16
     }
 
     data->seqbuf_start = (data->seqbuf_start + 1) % sizeof(data->seqbuf);
-    _i686_enable_interrupt();
+    interrupt_enable();
 
     if (!ret) {
         *keycode = ret_keycode;
@@ -525,9 +525,6 @@ static void keyboard_isr(struct device *dev, int num)
     struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
 
     data->seqbuf[data->seqbuf_end] = data->ps2dev_ps2if->irq_get_byte(data->ps2dev);
-    if (data->seqbuf[data->seqbuf_end] == 0x76) {
-        fprintf(stderr, "asdf\n");
-    }
     int next_seqbuf_end = (data->seqbuf_end + 1) % sizeof(data->seqbuf);
     if (next_seqbuf_end == data->seqbuf_start) {
         return;
@@ -569,7 +566,7 @@ static int probe(struct device *dev)
 
     dev->data = data;
 
-    _i686_disable_interrupt();
+    interrupt_disable();
     
     _pc_set_interrupt_handler(dev->resource->next->base, dev, keyboard_isr);
     
@@ -597,7 +594,7 @@ static int probe(struct device *dev)
         data->scancode_set = 2;
     }
 
-    _i686_enable_interrupt();
+    interrupt_enable();
 
     return 0;
 }

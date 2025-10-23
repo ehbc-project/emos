@@ -8,11 +8,12 @@
 #include <interface/hid.h>
 #include <asm/bios/misc.h>
 #include <macros.h>
-#include <shell.h>
 #include <zlib.h>
 #include <debug.h>
 
 #include <x86gprintrin.h>
+
+#include "shell/shell.h"
 
 void main(void)
 {
@@ -43,9 +44,6 @@ void main(void)
 
     printf("\x1b[3J\x1b[0;0f\x1b[?25lEMOS Bootloader\n");
     printf("═══════════════\n");
-    
-    uint64_t ts = __rdtsc();
-    printf("%016llX\n", ts);
 
     struct device *kbd = find_device("kbd0");
     const struct hid_interface *hidi = kbd->driver->get_interface(kbd, "hid");
@@ -99,7 +97,7 @@ void main(void)
         case 1:
             break;
         case 2:
-            start_shell();
+            shell_start();
             break;
     }
 

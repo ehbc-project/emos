@@ -47,7 +47,7 @@ static int poll_event(struct device *dev, uint16_t *key, uint16_t *flags)
     int ret = 1, advance = 0;
     uint16_t ret_key = 0, ret_flags = 0;
 
-    _i686_disable_interrupt();
+    interrupt_disable();
     uint8_t byte = data->seqbuf[data->seqbuf_start];
     switch (data->seq_state) {
         case SS_DEFAULT:
@@ -108,7 +108,7 @@ static int poll_event(struct device *dev, uint16_t *key, uint16_t *flags)
     }
 
     data->seqbuf_start = (data->seqbuf_start + advance) % sizeof(data->seqbuf);
-    _i686_enable_interrupt();
+    interrupt_enable();
 
     if (!ret) {
         *key = ret_key;
@@ -168,7 +168,7 @@ static int probe(struct device *dev)
 
     dev->data = data;
     
-    _i686_disable_interrupt();
+    interrupt_disable();
 
     _pc_set_interrupt_handler(dev->resource->next->base, dev, mouse_isr);
 
@@ -200,7 +200,7 @@ static int probe(struct device *dev)
     ps2dev_ps2if->send_data(ps2dev, dev->resource->base, buf, 1);
     ps2dev_ps2if->recv_data(ps2dev, dev->resource->base, buf, 1);
 
-    _i686_enable_interrupt();
+    interrupt_enable();
 
     return 0;
 }

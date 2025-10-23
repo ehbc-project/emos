@@ -239,20 +239,19 @@ lfn_ucs2_to_utf8(
 static size_t
 get_sfn_filename(
     const struct fat_direntry_file* entry,
-    char *buf,
-    int lowercase)
+    char *buf)
 {
     size_t char_count = 0;
     for (int i = 0; i < 8 && entry->name[i] != ' '; i++) {
         buf[char_count++] =
-            lowercase ? tolower(entry->name[i]) : entry->name[i];
+            (entry->attribute2 & FAT_ATTR2_LCASE_NAME) ? tolower(entry->name[i]) : entry->name[i];
     }
     if (entry->extension[0] != ' ') {
         buf[char_count++] = '.';
     }
     for (int i = 0; i < 3 && entry->extension[i] != ' '; i++) {
         buf[char_count++] =
-            lowercase ? tolower(entry->extension[i]) : entry->extension[i];
+            (entry->attribute2 & FAT_ATTR2_LCASE_EXT) ? tolower(entry->extension[i]) : entry->extension[i];
     }
     buf[char_count] = '\0';
 
@@ -834,7 +833,7 @@ static int iter_directory(struct fs_directory *dir, struct fs_directory_entry *e
         lfn_ucs2_to_utf8(entry->name, lfn_ucs2_buf, 1, '?');
     } else {
         get_sfn_filename(
-            &entries[dir_data->current_entry_index].file, entry->name, 0);
+            &entries[dir_data->current_entry_index].file, entry->name);
     }
     entry->size = entries[dir_data->current_entry_index].file.size;
     memcpy(&dir_data->direntry, &entries[dir_data->current_entry_index], sizeof(dir_data->direntry));

@@ -10,19 +10,6 @@
 
 #define RAND_MAX        0x7FFF
 
-__noreturn
-void exit(int status);
-
-__noreturn
-void _Exit(int status);
-
-__noreturn
-void quick_exit(int status);
-
-int atexit(void (*func)(void));
-
-int at_quick_exit(void (*func)(void));
-
 double atof(const char *str);
 
 int atoi(const char *str);

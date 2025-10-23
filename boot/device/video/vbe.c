@@ -13,6 +13,7 @@
 #include <asm/bios/video.h>
 #include <debug.h>
 #include <asm/vbe/pm_interface.h>
+#include <asm/interrupt.h>
 
 #define DIFF_REGION_SIZE 16
 
@@ -25,7 +26,37 @@ struct vbe_data {
     farptr_t pmi_table;
 
     struct vbe_video_mode_info mode_info;
+
+    void (*convert_color)(const struct vbe_video_mode_info *, const uint32_t *, void *, long);
 };
+
+inline static uint32_t get_pixel(struct device *dev, int x, int y)
+{
+    struct vbe_data *data = (struct vbe_data*)dev->data;
+
+    return data->frame_buffer[y * data->mode_info.width + x];
+}
+
+inline static void set_region_diff(struct device *dev, int xregion, int yregion)
+{
+    struct vbe_data *data = (struct vbe_data*)dev->data;
+
+    data->diff_buffer[yregion * data->mode_info.width / DIFF_REGION_SIZE + xregion] = 3;
+}
+
+inline static void reset_region_diff(struct device *dev, int page, int xregion, int yregion)
+{
+    struct vbe_data *data = (struct vbe_data*)dev->data;
+
+    data->diff_buffer[yregion * data->mode_info.width / DIFF_REGION_SIZE  + xregion] &= ~(1 << page);
+}
+
+inline static int get_region_diff(struct device *dev, int page, int xregion, int yregion)
+{
+    struct vbe_data *data = (struct vbe_data*)dev->data;
+
+    return (data->diff_buffer[yregion * data->mode_info.width / DIFF_REGION_SIZE  + xregion] >> page) & 1;
+}
 
 static uint8_t rgb_to_irgb(uint32_t color)
 {
@@ -54,62 +85,84 @@ static uint8_t rgb_to_irgb(uint32_t color)
     return (((max >= 192) ? 1 : 0) << 3) | ((r >= 0x80 ? 1 : 0) << 2) | ((g >= 0x80 ? 1 : 0) << 1) | (b >= 0x80 ? 1 : 0);
 }
 
-static uint32_t convert_color(struct vbe_video_mode_info *vbe_mode_info, uint32_t color)
+__attribute__((hot))
+static void convert_color_rgbx8888(const struct vbe_video_mode_info *mode, const uint32_t *orig, void *dest, long count)
 {
-    if (vbe_mode_info->memory_model == VBEMM_DIRECT) {
-        uint8_t r = (color >> 16) & 0xFF;
-        uint8_t g = (color >> 8) & 0xFF;
-        uint8_t b = color & 0xFF;
-    
-        r >>= 8 - vbe_mode_info->red_mask;
-        g >>= 8 - vbe_mode_info->green_mask;
-        b >>= 8 - vbe_mode_info->blue_mask;
-    
-        return 
-            (r << vbe_mode_info->red_position) |
-            (g << vbe_mode_info->green_position) |
-            (b << vbe_mode_info->blue_position);
-    } else if (vbe_mode_info->bpp == 4) {
-        return rgb_to_irgb(color);
+    memcpy(dest, orig, count * sizeof(uint32_t));
+}
+
+__attribute__((hot))
+static void convert_color_rgb888(const struct vbe_video_mode_info *mode, const uint32_t *orig, void *dest, long count)
+{
+    while (count > 0) {
+        if ((uint32_t)dest & 1) {
+            *(uint8_t *)dest = *(const uint8_t *)orig;
+            *(uint16_t *)((uint8_t *)dest + 1) = *(const uint16_t *)((const uint8_t *)orig + 1);
+        } else if (count > 1) {
+            *(uint32_t *)dest = *orig;
+        } else {
+            *(uint16_t *)dest = *(const uint16_t *)orig;
+            *((uint8_t *)dest + 2) = *((const uint8_t *)orig + 2);
+        }
+
+        dest = (uint8_t *)dest + 3;
+        orig++;
+        count--;
     }
-
-    return 0;
 }
 
-inline static uint32_t get_pixel(struct device *dev, int x, int y)
+__attribute__((hot))
+static void convert_color_rgb565(const struct vbe_video_mode_info *mode, const uint32_t *orig, void *dest, long count)
 {
-    struct vbe_data *data = (struct vbe_data*)dev->data;
+    while (count > 0) {
+        *(uint16_t *)dest = ((*orig & 0xF80000) >> 8) | ((*orig & 0x00FC00) >> 5) | ((*orig & 0x0000F8) >> 3);
 
-    return data->frame_buffer[y * data->mode_info.width + x];
+        dest = (uint16_t *)dest + 1;
+        orig++;
+        count--;
+    }
 }
 
-inline static uint32_t get_fb_offs(struct vbe_video_mode_info *vbe_mode_info, int page, int x, int y)
+__attribute__((hot))
+static void convert_color_generic(const struct vbe_video_mode_info *mode, const uint32_t *orig, void *dest, long count)
 {
-    return
-        page * vbe_mode_info->height * vbe_mode_info->pitch +
-        y * vbe_mode_info->pitch +
-        x * vbe_mode_info->bpp / 8;
-}
+    while (count > 0) {
+        uint8_t r = ((*orig >> 16) & 0xFF) >> (8 - mode->red_mask);
+        uint8_t g = ((*orig >> 8) & 0xFF) >> (8 - mode->green_mask);
+        uint8_t b = (*orig & 0xFF) >> (8 - mode->blue_mask);
 
-inline static void set_region_diff(struct device *dev, int xregion, int yregion)
-{
-    struct vbe_data *data = (struct vbe_data*)dev->data;
+        uint32_t color = 
+            (r << mode->red_position) |
+            (g << mode->green_position) |
+            (b << mode->blue_position);
 
-    data->diff_buffer[yregion * data->mode_info.width / DIFF_REGION_SIZE + xregion] = 3;
-}
+        switch ((mode->bpp + 7) >> 3) {
+            case 1:
+                *(uint8_t *)dest = color & 0xFF;
+                break;
+            case 2:
+                *(uint16_t *)dest = color & 0xFFFF;
+                break;
+            case 3:
+                if ((uint32_t)dest & 1) {
+                    *(uint8_t *)dest = color & 0xFF;
+                    *(uint16_t *)((uint8_t *)dest + 1) = (color & 0xFFFF00) >> 8;
+                } else if (count > 1) {
+                    *(uint32_t *)dest = color;
+                } else {
+                    *(uint16_t *)dest = color & 0xFFFF;
+                    *((uint8_t *)dest + 2) = (color & 0xFF0000) >> 16;
+                }
+                break;
+            case 4:
+                *(uint32_t *)dest = color;
+                break;
+        }
 
-inline static void reset_region_diff(struct device *dev, int page, int xregion, int yregion)
-{
-    struct vbe_data *data = (struct vbe_data*)dev->data;
-
-    data->diff_buffer[yregion * data->mode_info.width / DIFF_REGION_SIZE  + xregion] &= ~(1 << page);
-}
-
-inline static int get_region_diff(struct device *dev, int page, int xregion, int yregion)
-{
-    struct vbe_data *data = (struct vbe_data*)dev->data;
-
-    return (data->diff_buffer[yregion * data->mode_info.width / DIFF_REGION_SIZE  + xregion] >> page) & 1;
+        dest = (uint8_t *)dest + ((mode->bpp + 7) >> 3);
+        orig++;
+        count--;
+    }
 }
 
 static int set_mode(struct device *dev, int width, int height, int bpp)
@@ -156,6 +209,16 @@ static int set_mode(struct device *dev, int width, int height, int bpp)
 
     memset((void *)data->mode_info.framebuffer, 0, 2 * data->mode_info.pitch * data->mode_info.height * data->mode_info.bpp / 8);
 
+    if (vbe_mode_info.bpp == 24) {
+        data->convert_color = convert_color_rgb888;
+    } else if (vbe_mode_info.bpp == 32) {
+        data->convert_color = convert_color_rgbx8888;
+    } else if (vbe_mode_info.bpp == 16) {
+        data->convert_color = convert_color_rgb565;
+    } else {
+        data->convert_color = convert_color_generic;
+    }
+
     return 0;
 }
 
@@ -166,6 +229,35 @@ static int get_mode(struct device *dev, int *width, int *height, int *bpp)
     if (width) *width = data->mode_info.width;
     if (height) *height = data->mode_info.height;
     if (bpp) *bpp = data->mode_info.bpp;
+
+    return 0;
+}
+
+static int get_hw_mode(struct device *dev, struct fb_hw_mode *hwmode)
+{
+    struct vbe_data *data = (struct vbe_data*)dev->data;
+
+    hwmode->framebuffer = (void *)data->mode_info.framebuffer;
+    hwmode->width = data->mode_info.width;
+    hwmode->height = data->mode_info.height;
+    hwmode->pitch = data->mode_info.pitch;
+    hwmode->bpp = data->mode_info.bpp;
+    switch (data->mode_info.memory_model) {
+        case VBEMM_DIRECT:
+            hwmode->memory_model = FBHWMMM_DIRECT;
+            break;
+        case VBEMM_TEXT:
+            hwmode->memory_model = FBHWMMM_TEXT;
+            break;
+        default:
+            return 1;
+    }
+    hwmode->rmask = data->mode_info.red_mask;
+    hwmode->rpos = data->mode_info.red_position;
+    hwmode->gmask = data->mode_info.green_mask;
+    hwmode->gpos = data->mode_info.green_position;
+    hwmode->bmask = data->mode_info.blue_mask;
+    hwmode->bpos = data->mode_info.blue_position;
 
     return 0;
 }
@@ -188,6 +280,21 @@ static void fb_invalidate(struct device *dev, int x0, int y0, int x1, int y1)
     }
 }
 
+static int get_diff_chunk(struct device *dev, int page, int xr, int yr)
+{
+    struct vbe_data *data = (struct vbe_data*)dev->data;
+
+    int modified_chunk = get_region_diff(dev, page, xr, yr);
+    int chunk_size = 1;
+
+    while (++xr < data->mode_info.width / DIFF_REGION_SIZE) {
+        if (modified_chunk != get_region_diff(dev, page, xr, yr)) break;
+        chunk_size++;
+    }
+
+    return modified_chunk ? chunk_size : -chunk_size;
+}
+
 static void fb_flush(struct device *dev)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
@@ -195,47 +302,32 @@ static void fb_flush(struct device *dev)
     int next_page = (data->current_page + 1) % 2;
 
     for (int yr = 0; yr < data->mode_info.height / DIFF_REGION_SIZE; yr++) {
-        for (int xr = 0; xr < data->mode_info.width / DIFF_REGION_SIZE; xr++) {
-            if (!get_region_diff(dev, next_page, xr, yr)) {
+        int xr = 0;
+        while (xr < data->mode_info.width / DIFF_REGION_SIZE) {
+            int chunk_size = get_diff_chunk(dev, next_page, xr, yr);
+            if (chunk_size < 0) {
+                xr += -chunk_size;
                 continue;
             }
-            reset_region_diff(dev, next_page, xr, yr);
+
+            for (int i = 0; i < chunk_size; i++) {
+                reset_region_diff(dev, next_page, xr + i, yr);
+            }
 
             for (int y = yr * DIFF_REGION_SIZE; y < (yr + 1) * DIFF_REGION_SIZE; y++) {
-                for (int x = xr * DIFF_REGION_SIZE; x < (xr + 1) * DIFF_REGION_SIZE; x++) {
-                    void *pixel = (void *)(data->mode_info.framebuffer + get_fb_offs(&data->mode_info, next_page, x, y));
+                long fb_offs =
+                    (next_page * data->mode_info.height + y) * data->mode_info.pitch +
+                    xr * DIFF_REGION_SIZE * data->mode_info.bpp / 8;
 
-                    uint32_t color = convert_color(&data->mode_info, get_pixel(dev, x, y));
-                    
-                    switch (data->mode_info.bpp) {
-                        case 1:
-                            *(uint8_t *)pixel &= ~(1 << (x & 3));
-                            *(uint8_t *)pixel |= color << (x & 3);
-                        case 4:
-                            *(uint8_t *)pixel |= color ? 0xFF : 0x00;
-                            break;
-                        case 8:
-                            *(uint8_t *)pixel = color;
-                            break;
-                        case 15:
-                        case 16:
-                            *(uint16_t *)pixel = color;
-                            break;
-                        case 24:
-                            if ((uint32_t)pixel & 1) {
-                                *(uint8_t *)pixel = color & 0xFF;
-                                *(uint16_t *)((uint8_t *)pixel + 1) = (color >> 8) & 0xFFFF;
-                            } else {
-                                *(uint16_t *)pixel = color & 0xFFFF;
-                                ((uint8_t *)pixel)[2] = (color >> 16) & 0xFF;
-                            }
-                            break;
-                        case 32:
-                            *(uint32_t *)pixel = color;
-                            break;
-                    }
-                }
+                data->convert_color(
+                    &data->mode_info,
+                    &data->frame_buffer[y * data->mode_info.width + xr * DIFF_REGION_SIZE],
+                    (void *)(data->mode_info.framebuffer + fb_offs),
+                    chunk_size * DIFF_REGION_SIZE
+                );
             }
+
+            xr += chunk_size;
         }
     }
 }
@@ -256,6 +348,7 @@ static void fb_present(struct device *dev)
 static const struct framebuffer_interface fbif = {
     .set_mode = set_mode,
     .get_mode = get_mode,
+    .get_hw_mode = get_hw_mode,
     .get_framebuffer = get_framebuffer,
     .invalidate = fb_invalidate,
     .flush = fb_flush,
@@ -450,6 +543,7 @@ static int remove(struct device *dev)
         mm_free(data->char_buffer);
     }
     if (data->frame_buffer) {
+        _pc_bios_set_vbe_display_start(0, 0);
         mm_free(data->frame_buffer);
     }
     if (data->diff_buffer) {

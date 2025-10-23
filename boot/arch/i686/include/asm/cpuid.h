@@ -5,6 +5,8 @@
 
 #include <stdint.h>
 
+#include <compiler.h>
+
 enum cpuid_request {
     CPUID_GET_VENDOR_STRING = 0,
     CPUID_GET_FEATURES,
@@ -18,7 +20,7 @@ enum cpuid_request {
     CPUID_INTEL_BRAND_STRING_END,
 };
 
-static inline void _i686_cpuid(enum cpuid_request request, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
+__always_inline void _i686_cpuid(enum cpuid_request request, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
 {
     __cpuid(request, *eax, *ebx, *ecx, *edx);
 }

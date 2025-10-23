@@ -53,6 +53,9 @@
 
 #define FAT_ATTR_LFNENTRY       (FAT_ATTR_READ_ONLY | FAT_ATTR_HIDDEN | FAT_ATTR_SYSTEM | FAT_ATTR_VOLUME_ID)
 
+#define FAT_ATTR2_LCASE_NAME    0x08
+#define FAT_ATTR2_LCASE_EXT     0x10
+
 struct fat_bpb_sector {
     uint8_t         x86_jump_code[3];
     char            oem_name[8];
@@ -140,7 +143,7 @@ struct fat_direntry_file {
         char        name_ext[FAT_SFN_NAME + FAT_SFN_EXTENSION];
     };
     uint8_t         attribute;
-    uint8_t         __reserved;
+    uint8_t         attribute2;
     uint8_t         created_tenth;
     union fat_time  created_time;
     union fat_date  created_date;

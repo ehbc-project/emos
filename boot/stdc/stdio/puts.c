@@ -4,7 +4,7 @@
 
 int puts(const char *str)
 {
-    fwrite(str, 1, strlen(str), stdout);
+    fwrite(str, strlen(str), 1, stdout);
     fputc('\n', stdout);
     return 0;
 }

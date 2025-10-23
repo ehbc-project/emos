@@ -111,6 +111,10 @@ static int probe(struct device *dev)
 
 static int remove(struct device *dev)
 {
+    struct mbr_data *data = (struct mbr_data *)dev->data;
+
+    mm_free(data);
+
     return 0;
 }
 

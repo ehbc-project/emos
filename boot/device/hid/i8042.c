@@ -257,6 +257,10 @@ static int remove(struct device *dev)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
 
+    /* enable translation & IRQ */
+    io_out8(data->res[1]->base, 0x60);
+    io_out8(data->res[0]->base, 0x63);
+
     mm_free(data);
 
     return 0;

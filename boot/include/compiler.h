@@ -10,5 +10,6 @@
 #define __malloc_like(free_func) __attribute__((malloc, malloc(free_func, 1)))
 #define __aligned(n)        __attribute__((aligned(n)))
 #define __constructor       __attribute__((constructor))
+#define __destructor       __attribute__((destructor))
 
 #endif // __COMPILER_H__

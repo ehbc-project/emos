@@ -1,4 +1,4 @@
-#include <shell.h>
+#include "shell.h"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -12,6 +12,7 @@
 
 #include <zlib.h>
 
+#include <cleanup.h>
 #include <mm/mm.h>
 #include <device/driver.h>
 #include <interface/char.h>
@@ -44,38 +45,6 @@
 #include <fs/driver.h>
 #include <font.h>
 #include <elf.h>
-
-static int readline(char *buf, int len)
-{
-    int cur = 0;
-    char ch;
-    do {
-        fread(&ch, 1, 1, stdin);
-        switch (ch) {
-            case '\r':
-            case '\n':
-                putchar('\n');
-                break;
-            case '\b':
-                if (cur < 1) {
-                    break;
-                }
-                cur--;
-                fputs("\b \b", stdout);
-                break;
-            default:
-                if (cur >= len - 1) {
-                    break;
-                }
-                putchar(ch);
-                buf[cur++] = ch;
-                break;
-        }
-    } while (ch != '\r' && ch != '\n');
-
-    buf[cur] = 0;
-    return cur;
-}
 
 struct shell_instance {
     struct filesystem *fs;
@@ -178,8 +147,13 @@ static int echo_handler(struct shell_instance *inst, int argc, char **argv)
 {
     if (argc < 2) return 0;
 
-    char *message = argv[1];
-    printf("%s\n", argv[1]);
+    for (int i = 1; i < argc; i++) {
+        fputs(argv[i], stdout);
+        if (i != argc - 1) {
+            putc(' ', stdout);
+        }
+    }
+    putc('\n', stdout);
 
     return 0;
 }
@@ -721,45 +695,45 @@ static void hsl2rgb(float h, uint8_t s_in, uint8_t l_in, uint8_t rgb[3])
 
 static int testtty_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    puts("\x1b[0m");
-    printf("\x1b[1mbold\x1b[0m\n");
-    printf("\x1b[2mdim\x1b[0m\n");
-    printf("\x1b[3mitalic\x1b[0m\n");
-    printf("\x1b[4munderline\x1b[0m\n");
-    printf("\x1b[5mblink slow\x1b[0m\n");
-    printf("\x1b[6mblink fast\x1b[0m\n");
-    printf("\x1b[7mreversed\x1b[0m\n");
-    printf("\x1b[9mstrike\x1b[0m\n");
-    printf("\x1b[53moverline\x1b[0m\n");
+    fputs("\x1b[0m", stdout);
+    fputs("\x1b[1mbold\x1b[0m\n", stdout);
+    fputs("\x1b[2mdim\x1b[0m\n", stdout);
+    fputs("\x1b[3mitalic\x1b[0m\n", stdout);
+    fputs("\x1b[4munderline\x1b[0m\n", stdout);
+    fputs("\x1b[5mblink slow\x1b[0m\n", stdout);
+    fputs("\x1b[6mblink fast\x1b[0m\n", stdout);
+    fputs("\x1b[7mreversed\x1b[0m\n", stdout);
+    fputs("\x1b[9mstrike\x1b[0m\n", stdout);
+    fputs("\x1b[53moverline\x1b[0m\n", stdout);
     for (int i = 0; i < 8; i++) {
         printf("\x1b[%dm@", 30 + i);
     }
     for (int i = 0; i < 8; i++) {
         printf("\x1b[%dm@", 90 + i);
     }
-    puts("\x1b[0m\n");
+    fputs("\x1b[0m\n", stdout);
     for (int i = 0; i < 16; i++) {
         printf("\x1b[38;5;%dm@", i);
     }
-    puts("\x1b[0m\n");
+    fputs("\x1b[0m\n", stdout);
     for (int i = 16; i < 232; i++) {
         printf("\x1b[38;5;%dm@", i);
         if ((i - 16) % 36 == 35) {
-            puts("\x1b[0m\n");
+            fputs("\x1b[0m\n", stdout);
         }
     }
     for (int i = 232; i < 256; i++) {
         printf("\x1b[38;5;%dm@", i);
     }
-    puts("\x1b[0m\n");
+    fputs("\x1b[0m\n", stdout);
     for (int g = 0; g < 8; g++) {
         for (int b = 0; b < 8; b++) {
             for (int r = 0; r < 8; r++) {
                 printf("\x1b[38;2;%d;%d;%dm@", r * 255 / 7, g * 255 / 7, b * 255 / 7);
             }
-            puts("\x1b[0m");
+            fputs("\x1b[0m", stdout);
         }
-        puts("\x1b[0m\n");
+        fputs("\x1b[0m\n", stdout);
     }
     for (int i = 0; i < 8; i++) {
         printf("\x1b[%dm ", 40 + i);
@@ -767,29 +741,29 @@ static int testtty_handler(struct shell_instance *inst, int argc, char **argv)
     for (int i = 0; i < 8; i++) {
         printf("\x1b[%dm ", 100 + i);
     }
-    puts("\x1b[0m\n");
+    fputs("\x1b[0m\n", stdout);
     for (int i = 0; i < 16; i++) {
         printf("\x1b[48;5;%dm ", i);
     }
-    puts("\x1b[0m\n");
+    fputs("\x1b[0m\n", stdout);
     for (int i = 16; i < 232; i++) {
         printf("\x1b[48;5;%dm ", i);
         if ((i - 16) % 36 == 35) {
-            puts("\x1b[0m\n");
+            fputs("\x1b[0m\n", stdout);
         }
     }
     for (int i = 232; i < 256; i++) {
         printf("\x1b[48;5;%dm ", i);
     }
-    puts("\x1b[0m\n");
+    fputs("\x1b[0m\n", stdout);
     for (int g = 0; g < 8; g++) {
         for (int b = 0; b < 8; b++) {
             for (int r = 0; r < 8; r++) {
                 printf("\x1b[48;2;%d;%d;%dm ", r * 255 / 7, g * 255 / 7, b * 255 / 7);
             }
-            puts("\x1b[0m");
+            fputs("\x1b[0m", stdout);
         }
-        puts("\x1b[0m\n");
+        fputs("\x1b[0m\n", stdout);
     }
     for (int l = 7; l >= 0; l--) {
         for (int h = 0; h < 64; h++) {
@@ -797,9 +771,8 @@ static int testtty_handler(struct shell_instance *inst, int argc, char **argv)
             hsl2rgb((float)h / 63.0f, 255, l * 255 / 7 , rgb);
             printf("\x1b[48;2;%d;%d;%dm ", rgb[0], rgb[1], rgb[2]);
         }
-        puts("\x1b[0m\n");
+        fputs("\x1b[0m\n", stdout);
     }
-    puts("ㄱ가ㄲ까ㄴ나ㄷ다ㄸ따ㄹ라ㅁ마ㅂ바ㅃ빠ㅅ사ㅆ싸ㅇ아ㅈ자ㅉ짜ㅊ차ㅋ카ㅌ타ㅍ파ㅎ하\n");
     return 0;
 }
 
@@ -874,12 +847,12 @@ static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
                     }
                 }
 
-                _i686_disable_interrupt();
+                interrupt_disable();
                 framebuffer[ypos * width + xpos] = 0xFFFFFF;
                 fbif->invalidate(fbdev, xpos, ypos, xpos, ypos);
                 fbif->flush(fbdev);
                 fbif->present(fbdev);
-                _i686_enable_interrupt();
+                interrupt_enable();
                 break;
             default:
                 break;
@@ -893,12 +866,13 @@ static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int read_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    char *next;
-    uint32_t addr = strtoul(argv[1], &next, 16);
-    int32_t count = strtol(next + 1, NULL, 10);
-    if (!count) {
-        count = 1;
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s addr [count]\n", argv[0]);
+        return 1;
     }
+
+    uint32_t addr = strtoul(argv[1], NULL, 16);
+    uint32_t count = argc < 3 ? 1 : strtoul(argv[2], NULL, 10);
 
     while (count > 0) {
         printf("%08lX: ", addr);
@@ -915,9 +889,13 @@ static int read_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int write_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    char *next;
-    uint32_t addr = strtoul(argv[1], &next, 16);
-    uint8_t value = strtol(next + 1, NULL, 16);
+    if (argc < 3) {
+        fprintf(stderr, "usage: %s addr value\n", argv[0]);
+        return 1;
+    }
+
+    uint32_t addr = strtoul(argv[1], NULL, 16);
+    uint8_t value = strtol(argv[2], NULL, 16);
 
     *(uint8_t *)addr = value;
     
@@ -926,12 +904,14 @@ static int write_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int in_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    char *next;
-    uint16_t addr = strtol(argv[1], &next, 16);
-    
-    if (!*next) return 1;
+    if (argc < 3) {
+        fprintf(stderr, "usage: %s addr size\n", argv[0]);
+        return 1;
+    }
 
-    switch (next[1]) {
+    uint16_t addr = strtol(argv[1], NULL, 16);
+
+    switch (*argv[2]) {
         case 'b':
         case 'B':
             printf("%02X\n", io_in8(addr));
@@ -953,13 +933,15 @@ static int in_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int out_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    char *next;
-    uint16_t addr = strtol(argv[1], &next, 16);
-    uint32_t value = strtoul(next + 1, &next, 16);
+    if (argc < 4) {
+        fprintf(stderr, "usage: %s addr size value\n", argv[0]);
+        return 1;
+    }
 
-    if (!*next) return 1;
+    uint16_t addr = strtol(argv[1], NULL, 16);
+    uint32_t value = strtoul(argv[3], NULL, 16);
 
-    switch (next[1]) {
+    switch (*argv[2]) {
         case 'b':
         case 'B':
             io_out8(addr, value);
@@ -979,46 +961,16 @@ static int out_handler(struct shell_instance *inst, int argc, char **argv)
     return 0;
 }
 
-static void hexdump(const void *data, long len, uint32_t offset)
-{
-    const uint8_t *addr = data;
-    long count = 0;
-    uint8_t buf[16];
-
-    while (count < len) {
-        printf("%08lX │ ", count + offset);
-
-        memcpy(buf, addr, sizeof(buf));
-
-        for (int i = 0; i < sizeof(buf) && count + i < len; i++) {
-            printf("%02X ", buf[i]);
-
-        }
-
-        printf("│ ");
-
-        for (int i = 0; i < sizeof(buf) && count + i < len; i++) {
-            printf("%c", buf[i] >= 0x20 && buf[i] < 0x80 ? (char)buf[i] : '.');
-        }
-        
-        printf("\n");
-
-        addr += 16;
-        count += 16;
-    }
-}
-
 static int readblk_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    char *next;
-    lba_t lba = strtoull(argv[1], &next, 16);
-
-    if (!*next) {
-        fprintf(stderr, "usage: %s [lba] [device]\n", argv[0]);
+    if (argc < 3) {
+        fprintf(stderr, "usage: %s device lba\n", argv[0]);
         return 1;
     }
 
-    struct device *blkdev = find_device(next + 1);
+    lba_t lba = strtoull(argv[2], NULL, 16);
+
+    struct device *blkdev = find_device(argv[1]);
     if (!blkdev) {
         fprintf(stderr, "%s: could not find device\n", argv[0]);
         return 1;
@@ -1035,19 +987,10 @@ static int readblk_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int mount_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    char *fsname = NULL;
-    for (int i = 0; argv[1][i]; i++) {
-        if (argv[1][i] == ' ') {
-            fsname = &argv[1][i];
-            break;
-        }
-    }
-    if (!fsname || !fsname[1]) {
-        fprintf(stderr, "usage: %s [device] [fs_name]\n", argv[0]);
+    if (argc < 3) {
+        fprintf(stderr, "usage: %s device fs_name\n", argv[0]);
         return 1;
     }
-
-    *fsname++ = '\0';
 
     struct device *blkdev = find_device(argv[1]);
     if (!blkdev) {
@@ -1055,7 +998,7 @@ static int mount_handler(struct shell_instance *inst, int argc, char **argv)
         return 1;
     }
     
-    return fs_auto_mount(blkdev, fsname);
+    return fs_auto_mount(blkdev, argv[2]);
 }
 
 static int lsfs_handler(struct shell_instance *inst, int argc, char **argv)
@@ -1073,6 +1016,11 @@ static int lsfs_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int chfs_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s fs_name\n", argv[0]);
+        return 1;
+    }
+
     struct filesystem *newfs = find_filesystem(argv[1]);
     if (!newfs) {
         fprintf(stderr, "%s: could not find filesystem\n", argv[0]);
@@ -1111,6 +1059,11 @@ static int lsfile_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int chdir_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s dir_name\n", argv[0]);
+        return 1;
+    }
+
     if (!inst->fs) {
         fprintf(stderr, "%s: filesystem not selected\n", argv[0]);
         return 1;
@@ -1147,6 +1100,11 @@ static int chdir_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int readfile_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s path\n", argv[0]);
+        return 1;
+    }
+
     char path[PATH_MAX];
     if (path_is_absolute(argv[1])) {
         strncpy(path, argv[1], sizeof(path));
@@ -1180,6 +1138,11 @@ static int readfile_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int crc32_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s path\n", argv[0]);
+        return 1;
+    }
+
     char path[PATH_MAX];
     if (path_is_absolute(argv[1])) {
         strncpy(path, argv[1], sizeof(path));
@@ -1214,6 +1177,11 @@ static int crc32_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s path\n", argv[0]);
+        return 1;
+    }
+
     char path[PATH_MAX];
     if (path_is_absolute(argv[1])) {
         strncpy(path, argv[1], sizeof(path));
@@ -1299,6 +1267,11 @@ static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int drvinfo_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s drvnum\n", argv[0]);
+        return 1;
+    }
+
     uint8_t drive = strtol(argv[1], NULL, 16);
     enum bios_drive_type drive_type;
     struct chs drive_geometry;
@@ -1403,6 +1376,11 @@ static int lsint_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int chainload_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s drvnum\n", argv[0]);
+        return 1;
+    }
+
     uint8_t drive = argc < 2 ? _pc_boot_drive : strtol(argv[1], NULL, 16);
     printf("Booting into drive 0x%02X...\n", drive);
     return _pc_chainload(drive);
@@ -1464,7 +1442,7 @@ static int jump_handler(struct shell_instance *inst, int argc, char **argv)
 static int boot_handler(struct shell_instance *inst, int argc, char **argv)
 {
     if (argc < 2) {
-        fprintf(stderr, "usage: %s addr file_name\n", argv[0]);
+        fprintf(stderr, "usage: %s path\n", argv[0]);
         return 1;
     }
 
@@ -1505,15 +1483,45 @@ static int boot_handler(struct shell_instance *inst, int argc, char **argv)
 
         idx++;
     } while (!elf_advance_program_header(elf));
+    
+    struct device *fbdev = find_device("video0");
+    if (!fbdev) {
+        fprintf(stderr, "%s: cannot find device\n", argv[0]);
+        return 1;
+    }
 
-    int ret = ((int (*)(char *))elf->ehdr.elf32.entry)(
-        "cvearly_console=acpi "
-        ""
+    const struct framebuffer_interface *fbif = fbdev->driver->get_interface(fbdev, "framebuffer");
+
+    struct fb_hw_mode hwmode;
+
+    fbif->get_hw_mode(fbdev, &hwmode);
+
+    cleanup();
+
+    char arg_buffer[1024];
+    static const char *memory_model_lut[] = { "direct", "text" } ;
+
+    snprintf(
+        arg_buffer,
+        sizeof(arg_buffer),
+        "--early_fb addr=%p,mm=%s,w=%d,h=%d,p=%d,bpp=%d,r=%d:%d,g=%d:%d,b=%d:%d",
+        hwmode.framebuffer,
+        memory_model_lut[hwmode.memory_model],
+        hwmode.width,
+        hwmode.height,
+        hwmode.pitch,
+        hwmode.bpp,
+        hwmode.rmask,
+        hwmode.rpos,
+        hwmode.gmask,
+        hwmode.gpos,
+        hwmode.bmask,
+        hwmode.bpos
     );
 
-    elf_close(elf);
-    
-    return ret;
+    ((void (*)(char *))elf->ehdr.elf32.entry)(arg_buffer);
+
+    for (;;) {}
 }
 
 static int help_handler(struct shell_instance *inst, int argc, char **argv)
@@ -1555,27 +1563,6 @@ static int exit_handler(struct shell_instance *inst, int argc, char **argv)
     return 0;
 }
 
-int handle_command(struct shell_instance *inst, char *cmdline, int len)
-{
-    int cmd_len = 0, noarg = 0;
-    for (int i = 0; cmdline[i] != ' ' && i < len; i++) {
-        cmd_len++;
-    }
-    if (!cmdline[cmd_len]) noarg = 1;
-    cmdline[cmd_len] = 0;
-
-    for (int i = 0; i < ARRAY_SIZE(commands); i++) {
-        if (strcmp(commands[i].name, cmdline) == 0) {
-            char *argv[] = { cmdline, cmdline + cmd_len + 1 };
-            return commands[i].handler(inst, noarg ? 1 : 2, argv);
-        }
-
-    }
-
-    printf("command not found: %*s\n", cmd_len + 1, cmdline);
-    return 1;
-}
-
 int shell_handler(struct shell_instance *inst, int argc, char **argv)
 {
     struct shell_instance new_inst = {
@@ -1584,7 +1571,7 @@ int shell_handler(struct shell_instance *inst, int argc, char **argv)
         .working_dir_path = { 0, },
     };
 
-    char buf[512];
+    char line_buf[512], elem_buf[512], *newargv[32];
     int result = 0;
 
     for (;;) {
@@ -1594,22 +1581,54 @@ int shell_handler(struct shell_instance *inst, int argc, char **argv)
         if (new_inst.fs) {
             printf("%s:%s", new_inst.fs->name, new_inst.working_dir_path);
         }
-        printf("> ");
-        int len = readline(buf, sizeof(buf));
-        if (len == 0) {
+
+        shell_readline("> ", line_buf, sizeof(line_buf));
+
+        const char *line_cursor = line_buf;
+        char *elem_cursor = elem_buf;
+        long elem_buf_len = sizeof(elem_buf);
+        int newargc = 0;
+
+        while (newargc < ARRAY_SIZE(newargv)) {
+            line_cursor = shell_parse(line_cursor, elem_cursor, elem_buf_len);
+            newargv[newargc] = elem_cursor;
+            if (!line_cursor) break;
+
+            long elem_len = strnlen(elem_cursor, elem_buf_len);
+            elem_cursor += elem_len + 1;
+            elem_buf_len -= elem_len + 1;
+
+            newargc++;
+        }
+
+        if (newargc < 1) {
             result = 0;
             continue;
         }
-        if (strncmp(buf, "exit", sizeof(buf)) == 0) {
+
+        if (strcmp("exit", newargv[0]) == 0) {
             break;
         }
-        result = handle_command(&new_inst, buf, len);
+
+        int command_found = 0;
+        for (int i = 0; i < ARRAY_SIZE(commands); i++) {
+            if (strcmp(commands[i].name, newargv[0]) == 0) {
+                result = commands[i].handler(&new_inst, newargc, newargv);
+                command_found = 1;
+                break;
+            }
+        }
+    
+        if (!command_found) {
+            printf("command not found: %s\n", newargv[0]);
+            result = 1;
+        }
     }
 
     return 0;
 }
 
-void start_shell(void)
+void shell_start(void)
 {
     printf("\x1b[3J\x1b[0;0f\x1b[?25h\x1b[0m");
 
@@ -1626,5 +1645,5 @@ void start_shell(void)
         shell_handler(&inst, 1, (char **)&buf);
     }
 
-    _i686_disable_interrupt();
+    interrupt_disable();
 }

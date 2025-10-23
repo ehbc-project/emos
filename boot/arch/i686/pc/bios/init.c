@@ -10,6 +10,7 @@
 #include <string.h>
 #include <macros.h>
 
+#include <compiler.h>
 #include <mm/mm.h>
 #include <device/driver.h>
 #include <interface/char.h>
@@ -466,7 +467,7 @@ void _pc_init(void)
     
     int acpi_error = acpi_init();
 
-    _i686_enable_interrupt();
+    interrupt_enable();
 
     ret = init_root_bus(!acpi_error);
     if (ret) {
@@ -504,4 +505,10 @@ void _pc_init(void)
     main();
 
     panic("Kernel returned");
+}
+
+__destructor
+static void _pc_fini(void)
+{
+    _pc_remap_pic_int(0x08, 0x70);
 }

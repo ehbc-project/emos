@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include <compiler.h>
+
 struct interrupt_frame {
     uint32_t eip;
     uint16_t cs;
@@ -10,7 +12,14 @@ struct interrupt_frame {
     uint32_t eflags;
 };
 
-void _i686_enable_interrupt(void);
-void _i686_disable_interrupt(void);
+__always_inline void interrupt_enable(void)
+{
+    asm volatile ("sti");
+}
+
+__always_inline void interrupt_disable(void)
+{
+    asm volatile ("cli");
+}
 
 #endif // __I686_INTERRUPT_H__

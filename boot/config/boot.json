@@ -1,0 +1,24 @@
+{
+    "title": "EMOS Bootloader",
+    "password": null,
+    "theme": "default",
+    "timeout": 5,
+    "default_entry": 0,
+    "entries": [
+        {
+            "name": "Boot from next device",
+            "script": "bootnext"
+        },
+        {
+            "name": "Boot from current device",
+            "script": [
+                "mount rd0 fs1",
+                "boot fs1:/system/kernel/kernel.elf"
+            ]
+        },
+        {
+            "name": "Start bootloader shell",
+            "script": "shell"
+        }
+    ]
+}

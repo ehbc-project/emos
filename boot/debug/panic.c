@@ -7,5 +7,8 @@ __noreturn
 void panic(const char *message)
 {
     fprintf(stderr, "\nPANIC: %s\n", message);
-    _i686_pc_halt();
+    
+    for (;;) {
+        _i686_halt();
+    }
 }
