@@ -4,6 +4,7 @@
     .code32
     .globl  _start
 _start:
+    xor     %eax, %eax
     mov     $__bss_start, %edi
     mov     $__bss_end, %ecx
     sub     $__bss_start, %ecx

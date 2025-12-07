@@ -1,8 +1,8 @@
-#include <asm/bios/keyboard.h>
+#include <eboot/asm/bios/keyboard.h>
 
-#include <asm/bios/bioscall.h>
+#include <eboot/asm/bios/bioscall.h>
 
-void _pc_bios_read_keyboard(uint8_t *scancode, char *ascii)
+void _pc_bios_keyboard_get_stroke(uint8_t *scancode, char *ascii)
 {
     struct bioscall_regs regs = {
         .a.b.h = 0x10
@@ -14,7 +14,7 @@ void _pc_bios_read_keyboard(uint8_t *scancode, char *ascii)
     if (ascii) *ascii = regs.a.b.l;
 }
 
-int _pc_bios_read_keyboard_nowait(uint8_t *scancode, char *ascii)
+int _pc_bios_keyboard_check_stroke(uint8_t *scancode, char *ascii)
 {
     struct bioscall_regs regs = {
         .a.b.h = 0x11
@@ -30,7 +30,7 @@ int _pc_bios_read_keyboard_nowait(uint8_t *scancode, char *ascii)
     return 0;
 }
 
-uint16_t _pc_bios_read_keyboard_flags(void)
+uint16_t _pc_bios_keyboard_get_state(void)
 {
     struct bioscall_regs regs = {
         .a.b.h = 0x12

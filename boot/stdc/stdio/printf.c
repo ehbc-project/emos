@@ -1,8 +1,5 @@
 #include <stdio.h>
 
-#include <device/driver.h>
-#include <interface/char.h>
-
 #undef printf
 
 int printf(const char *fmt, ...)

@@ -1,13 +1,13 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
-#include <path.h>
-#include <mm/mm.h>
-#include <fs/fs.h>
-#include <fs/driver.h>
+#include <eboot/path.h>
+#include <eboot/filesystem.h>
 
 FILE *fopen(const char *__restrict path, const char *__restrict mode)
 {
+    status_t status;
     struct path_iterator pathit;
 
     path_iter_init(&pathit, path);
@@ -16,25 +16,26 @@ FILE *fopen(const char *__restrict path, const char *__restrict mode)
         return NULL;
     }
 
-    struct filesystem *fs = find_filesystem(pathit.element);
-    if (!fs) {
-        return NULL;
-    }
+    struct filesystem *fs;
+    status = filesystem_find(pathit.element, &fs);
+    if (!CHECK_SUCCESS(status)) return NULL;
 
-    struct fs_directory *dir = fs->driver->open_root_directory(fs);
-    if (!dir) {
-        return NULL;
-    }
+    struct fs_directory *dir;
+    status = fs->driver->open_root_directory(fs, &dir);
+    if (!CHECK_SUCCESS(status)) return NULL;
 
     while (!path_iter_next(&pathit)) {
         if (pathit.element[0] == '\0') {
             continue;
         }
 
-        struct fs_directory *newdir = dir->fs->driver->open_directory(dir, pathit.element);
-        if (!newdir) {
-            return NULL;
+        if (strcmp(".", pathit.element) == 0) {
+            continue;
         }
+
+        struct fs_directory *newdir;
+        status = dir->fs->driver->open_directory(dir, pathit.element, &newdir);
+        if (!CHECK_SUCCESS(status)) return NULL;
 
         dir->fs->driver->close_directory(dir);
         dir = newdir;
@@ -44,14 +45,13 @@ FILE *fopen(const char *__restrict path, const char *__restrict mode)
         return NULL;
     }
     
-    struct fs_file *file = fs->driver->open(dir, pathit.element);
-    if (!file) {
-        return NULL;
-    }
+    struct fs_file *file;
+    status = fs->driver->open(dir, pathit.element, &file);
+    if (!CHECK_SUCCESS(status)) return NULL;
 
     dir->fs->driver->close_directory(dir);
 
-    FILE *stream = mm_allocate(sizeof(*stream));
+    FILE *stream = malloc(sizeof(*stream));
 
     stream->type = 1;
     stream->file.fs = fs;

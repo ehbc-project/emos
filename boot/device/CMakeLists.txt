@@ -7,4 +7,4 @@ add_subdirectory(rtc)
 add_subdirectory(usb)
 add_subdirectory(video)
 
-target_sources(bootloader PRIVATE device.c driver.c resource.c)
+target_sources(bootloader PRIVATE device.c)

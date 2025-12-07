@@ -1,1 +1,3 @@
-#include <asm/bios/misc.h>
+#include <eboot/asm/bios/misc.h>
+
+uint8_t _pc_boot_sector[512];

@@ -3,10 +3,17 @@
 
 #include <stdint.h>
 
-#include <asm/processor.h>
+#include <eboot/asm/processor.h>
 
+#include <eboot/compiler.h>
+
+__pure
 uint16_t bswap_16(uint16_t val);
+
+__pure
 uint32_t bswap_32(uint32_t val);
+
+__pure
 uint64_t bswap_64(uint64_t val);
 
 #if __has_builtin(__builtin_bswap16)

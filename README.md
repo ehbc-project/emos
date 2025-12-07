@@ -1,5 +1,15 @@
 # EHBC Modular OS (EMOS) Repository
 
+## Build
+
+```sh
+git clone https://github.com/ehbc-project/emos
+cd emos
+cmake -S. -Bbuild
+scripts/mkdisk.sh -a i686 disk.img
+scripts/run.sh pc-i386
+```
+
 ## Directory Structure
 
 - `docs`: Documents

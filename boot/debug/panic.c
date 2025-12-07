@@ -1,7 +1,8 @@
-#include <debug.h>
+#include <eboot/debug.h>
 
 #include <stdio.h>
-#include <asm/halt.h>
+
+#include <eboot/asm/intrinsics/misc.h>
 
 __noreturn
 void panic(const char *message)

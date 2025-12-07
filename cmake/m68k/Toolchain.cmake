@@ -19,11 +19,9 @@ find_program(CMAKE_CXX_COMPILER
 set(CMAKE_CXX_COMPILER_TARGET   m68k-unknown-elf)
 set(CMAKE_CXX_FLAGS             "${CMAKE_CXX_FLAGS} -ffreestanding -nostdlib -march=68030 -m68881")
 
-find_program(CMAKE_ASM_COMPILER
-    "${TOOLCHAIN_PREFIX}as"
-    HINTS "/usr" "/usr/local" "/opt/homebrew" ENV PATH
-    REQUIRED)
+set(CMAKE_ASM_COMPILER          "${CMAKE_C_COMPILER}")
 set(CMAKE_ASM_COMPILER_TARGET   m68k-unknown-elf)
+set(CMAKE_ASM_FLAGS             "${CMAKE_ASM_FLAGS} -ffreestanding -nostdlib -march=68030 -m68881")
 
 set(_BINUTILS_LIST LD;AR;NM;OBJCOPY;OBJDUMP;RANLIB;READELF;STRIP)
 

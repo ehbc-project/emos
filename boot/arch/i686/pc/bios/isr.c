@@ -1,11 +1,13 @@
-#include <asm/isr.h>
+#include <eboot/asm/isr.h>
 
 #include <stdio.h>
-#include <sys/io.h>
-#include <asm/idt.h>
-#include <mm/mm.h>
-#include <debug.h>
-#include <macros.h>
+#include <stdlib.h>
+
+#include <eboot/asm/io.h>
+#include <eboot/asm/idt.h>
+
+#include <eboot/debug.h>
+#include <eboot/macros.h>
 
 #define DECLARE_ISRxy(x, y) extern void _pc_isr_##x##y(void);
 #define DECLARE_ISRx(x) \
@@ -157,40 +159,54 @@ void _pc_init_idt(void)
     SET_TRAP_ENTRY(fc); SET_TRAP_ENTRY(fd); SET_TRAP_ENTRY(fe); SET_TRAP_ENTRY(ff);
 }
 
-void _pc_set_interrupt_handler(int num, struct device *dev, interrupt_handler_t func)
+status_t _pc_isr_set_interrupt_handler(int num, struct device *dev, interrupt_handler_t func)
 {
-    struct isr_table_entry *entry;
+    struct isr_table_entry *newentry = malloc(sizeof(**_pc_isr_table));
+    if (!newentry) {
+        return STATUS_UNKNOWN_ERROR;
+    }
+    newentry->next = NULL;
+    newentry->dev = dev;
+    newentry->interrupt_handler = func;
+    newentry->is_interrupt = 1;
+
     if (!_pc_isr_table[num]) {
-        _pc_isr_table[num] = mm_allocate(sizeof(**_pc_isr_table));
-        entry = _pc_isr_table[num];
+        _pc_isr_table[num] = newentry;
     } else {
-        entry = _pc_isr_table[num];
-        while (entry) {
+        struct isr_table_entry *entry = _pc_isr_table[num];
+        while (entry->next) {
             entry = entry->next;
         }
+
+        entry->next = newentry;
     }
-    entry->next = NULL;
-    entry->dev = dev;
-    entry->interrupt_handler = func;
-    entry->is_interrupt = 1;
+
+    return STATUS_SUCCESS;
 }
 
-void _pc_set_trap_handler(int num, trap_handler_t func)
+status_t _pc_isr_set_trap_handler(int num, trap_handler_t func)
 {
-    struct isr_table_entry *entry;
+    struct isr_table_entry *newentry = malloc(sizeof(**_pc_isr_table));
+    if (!newentry) {
+        return STATUS_UNKNOWN_ERROR;
+    }
+    newentry->next = NULL;
+    newentry->dev = NULL;
+    newentry->trap_handler = func;
+    newentry->is_interrupt = 0;
+
     if (!_pc_isr_table[num]) {
-        _pc_isr_table[num] = mm_allocate(sizeof(**_pc_isr_table));
-        entry = _pc_isr_table[num];
+        _pc_isr_table[num] = newentry;
     } else {
-        entry = _pc_isr_table[num];
-        while (entry) {
+        struct isr_table_entry *entry = _pc_isr_table[num];
+        while (entry->next) {
             entry = entry->next;
         }
+
+        entry->next = newentry;
     }
-    entry->next = NULL;
-    entry->dev = NULL;
-    entry->trap_handler = func;
-    entry->is_interrupt = 0;
+
+    return STATUS_SUCCESS;
 }
 
 struct isr_table_entry *_pc_get_isr_table_entry(int num)

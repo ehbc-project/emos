@@ -1,12 +1,18 @@
     .org    0
 
     .globl  _pc_boot_drive
-    .lcomm  _pc_boot_drive, 1
+    .lcomm  _pc_boot_drive, 4
+
+    .globl  _pc_boot_part_base
+    .lcomm  _pc_boot_part_base, 4
 
     .section .text.startup
     .code16
     .globl  _s1start
 _s1start:
+    popl    _pc_boot_part_base
+    popl    _pc_boot_drive
+
     xor     %ax, %ax
     mov     %ax, %ds
     mov     %ax, %es
@@ -16,13 +22,18 @@ _s1start:
     mov     %sp, %bp
 
 .clear_bss:
+    pushl    _pc_boot_drive
+    pushl    _pc_boot_part_base
+
+    mov     $0, %al
     mov     $__bss_start, %di
     mov     $__bss_end, %ecx
     sub     $__bss_start, %ecx
     rep     stosb
 
-    mov     %dl, _pc_boot_drive         # store the index of the boot drive
-
+    popl    _pc_boot_part_base
+    popl    _pc_boot_drive
+    
 .activate_a20:
     mov     $0x2401, %ax                # activate A20 via bios
     int     $0x15
@@ -36,8 +47,7 @@ _s1start:
 
     mov     $str_a20error, %si
     call    print_string                # else print error
-    
-    jmp     .halt
+    jmp     .halt16
 
 _s1start.1:
     call    switch_real_to_prot         # switch to protected mode
@@ -50,6 +60,11 @@ _s1start.1:
 .halt:                                  # if the function returns,
     hlt                                 # halt forever
     jmp     .halt
+
+.code16
+.halt16:                                  # if the function returns,
+    hlt                                 # halt forever
+    jmp     .halt16
 
 print_string:
     mov     $0x0E, %ah                  # print the string in %si

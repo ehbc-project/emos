@@ -1,14 +1,18 @@
 #include <stdio.h>
 
-#include <fs/fs.h>
-#include <fs/driver.h>
-#include <interface/char.h>
+#include <eboot/filesystem.h>
+#include <eboot/interface/char.h>
 
 long ftell(FILE *stream)
 {
+    status_t status;
+    off_t offset;
+
     switch (stream->type) {
         case 1:
-            return stream->file.file->fs->driver->tell(stream->file.file);
+            status = stream->file.file->fs->driver->tell(stream->file.file, &offset);
+            if (!CHECK_SUCCESS(status)) return -1;
+            return offset;
         default:
             return -1;
     }

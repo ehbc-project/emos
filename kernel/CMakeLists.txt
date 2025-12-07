@@ -44,5 +44,10 @@ add_custom_target(kernel_symbol_table ALL
 )
 
 # Subdirectories
-add_subdirectory(init)
 add_subdirectory(arch)
+# add_subdirectory(bus)
+# add_subdirectory(device)
+# add_subdirectory(filesystem)
+add_subdirectory(log)
+add_subdirectory(stdc)
+add_subdirectory(init)

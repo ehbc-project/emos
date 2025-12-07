@@ -1,8 +1,7 @@
 #include <stdio.h>
+#include <stdlib.h>
 
-#include <mm/mm.h>
-#include <fs/fs.h>
-#include <fs/driver.h>
+#include <eboot/filesystem.h>
 
 int fclose(FILE *stream)
 {
@@ -13,7 +12,7 @@ int fclose(FILE *stream)
         default:
     }
 
-    mm_free(stream);
+    free(stream);
 
     return 0;
 }

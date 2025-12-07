@@ -1,6 +1,6 @@
-#include <asm/pci/cfgspace.h>
+#include <eboot/asm/pci/cfgspace.h>
 
-#include <sys/io.h>
+#include <eboot/asm/io.h>
 
 uint32_t _bus_pci_cfg_read32(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset)
 {

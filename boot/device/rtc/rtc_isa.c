@@ -3,52 +3,81 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
 #include <errno.h>
 
-#include <mm/mm.h>
-#include <device/device.h>
-#include <device/driver.h>
+#include <eboot/device.h>
 
 struct rtc_data {
     int dummy;
 };
 
-static int probe(struct device *dev);
-static int remove(struct device *dev);
-static const void *get_interface(struct device *dev, const char *name);
-
-static struct device_driver drv = {
-    .name = "rtc_isa",
-    .probe = probe,
-    .remove = remove,
-    .get_interface = get_interface,
-};
-
-static int probe(struct device *dev)
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt);
+static status_t remove(struct device *dev);
+static status_t get_interface(struct device *dev, const char *name, const void **result);
+    
+static void rtc_isa_init(void)
 {
-    dev->name = "rtc";
-    dev->id = generate_device_id(dev->name);
+    status_t status;
+    struct device_driver *drv;
 
-    struct rtc_data *data = mm_allocate(sizeof(*data));
+    status = device_driver_create(&drv);
+    if (!CHECK_SUCCESS(status)) {
+        panic("cannot register device driver \"rtc_isa\"");
+    }
 
-    dev->data = data;
-
-    return 0;
+    drv->name = "rtc_isa";
+    drv->probe = probe;
+    drv->remove = remove;
+    drv->get_interface = get_interface;
 }
 
-static int remove(struct device *dev)
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt)
+{
+    status_t status;
+    struct device *dev = NULL;
+    struct rtc_data *data = NULL;
+
+    status = device_create(&dev, drv, parent);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = device_generate_name("rtc", dev->name, sizeof(dev->name));
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    data = malloc(sizeof(*data));
+    dev->data = data;
+    
+    if (devout) *devout = dev;
+
+    return STATUS_SUCCESS;
+
+has_error:
+    if (data) {
+        free(data);
+    }
+
+    if (dev) {
+        device_remove(dev);
+    }
+
+    return status;
+}
+
+static status_t remove(struct device *dev)
 {
     struct rtc_data *data = (struct rtc_data *)dev->data;
 
-    mm_free(data);
+    free(data);
 
-    return 0;
+    device_remove(dev);
+
+    return STATUS_SUCCESS;
 }
 
-static const void *get_interface(struct device *dev, const char *name)
+static status_t get_interface(struct device *dev, const char *name, const void **result)
 {
-    return NULL;
+    return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(drv)
+DEVICE_DRIVER(rtc_isa, rtc_isa_init)
 

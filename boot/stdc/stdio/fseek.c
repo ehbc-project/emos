@@ -1,8 +1,7 @@
 #include <stdio.h>
 
-#include <fs/fs.h>
-#include <fs/driver.h>
-#include <interface/char.h>
+#include <eboot/filesystem.h>
+#include <eboot/interface/char.h>
 
 int fseek(FILE *stream, long offset, int origin)
 {

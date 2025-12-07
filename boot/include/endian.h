@@ -2,9 +2,9 @@
 #define __ENDIAN_H__
 
 #include <stdint.h>
-
-#include <asm/processor.h>
 #include <byteswap.h>
+
+#include <eboot/asm/processor.h>
 
 #define LITTLE_ENDIAN   1
 #define BIG_ENDIAN      2

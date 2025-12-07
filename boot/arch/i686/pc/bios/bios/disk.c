@@ -1,8 +1,8 @@
-#include <asm/bios/disk.h>
+#include <eboot/asm/bios/disk.h>
 
 #include <stdint.h>
 
-#include <asm/bios/bioscall.h>
+#include <eboot/asm/bios/bioscall.h>
 
 struct dap {
     uint8_t dap_size;
@@ -14,16 +14,23 @@ struct dap {
     uint32_t lba_high;
 };
 
-int _pc_bios_reset_drive(uint8_t drive)
+#define MAKE_STATUS(code) (0xA0001300 | (code))
+
+status_t _pc_bios_disk_reset(uint8_t drive)
 {
     struct bioscall_regs regs = {
         .a.b.h = 0x00,
         .d.b.l = drive
     };
-    return _pc_bios_call(0x13, &regs) ? regs.a.b.h : 0;
+
+    if (_pc_bios_call(0x13, &regs)) {
+        return MAKE_STATUS(regs.a.b.h);
+    }
+
+    return STATUS_SUCCESS;
 }
 
-int _pc_bios_read_drive(uint8_t drive, struct chs chs, uint8_t count, void *buf)
+status_t _pc_bios_disk_read(uint8_t drive, struct chs chs, uint8_t count, void *buf, uint8_t *result)
 {
     struct bioscall_regs regs = {
         .a.b.h = 0x02,
@@ -35,10 +42,19 @@ int _pc_bios_read_drive(uint8_t drive, struct chs chs, uint8_t count, void *buf)
         .es.w = ((uint32_t)buf >> 4) & 0xFFFF,
         .b.w = (uint32_t)buf & 0x000F,
     };
-    return _pc_bios_call(0x13, &regs) ? -(regs.a.b.h) : regs.a.b.l;
+
+    if (_pc_bios_call(0x13, &regs)) {
+        return MAKE_STATUS(regs.a.b.h);
+    }
+
+    if (result) {
+        *result = regs.a.b.l;
+    }
+
+    return STATUS_SUCCESS;
 }
 
-int _pc_bios_write_drive(uint8_t drive, struct chs chs, uint8_t count, const void *buf)
+status_t _pc_bios_disk_write(uint8_t drive, struct chs chs, uint8_t count, const void *buf, uint8_t *result)
 {
     struct bioscall_regs regs = {
         .a.b.h = 0x03,
@@ -50,10 +66,19 @@ int _pc_bios_write_drive(uint8_t drive, struct chs chs, uint8_t count, const voi
         .es.w = ((uint32_t)buf >> 4) & 0xFFFF,
         .b.w = (uint32_t)buf & 0x000F,
     };
-    return _pc_bios_call(0x13, &regs) ? -(regs.a.b.h) : regs.a.b.l;
+
+    if (_pc_bios_call(0x13, &regs)) {
+        return MAKE_STATUS(regs.a.b.h);
+    }
+
+    if (result) {
+        *result = regs.a.b.l;
+    }
+
+    return STATUS_SUCCESS;
 }
 
-int _pc_bios_get_drive_params(uint8_t drive, enum bios_drive_type *type, struct chs *geometry, struct bios_disk_base_table **dbt)
+status_t _pc_bios_disk_get_params(uint8_t drive, uint8_t *hdd_count, uint8_t *type, struct chs *geometry, struct bios_disk_base_table **dbt)
 {
     struct bioscall_regs regs = {
         .a.b.h = 0x08,
@@ -62,10 +87,16 @@ int _pc_bios_get_drive_params(uint8_t drive, enum bios_drive_type *type, struct 
         .di.w = 0,
     };
 
-    int err = _pc_bios_call(0x13, &regs);
-    if (err) return err;
+    if (_pc_bios_call(0x13, &regs)) {
+        return MAKE_STATUS(regs.a.b.h);
+    }
 
-    if (type) *type = regs.b.b.l;
+    if (hdd_count) {
+        *hdd_count = regs.d.b.l;
+    }
+    if (type) {
+        *type = regs.b.b.l;
+    }
     if (geometry) {
         geometry->head = (int)regs.d.b.h + 1;
         geometry->cylinder = (((int)regs.c.b.l >> 6) | (int)regs.c.b.h) + 1;
@@ -75,10 +106,10 @@ int _pc_bios_get_drive_params(uint8_t drive, enum bios_drive_type *type, struct 
         *dbt = (void *)(((uint32_t)regs.es.w << 4) + regs.di.w);
     }
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-int _pc_bios_check_ext(uint8_t drive, enum bios_edd_version *edd_version, uint16_t *subset_support_flags)
+status_t _pc_bios_disk_check_ext(uint8_t drive, uint8_t *edd_version, uint16_t *subset_support_flags)
 {
     struct bioscall_regs regs = {
         .a.b.h = 0x41,
@@ -86,20 +117,25 @@ int _pc_bios_check_ext(uint8_t drive, enum bios_edd_version *edd_version, uint16
         .d.b.l = drive,
     };
 
-    int err = _pc_bios_call(0x13, &regs);
-    if (err) return err;
-
-    if (regs.b.w != 0xAA55) {
-        return 1;
+    if (_pc_bios_call(0x13, &regs)) {
+        return MAKE_STATUS(regs.a.b.h);
     }
 
-    if (edd_version) *edd_version = regs.a.b.h;
-    if (subset_support_flags) *subset_support_flags = regs.c.w;
+    if (regs.b.w != 0xAA55) {
+        return STATUS_UNSUPPORTED;
+    }
+
+    if (edd_version) {
+        *edd_version = regs.a.b.h;
+    }
+    if (subset_support_flags) {
+        *subset_support_flags = regs.c.w;
+    }
     
     return 0;
 }
 
-int _pc_bios_read_drive_ext(uint8_t drive, lba_t lba, uint16_t count, void *buf)
+status_t _pc_bios_disk_read_ext(uint8_t drive, lba_t lba, uint16_t count, void *buf)
 {
     struct dap dap = {
         .dap_size = sizeof(struct dap),
@@ -116,10 +152,15 @@ int _pc_bios_read_drive_ext(uint8_t drive, lba_t lba, uint16_t count, void *buf)
         .ds.w = ((uint32_t)&dap >> 4) & 0xFFFF,
         .si.w = (uint32_t)&dap & 0x000F,
     };
-    return _pc_bios_call(0x13, &regs);
+
+    if (_pc_bios_call(0x13, &regs)) {
+        return MAKE_STATUS(regs.a.b.h);
+    }
+
+    return STATUS_SUCCESS;
 }
 
-int _pc_bios_write_drive_ext(uint8_t drive, lba_t lba, uint16_t count, const void *buf)
+status_t _pc_bios_disk_write_ext(uint8_t drive, lba_t lba, uint16_t count, const void *buf)
 {
     struct dap dap = {
         .dap_size = sizeof(struct dap),
@@ -136,10 +177,15 @@ int _pc_bios_write_drive_ext(uint8_t drive, lba_t lba, uint16_t count, const voi
         .ds.w = ((uint32_t)&dap >> 4) & 0xFFFF,
         .si.w = (uint32_t)&dap & 0x000F,
     };
-    return _pc_bios_call(0x13, &regs);
+    
+    if (_pc_bios_call(0x13, &regs)) {
+        return MAKE_STATUS(regs.a.b.h);
+    }
+
+    return STATUS_SUCCESS;
 }
 
-int _pc_bios_get_drive_params_ext(uint8_t drive, struct bios_extended_drive_params *params)
+status_t _pc_bios_disk_get_params_ext(uint8_t drive, struct bios_extended_drive_params *params)
 {
     struct bioscall_regs regs = {
         .a.b.h = 0x48,
@@ -148,6 +194,10 @@ int _pc_bios_get_drive_params_ext(uint8_t drive, struct bios_extended_drive_para
         .si.w = (uint32_t)params & 0x000F,
     };
 
-    return _pc_bios_call(0x13, &regs);
+    if (_pc_bios_call(0x13, &regs)) {
+        return MAKE_STATUS(regs.a.b.h);
+    }
+
+    return STATUS_SUCCESS;
 }
 

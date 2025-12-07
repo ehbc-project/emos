@@ -1,12 +1,13 @@
-#include <font.h>
+#include <eboot/font.h>
 
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-#include <compiler.h>
-#include <mm/mm.h>
-#include <asm/bios/video.h>
+#include <eboot/asm/bios/video.h>
+
+#include <eboot/compiler.h>
 
 static const void *vbios_font = NULL;
 static void *font_file_data = NULL;
@@ -91,7 +92,7 @@ static const uint8_t unicode_cp437_table_4[] = {
     0x00, 0x00, 0x0D, 0x0E, 0x00, 0x00, 0x00, 0x00,
 };
 
-static int unicode_to_cp437(wchar_t codepoint)
+int unicode_to_cp437(wchar_t codepoint)
 {
     if (codepoint == 0) {
         return 0;
@@ -167,17 +168,19 @@ static int unicode_to_cp437(wchar_t codepoint)
     }
 }
 
-int font_use(const char *path)
+status_t font_use(const char *path)
 {
     if (!path) {
-        mm_free(font_file_data);
+        if (font_file_data) {
+            free(font_file_data);
+        }
         font_file_data = NULL;
-        return 0;
+        return STATUS_SUCCESS;
     }
 
     FILE *fp = fopen(path, "rb");
     if (!fp) {
-        return 1;
+        return STATUS_UNKNOWN_ERROR;
     }
 
     fseek(fp, 0, SEEK_END);
@@ -190,23 +193,23 @@ int font_use(const char *path)
 
     if (signature[0] != 'b' || signature[1] != 'f' || signature[2] != 'n' || signature[3] != 't') {
         fclose(fp);
-        return 1;
+        return STATUS_INVALID_SIGNATURE;
     }
 
     if (font_file_data) {
-        mm_free(font_file_data);
+        free(font_file_data);
     }
-    font_file_data = mm_allocate(file_size);
+    font_file_data = malloc(file_size);
     if (fread(font_file_data, file_size, 1, fp) != 1) {
-        mm_free(font_file_data);
+        free(font_file_data);
         font_file_data = NULL;
     }
     
     fclose(fp);
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-int font_get_glyph_dimension(wchar_t codepoint, int *width, int *height)
+status_t font_get_glyph_dimension(wchar_t codepoint, int *width, int *height)
 {
     if (!font_file_data) {
         if (width) {
@@ -215,11 +218,9 @@ int font_get_glyph_dimension(wchar_t codepoint, int *width, int *height)
         if (height) {
             *height = 16;
         }
-
-        return 0;
     } else {
         struct font_header *header = (struct font_header *)font_file_data;
-        if (codepoint > header->max_codepoint || !((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]) return 1;
+        if (codepoint > header->max_codepoint || !((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]) return STATUS_INVALID_VALUE;
         struct glyph_header *glyph_header = (struct glyph_header *)((uint8_t *)font_file_data + ((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]);
 
         if (width) {
@@ -228,36 +229,37 @@ int font_get_glyph_dimension(wchar_t codepoint, int *width, int *height)
         if (height) {
             *height = 16;
         }
-
-        return 0;
     }
+
+    return STATUS_SUCCESS;
 }
 
-int font_get_glyph_data(wchar_t codepoint, uint8_t *buf, long size)
+status_t font_get_glyph_data(wchar_t codepoint, uint8_t *buf, size_t size)
 {
     if (!font_file_data) {
-        if (size < 16) return 1;
+        if (size < 16) return STATUS_INVALID_VALUE;
 
         int cp437_char = unicode_to_cp437(codepoint);
-        if (cp437_char < 0) return 1;
+        if (cp437_char < 0) return STATUS_INVALID_VALUE;
         
         memcpy(buf, (const uint8_t *)vbios_font + 16 * cp437_char, 16);
-        return 0;
     } else {
         struct font_header *header = (struct font_header *)font_file_data;
-        if (codepoint > header->max_codepoint || !((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]) return -1;
-        struct glyph_header *glyph_header = (struct glyph_header *)((uint8_t *)font_file_data + ((uint32_t *)((uint8_t *)font_file_data + header->glyph_offset_table_offset))[codepoint]);
+        uintptr_t glyph_offset = ((uint32_t *)((uintptr_t)header + header->glyph_offset_table_offset))[codepoint];
+        if (codepoint > header->max_codepoint || !glyph_offset) return STATUS_INVALID_VALUE;
+        struct glyph_header *glyph_header = (struct glyph_header *)((uintptr_t)header + glyph_offset);
     
-        if (glyph_header->is_full_width && size < 32) return 1;
-        if (!glyph_header->is_full_width && size < 16) return 1;
+        if (glyph_header->is_full_width && size < 32) return STATUS_INVALID_VALUE;
+        if (!glyph_header->is_full_width && size < 16) return STATUS_INVALID_VALUE;
     
         memcpy(buf, ((uint8_t *)glyph_header) + sizeof(struct glyph_header), glyph_header->is_full_width ? 32 : 16);
-        return 0;
     }
+
+    return STATUS_SUCCESS;
 }
 
 __constructor
 static void _init_vbios_font(void)
 {
-    _pc_bios_get_vga_font_data(0x06, &vbios_font, NULL);
+    _pc_bios_video_get_font_data(0x06, &vbios_font, NULL);
 }

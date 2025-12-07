@@ -1,6 +1,6 @@
 #include <string.h>
 
-#include <debug.h>
+#include <eboot/debug.h>
 
 #undef mempcpy
 

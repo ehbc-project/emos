@@ -13,9 +13,8 @@ _pc_isr_\num:
     pushal                              # push all registers
     pushw   %ds
     pushw   %es
-    pushw   %fs
-    pushw   %gs
     pushw   %ss
+    pushw   $0
 
     push    %ebp                        # set up stack base pointer
     mov     %esp, %ebp
@@ -24,18 +23,18 @@ _pc_isr_\num:
     add     $4, %eax
 
     .if     \error
-    pushl   4(%ebp)                     # error num
+    pushl   44(%ebp)                    # error num
     pushl   $0x\num                     # interrupt num
     pushl   %eax                        # registers
 
-    lea     8(%ebp), %eax
+    lea     48(%ebp), %eax
     pushl   %eax                        # interrupt frame
     .else
     pushl   $0                          # error num
     pushl   $0x\num                     # interrupt num
     pushl   %eax                        # registers
 
-    lea     4(%ebp), %eax
+    lea     44(%ebp), %eax
     pushl   %eax                        # interrupt frame
     .endif
     
@@ -43,9 +42,8 @@ _pc_isr_\num:
     add     $16, %esp
 
     pop     %ebp                        # restore base pointer
+    popw    %ax
     popw    %ss
-    popw    %gs
-    popw    %fs
     popw    %es
     popw    %ds
     popal                               # pop all registers

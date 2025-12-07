@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.13)
 
 include(FetchContent)
 
+add_subdirectory(liballoc)
+
 if ("${TARGET_FIRMWARE}" STREQUAL "uefi")
     ExternalProject_Add(gnu-efi
         URL "https://github.com/ncroxon/gnu-efi/archive/refs/tags/4.0.2.tar.gz"
@@ -19,7 +21,8 @@ FetchContent_Declare(zlib
     URL_HASH SHA256=9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
     DOWNLOAD_EXTRACT_TIMESTAMP false
 )
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I\"${CMAKE_CURRENT_SOURCE_DIR}/../include\"")
+include_directories(zlibstatic PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+include_directories(zlibstatic PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/liballoc/include")
 set(ZLIB_BUILD_EXAMPLES OFF)
 FetchContent_MakeAvailable(zlib)
 
@@ -31,6 +34,7 @@ target_include_directories(bootloader PRIVATE
 add_library(zlib.lib STATIC IMPORTED GLOBAL)
 add_dependencies(zlib.lib PRIVATE zlibstatic)
 set_target_properties(zlib.lib PROPERTIES IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/_deps/zlib-build/libzlibstatic.a")
+
 
 FetchContent_Declare(uacpi
     URL "https://github.com/uACPI/uACPI/archive/refs/tags/3.1.0.tar.gz"

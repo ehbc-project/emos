@@ -1,38 +1,54 @@
-#include <elf.h>
+#include <eboot/elf.h>
 
 #include <string.h>
-#include <mm/mm.h>
+#include <stdlib.h>
 
-struct elf_file *elf_open(const char *path)
+#include <eboot/macros.h>
+#include <eboot/mm.h>
+
+status_t elf_open(const char *path, struct elf_file **elfout)
 {
-    struct elf_file *elf = mm_allocate(sizeof(struct elf_file));
+    status_t status;
+    struct elf_file *elf = NULL;
+    
+    elf = malloc(sizeof(struct elf_file));
     if (!elf) {
-        return NULL;
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
     }
 
     elf->fp = fopen(path, "rb");
     if (!elf->fp) {
-        mm_free(elf->fp);
-        return NULL;
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
     }
 
     fseek(elf->fp, 0, SEEK_SET);
     fread(&elf->ehdr, sizeof(elf->ehdr), 1, elf->fp);
 
     if (memcmp(elf->ehdr.magic, "\x7F""ELF", sizeof(elf->ehdr.magic)) != 0) {
-        mm_free(elf->fp);
-        return NULL;
+        status = STATUS_INVALID_SIGNATURE;
+        goto has_error;
     }
 
     elf->phdr_idx = 0;
 
-    return elf;
+    if (elfout) *elfout = elf;
+
+    return STATUS_SUCCESS;
+
+has_error:
+    if (elf) {
+        free(elf->fp);
+    }
+
+    return status;
 }
 
 void elf_close(struct elf_file *elf)
 {
     fclose(elf->fp);
-    mm_free(elf);
+    free(elf);
 }
 
 void elf_reset_current_program_header(struct elf_file *elf)
@@ -40,26 +56,28 @@ void elf_reset_current_program_header(struct elf_file *elf)
     elf->phdr_idx = 0;
 }
 
-int elf_get_current_program_header(struct elf_file *__restrict elf, struct elf_program_header *__restrict phdr)
+status_t elf_get_current_program_header(struct elf_file *__restrict elf, struct elf_program_header *__restrict phdr)
 {
-    if (elf->phdr_idx >= elf->ehdr.elf32.phnum) return 1;
-
-    printf("phoff: %08lX\n", elf->ehdr.elf32.phoff);
+    if (elf->phdr_idx >= elf->ehdr.elf32.phnum) return STATUS_END_OF_LIST;
 
     fseek(elf->fp, elf->ehdr.elf32.phoff + elf->phdr_idx * elf->ehdr.elf32.phentsize, SEEK_SET);
     fread(phdr, sizeof(*phdr), 1, elf->fp);
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-int elf_load_current_program_header(struct elf_file *__restrict elf)
+status_t elf_load_current_program_header(struct elf_file *__restrict elf)
 {
+    status_t status;
     struct elf_program_header phdr;
 
-    int err = elf_get_current_program_header(elf, &phdr);
-    if (err) return err;
+    status = elf_get_current_program_header(elf, &phdr);
+    if (!CHECK_SUCCESS(status)) return status;
 
-    if (phdr.type != PHDR_TYPE_LOAD) return 1;
+    if (phdr.type != PHDR_TYPE_LOAD) return STATUS_CONFLICTING_STATE;
+
+    status = mm_allocate_pages_to((void *)phdr.elf32.vaddr, ALIGN(phdr.elf32.memsz, 4096) >> 12);
+    if (!CHECK_SUCCESS(status)) return status;
 
     fseek(elf->fp, phdr.elf32.offset, SEEK_SET);
     fread((void *)phdr.elf32.vaddr, phdr.elf32.filesz, 1, elf->fp);
@@ -68,14 +86,14 @@ int elf_load_current_program_header(struct elf_file *__restrict elf)
         memset((void *)(phdr.elf32.vaddr + phdr.elf32.filesz), 0, phdr.elf32.memsz - phdr.elf32.filesz);
     }
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-int elf_advance_program_header(struct elf_file *elf)
+status_t elf_advance_program_header(struct elf_file *elf)
 {
-    if (elf->phdr_idx >= elf->ehdr.elf32.phnum - 1) return 1;
+    if (elf->phdr_idx >= elf->ehdr.elf32.phnum - 1) return STATUS_END_OF_LIST;
 
     elf->phdr_idx++;
 
-    return 0;
+    return STATUS_SUCCESS;
 }

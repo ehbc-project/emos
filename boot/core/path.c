@@ -1,4 +1,4 @@
-#include <path.h>
+#include <eboot/path.h>
 
 #include <string.h>
 
@@ -86,6 +86,7 @@ char *path_normalize(char *dest, size_t len, const char *src)
     char *dest_end = dest + len - 1;
     int is_absolute = 0;
     int has_filesystem = 0;
+    int first_loop = 1;
     
     if (it.element[0] != '\0') {
         has_filesystem = 1;
@@ -99,16 +100,20 @@ char *path_normalize(char *dest, size_t len, const char *src)
         *write_pos++ = ':';
     }
     
-    if (path_iter_next(&it) && it.has_separator) {
-        is_absolute = 1;
-        if (write_pos < dest_end) {
-            *write_pos++ = '/';
-        }
-    }
-    
-    int dotdot_count = 0;
-    
+    int asdf;
     do {
+        asdf = path_iter_next(&it);
+
+        if (first_loop) {
+            if (it.has_separator) {
+                is_absolute = 1;
+                if (write_pos < dest_end) {
+                    *write_pos++ = '/';
+                }
+            }
+            first_loop = 0;
+        }
+
         if (it.element[0] == '\0') continue;
         
         if (strcmp(it.element, ".") == 0) continue;
@@ -172,8 +177,6 @@ char *path_normalize(char *dest, size_t len, const char *src)
                     }
                 }
             } else {
-                dotdot_count++;
-                
                 if (write_pos > dest && write_pos < dest_end) {
                     *write_pos++ = '/';
                 }
@@ -186,9 +189,7 @@ char *path_normalize(char *dest, size_t len, const char *src)
             continue;
         }
         
-        dotdot_count = 0;
-        
-        if (write_pos > dest && *(write_pos - 1) != '/' && write_pos < dest_end) {
+        if (write_pos > dest && write_pos[-1] != '/' && write_pos < dest_end) {
             *write_pos++ = '/';
         }
         
@@ -198,7 +199,7 @@ char *path_normalize(char *dest, size_t len, const char *src)
             write_pos += elem_len;
         }
         
-    } while (path_iter_next(&it));
+    } while (!asdf);
     
     if (!has_filesystem && write_pos == dest && dest_end - dest > 0) {
         *dest = '.';
@@ -228,8 +229,8 @@ char *path_get_fsname(char *buf, size_t len, const char *path)
         return buf;
     }
 
-    while (path < fsname_end && len-- > 0) {
-        *buf++ = *path++;
+    for (size_t i = 0; i < len && path < fsname_end; i++) {
+        buf[i] = path[i];
     }
 
     return buf;
@@ -242,8 +243,8 @@ char *path_get_dirname(char *buf, size_t len, const char *path)
         dirname_end = path + strlen(path);
     }
 
-    while (path < dirname_end && len-- > 0) {
-        *buf++ = *path++;
+    for (size_t i = 0; i < len && path < dirname_end; i++) {
+        buf[i] = path[i];
     }
 
     return buf;
@@ -271,7 +272,7 @@ int path_is_absolute(const char *path)
     }
 
     const char *fsname_end = strchr(path, ':');
-    if (fsname_end && fsname_end[1] == '/') {
+    if (fsname_end && (fsname_end[1] == '/' || fsname_end[1] == '\0')) {
         return 1;
     }
 

@@ -3,60 +3,58 @@ cmake_minimum_required(VERSION 3.13)
 set(BUILD_FDIMAGE TRUE CACHE BOOL "Build floppy disk image")
 set(BUILD_CDIMAGE TRUE CACHE BOOL "Build CD image")
 
-if (BUILD_FDIMAGE OR BUILD_CDIMAGE)
-    add_executable(fdboot)
-    set_target_properties(fdboot PROPERTIES SUFFIX ".elf")
-    target_compile_features(fdboot PUBLIC c_std_11)
-    target_compile_features(fdboot PUBLIC cxx_std_14)
-    target_compile_options(fdboot PUBLIC 
-        $<$<COMPILE_LANGUAGE:C,CXX>:
-            -Werror
-            -Wall
-            -Wno-unused-function
-            -Wno-unused-variable
-            -Wno-unused-but-set-variable
-            -pedantic
-            -pedantic-errors
-        >
-    )
-    target_link_options(fdboot PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
-    set_target_properties(fdboot PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
-    target_sources(fdboot PRIVATE fdboot.S)
+add_executable(fdboot)
+set_target_properties(fdboot PROPERTIES SUFFIX ".elf")
+target_compile_features(fdboot PUBLIC c_std_11)
+target_compile_features(fdboot PUBLIC cxx_std_14)
+target_compile_options(fdboot PUBLIC 
+    $<$<COMPILE_LANGUAGE:C,CXX>:
+        -Werror
+        -Wall
+        -Wno-unused-function
+        -Wno-unused-variable
+        -Wno-unused-but-set-variable
+        -pedantic
+        -pedantic-errors
+    >
+)
+target_link_options(fdboot PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
+set_target_properties(fdboot PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
+target_sources(fdboot PRIVATE fdboot.S)
 
-    add_custom_target(fdboot_execbin ALL
-        COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:fdboot>" fdboot.bin
-        DEPENDS fdboot
-        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-        COMMENT "Creating floppy VBR"
-    )
+add_custom_target(fdboot_execbin ALL
+    COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:fdboot>" fdboot.bin
+    DEPENDS fdboot
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMENT "Creating floppy VBR"
+)
 
 
-    add_executable(mbrboot)
-    set_target_properties(mbrboot PROPERTIES SUFFIX ".elf")
-    target_compile_features(mbrboot PUBLIC c_std_11)
-    target_compile_features(mbrboot PUBLIC cxx_std_14)
-    target_compile_options(mbrboot PUBLIC 
-        $<$<COMPILE_LANGUAGE:C,CXX>:
-            -Werror
-            -Wall
-            -Wno-unused-function
-            -Wno-unused-variable
-            -Wno-unused-but-set-variable
-            -pedantic
-            -pedantic-errors
-        >
-    )
-    target_link_options(mbrboot PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
-    set_target_properties(mbrboot PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
-    target_sources(mbrboot PRIVATE mbrboot.S)
+add_executable(mbrboot)
+set_target_properties(mbrboot PROPERTIES SUFFIX ".elf")
+target_compile_features(mbrboot PUBLIC c_std_11)
+target_compile_features(mbrboot PUBLIC cxx_std_14)
+target_compile_options(mbrboot PUBLIC 
+    $<$<COMPILE_LANGUAGE:C,CXX>:
+        -Werror
+        -Wall
+        -Wno-unused-function
+        -Wno-unused-variable
+        -Wno-unused-but-set-variable
+        -pedantic
+        -pedantic-errors
+    >
+)
+target_link_options(mbrboot PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
+set_target_properties(mbrboot PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_vbr.lds")
+target_sources(mbrboot PRIVATE mbrboot.S)
 
-    add_custom_target(mbrboot_execbin ALL
-        COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:mbrboot>" mbrboot.bin
-        DEPENDS mbrboot
-        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-        COMMENT "Creating floppy VBR"
-    )
-endif()
+add_custom_target(mbrboot_execbin ALL
+    COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:mbrboot>" mbrboot.bin
+    DEPENDS mbrboot
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMENT "Creating floppy VBR"
+)
 
 add_executable(stage1)
 set_target_properties(stage1 PROPERTIES SUFFIX ".elf")
@@ -83,7 +81,7 @@ target_include_directories(stage1 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../inc
 target_include_directories(stage1 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../../include")
 target_include_directories(stage1 PRIVATE "${CMAKE_BINARY_DIR}")
 
-target_sources(stage1 PRIVATE stage1.S stage1.c chainload.S ../../cpu_mode.S pic.c)
+target_sources(stage1 PRIVATE stage1.S stage1.c ../../cpu_mode.S pic.c)
 target_link_options(stage1 PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_stage1.lds")
 set_target_properties(stage1 PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_stage1.lds")
 
@@ -103,7 +101,7 @@ target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(bootloader PRIVATE "${CMAKE_BINARY_DIR}")
 
-target_sources(bootloader PRIVATE start.S reboot.c poweroff.c isr.c isr.S init.c)
+target_sources(bootloader PRIVATE start.S power.c isr.c isr.S init.c)
 target_link_options(bootloader PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds")
 set_target_properties(bootloader PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds")
 

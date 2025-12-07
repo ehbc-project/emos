@@ -1,6 +1,6 @@
-#include <asm/pic.h>
+#include <eboot/asm/pic.h>
 
-#include <sys/io.h>
+#include <eboot/asm/io.h>
 
 void _pc_remap_pic_int(uint8_t master, uint8_t slave)
 {

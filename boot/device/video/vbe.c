@@ -3,17 +3,19 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
 #include <errno.h>
 
-#include <mm/mm.h>
-#include <device/device.h>
-#include <device/driver.h>
-#include <interface/framebuffer.h>
-#include <interface/console.h>
-#include <asm/bios/video.h>
-#include <debug.h>
-#include <asm/vbe/pm_interface.h>
-#include <asm/interrupt.h>
+#include <eboot/asm/bios/video.h>
+#include <eboot/asm/bios/vbe_pmi.h>
+
+#include <eboot/status.h>
+#include <eboot/macros.h>
+#include <eboot/debug.h>
+#include <eboot/mm.h>
+#include <eboot/device.h>
+#include <eboot/interface/framebuffer.h>
+#include <eboot/interface/console.h>
 
 #define DIFF_REGION_SIZE 16
 
@@ -26,6 +28,7 @@ struct vbe_data {
     farptr_t pmi_table;
 
     struct vbe_video_mode_info mode_info;
+    size_t hw_framebuffer_size;
 
     void (*convert_color)(const struct vbe_video_mode_info *, const uint32_t *, void *, long);
 };
@@ -41,21 +44,21 @@ inline static void set_region_diff(struct device *dev, int xregion, int yregion)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
 
-    data->diff_buffer[yregion * data->mode_info.width / DIFF_REGION_SIZE + xregion] = 3;
+    data->diff_buffer[yregion * data->mode_info.width / DIFF_REGION_SIZE + xregion] = 1;
 }
 
-inline static void reset_region_diff(struct device *dev, int page, int xregion, int yregion)
+inline static void reset_region_diff(struct device *dev, int xregion, int yregion)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
 
-    data->diff_buffer[yregion * data->mode_info.width / DIFF_REGION_SIZE  + xregion] &= ~(1 << page);
+    data->diff_buffer[yregion * data->mode_info.width / DIFF_REGION_SIZE  + xregion] = 0;
 }
 
-inline static int get_region_diff(struct device *dev, int page, int xregion, int yregion)
+inline static int get_region_diff(struct device *dev, int xregion, int yregion)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
 
-    return (data->diff_buffer[yregion * data->mode_info.width / DIFF_REGION_SIZE  + xregion] >> page) & 1;
+    return data->diff_buffer[yregion * data->mode_info.width / DIFF_REGION_SIZE  + xregion];
 }
 
 static uint8_t rgb_to_irgb(uint32_t color)
@@ -165,18 +168,24 @@ static void convert_color_generic(const struct vbe_video_mode_info *mode, const 
     }
 }
 
-static int set_mode(struct device *dev, int width, int height, int bpp)
+static status_t set_mode(struct device *dev, int width, int height, int bpp)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
-
+    status_t status;
     struct vbe_controller_info vbe_info;
-    _pc_bios_get_vbe_controller_info(&vbe_info);
-
-    uint16_t *mode_list = (uint16_t *)((vbe_info.video_modes.segment << 4) + vbe_info.video_modes.offset);
+    uint16_t *mode_list;
     struct vbe_video_mode_info vbe_mode_info;
-    uint16_t mode = 0xFFFF;
+    uint16_t mode;
+    size_t hw_frame_size;
+
+    status = _pc_bios_vbe_get_controller_info(&vbe_info);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    mode_list = (uint16_t *)FARPTR_TO_VPTR(vbe_info.video_modes);
+    mode = 0xFFFF;
     for (int i = 0; mode_list[i] != 0xFFFF; i++) {
-        _pc_bios_get_vbe_video_mode_info(mode_list[i], &vbe_mode_info);
+        status = _pc_bios_vbe_get_video_mode_info(mode_list[i], &vbe_mode_info);
+        if (!CHECK_SUCCESS(status)) goto has_error;
 
         if (vbe_mode_info.width == width &&
             vbe_mode_info.height == height &&
@@ -188,26 +197,36 @@ static int set_mode(struct device *dev, int width, int height, int bpp)
         }
     }
     if (mode == 0xFFFF) {
-        return ENOENT;
+        status = STATUS_ENTRY_NOT_FOUND;
+        goto has_error;
     }
 
-    int err = _pc_bios_set_vbe_video_mode(mode);
-    if (err) {
-        return err;
-    }
+    status = _pc_bios_vbe_set_video_mode(mode);
+    if (!CHECK_SUCCESS(status)) goto has_error;
 
     if (data->char_buffer) {
-        mm_free(data->char_buffer);
+        free(data->char_buffer);
         data->char_buffer = NULL;
     }
 
-    data->frame_buffer = mm_reallocate(data->frame_buffer, width * height * sizeof(*data->frame_buffer));
+    void *temp = data->frame_buffer;
+    data->frame_buffer = realloc(data->frame_buffer, width * height * sizeof(*data->frame_buffer));
+    if (!data->frame_buffer) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
     memset(data->frame_buffer, 0, width * height * sizeof(*data->frame_buffer));
     
-    data->diff_buffer = mm_reallocate(data->diff_buffer, (width / DIFF_REGION_SIZE) * (height / DIFF_REGION_SIZE));
+    data->diff_buffer = realloc(data->diff_buffer, (width / DIFF_REGION_SIZE) * (height / DIFF_REGION_SIZE));
+    if (!data->diff_buffer) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
     memset(data->diff_buffer, 0, (width / DIFF_REGION_SIZE) * (height / DIFF_REGION_SIZE));
 
-    memset((void *)data->mode_info.framebuffer, 0, 2 * data->mode_info.pitch * data->mode_info.height * data->mode_info.bpp / 8);
+    hw_frame_size = data->mode_info.pitch * data->mode_info.height * data->mode_info.bpp / 8;
+    mm_map(data->mode_info.framebuffer, (void *)data->mode_info.framebuffer, ALIGN((data->mode_info.lin_num_image_pages + 1) * hw_frame_size, 4096) >> 12, PF_WTCACHE);
+    memset((void *)data->mode_info.framebuffer, 0, (data->mode_info.lin_num_image_pages + 1) * hw_frame_size);
 
     if (vbe_mode_info.bpp == 24) {
         data->convert_color = convert_color_rgb888;
@@ -219,21 +238,30 @@ static int set_mode(struct device *dev, int width, int height, int bpp)
         data->convert_color = convert_color_generic;
     }
 
-    return 0;
+    return STATUS_SUCCESS;
+
+has_error:
+    panic("I don't know what more can I do");
+
+    return status;
 }
 
-static int get_mode(struct device *dev, int *width, int *height, int *bpp)
+static status_t get_mode(struct device *dev, int *width, int *height, int *bpp)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
+
+    if (data->mode_info.memory_model != VBEMM_DIRECT) {
+        return STATUS_CONFLICTING_STATE;
+    }
 
     if (width) *width = data->mode_info.width;
     if (height) *height = data->mode_info.height;
     if (bpp) *bpp = data->mode_info.bpp;
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-static int get_hw_mode(struct device *dev, struct fb_hw_mode *hwmode)
+static status_t get_hw_mode(struct device *dev, struct fb_hw_mode *hwmode)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
 
@@ -259,17 +287,19 @@ static int get_hw_mode(struct device *dev, struct fb_hw_mode *hwmode)
     hwmode->bmask = data->mode_info.blue_mask;
     hwmode->bpos = data->mode_info.blue_position;
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-static void *get_framebuffer(struct device *dev)
+static status_t get_framebuffer(struct device *dev, void **framebuffer)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
     
-    return data->frame_buffer;
+    if (framebuffer) *framebuffer = data->frame_buffer;
+
+    return STATUS_SUCCESS;
 }
 
-static void fb_invalidate(struct device *dev, int x0, int y0, int x1, int y1)
+static status_t fb_invalidate(struct device *dev, int x0, int y0, int x1, int y1)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
 
@@ -278,45 +308,45 @@ static void fb_invalidate(struct device *dev, int x0, int y0, int x1, int y1)
             set_region_diff(dev, xr, yr);
         }
     }
+
+    return STATUS_SUCCESS;
 }
 
-static int get_diff_chunk(struct device *dev, int page, int xr, int yr)
+static int get_diff_chunk(struct device *dev, int xr, int yr)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
 
-    int modified_chunk = get_region_diff(dev, page, xr, yr);
+    int modified_chunk = get_region_diff(dev, xr, yr);
     int chunk_size = 1;
 
     while (++xr < data->mode_info.width / DIFF_REGION_SIZE) {
-        if (modified_chunk != get_region_diff(dev, page, xr, yr)) break;
+        if (modified_chunk != get_region_diff(dev, xr, yr)) break;
         chunk_size++;
     }
 
     return modified_chunk ? chunk_size : -chunk_size;
 }
 
-static void fb_flush(struct device *dev)
+static status_t fb_flush(struct device *dev)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
-
-    int next_page = (data->current_page + 1) % 2;
 
     for (int yr = 0; yr < data->mode_info.height / DIFF_REGION_SIZE; yr++) {
         int xr = 0;
         while (xr < data->mode_info.width / DIFF_REGION_SIZE) {
-            int chunk_size = get_diff_chunk(dev, next_page, xr, yr);
+            int chunk_size = get_diff_chunk(dev, xr, yr);
             if (chunk_size < 0) {
                 xr += -chunk_size;
                 continue;
             }
 
             for (int i = 0; i < chunk_size; i++) {
-                reset_region_diff(dev, next_page, xr + i, yr);
+                reset_region_diff(dev, xr + i, yr);
             }
 
             for (int y = yr * DIFF_REGION_SIZE; y < (yr + 1) * DIFF_REGION_SIZE; y++) {
                 long fb_offs =
-                    (next_page * data->mode_info.height + y) * data->mode_info.pitch +
+                    (y) * data->mode_info.pitch +
                     xr * DIFF_REGION_SIZE * data->mode_info.bpp / 8;
 
                 data->convert_color(
@@ -330,19 +360,13 @@ static void fb_flush(struct device *dev)
             xr += chunk_size;
         }
     }
+
+    return STATUS_SUCCESS;
 }
 
-static void fb_present(struct device *dev)
+static status_t fb_present(struct device *dev)
 {
-    struct vbe_data *data = (struct vbe_data*)dev->data;
-
-    data->current_page = (data->current_page + 1) % 2;
-
-    if (!data->pmi_table.segment && !data->pmi_table.offset) {
-        _pc_bios_set_vbe_display_start(0, data->current_page * data->mode_info.height);
-    } else {
-        _pc_vbe_pmi_set_display_start(data->pmi_table, data->current_page * data->mode_info.height);
-    }
+    return STATUS_SUCCESS;
 }
 
 static const struct framebuffer_interface fbif = {
@@ -355,18 +379,23 @@ static const struct framebuffer_interface fbif = {
     .present = fb_present,
 };
 
-static int set_dimension(struct device *dev, int width, int height)
+static status_t set_dimension(struct device *dev, int width, int height)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
-
+    status_t status;
     struct vbe_controller_info vbe_info;
-    _pc_bios_get_vbe_controller_info(&vbe_info);
-
-    uint16_t *mode_list = (uint16_t *)((vbe_info.video_modes.segment << 4) + vbe_info.video_modes.offset);
+    uint16_t *mode_list;
     struct vbe_video_mode_info vbe_mode_info;
-    uint16_t mode = 0xFFFF;
+    uint16_t mode;
+
+    status = _pc_bios_vbe_get_controller_info(&vbe_info);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    mode_list = (uint16_t *)FARPTR_TO_VPTR(vbe_info.video_modes);
+    mode = 0xFFFF;
     for (int i = 0; mode_list[i] != 0xFFFF; i++) {
-        _pc_bios_get_vbe_video_mode_info(mode_list[i], &vbe_mode_info);
+        status = _pc_bios_vbe_get_video_mode_info(mode_list[i], &vbe_mode_info);
+        if (!CHECK_SUCCESS(status)) goto has_error;
 
         if (vbe_mode_info.width == width &&
             vbe_mode_info.height == height &&
@@ -377,56 +406,70 @@ static int set_dimension(struct device *dev, int width, int height)
         }
     }
     if (mode == 0xFFFF) {
-        return 1;
+        status = STATUS_ENTRY_NOT_FOUND;
+        goto has_error;
     }
 
-    int err = _pc_bios_set_vbe_video_mode(mode);
-    if (err) {
-        return 1;
-    }
+    status = _pc_bios_vbe_set_video_mode(mode);
+    if (!CHECK_SUCCESS(status)) goto has_error;
 
     if (data->frame_buffer) {
-        mm_free(data->frame_buffer);
+        free(data->frame_buffer);
         data->frame_buffer = NULL;
     }
 
-    data->char_buffer = mm_reallocate(data->char_buffer, width * height * sizeof(*data->char_buffer));
+    data->char_buffer = realloc(data->char_buffer, width * height * sizeof(*data->char_buffer));
+    if (!data->char_buffer) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
     memset(data->char_buffer, 0, width * height * sizeof(*data->char_buffer));
     
-    data->diff_buffer = mm_reallocate(data->diff_buffer, width * height / 8);
+    data->diff_buffer = realloc(data->diff_buffer, width * height / 8);
+    if (!data->diff_buffer) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
     memset(data->diff_buffer, 0, width * height / 8);
 
     if (!vbe_mode_info.framebuffer) {
         memset((void *)0xB8000, 0, width * height * sizeof(uint16_t));
     }
 
-    _pc_bios_set_text_cursor_pos(0, 0, 0);
+    _pc_bios_video_set_cursor_pos(0, 0, 0);
 
-    return 0;
+    return STATUS_SUCCESS;
+
+has_error:
+    panic("I don't know what more can I do");
+
+    return status;
 }
 
-static int get_dimension(struct device *dev, int *width, int *height)
+static status_t get_dimension(struct device *dev, int *width, int *height)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
 
     if (data->mode_info.memory_model != VBEMM_TEXT) {
-        return 1;
+        return STATUS_CONFLICTING_STATE;
     }
 
     if (width) *width = data->mode_info.width;
     if (height) *height = data->mode_info.height;
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-static struct console_char_cell *get_buffer(struct device *dev)
+static status_t get_buffer(struct device *dev, struct console_char_cell **buf)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
 
-    return data->char_buffer;
+    if (buf) *buf = data->char_buffer;
+    
+    return STATUS_SUCCESS;
 }
 
-static void con_invalidate(struct device *dev, int x0, int y0, int x1, int y1)
+static status_t con_invalidate(struct device *dev, int x0, int y0, int x1, int y1)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
 
@@ -435,36 +478,51 @@ static void con_invalidate(struct device *dev, int x0, int y0, int x1, int y1)
             data->diff_buffer[(y * data->mode_info.width + x) / 8] |= 1 << ((y * data->mode_info.width + x) % 8);
         }
     }
+
+    return STATUS_SUCCESS;
 }
 
-static void con_flush(struct device *dev) {}
+static status_t con_flush(struct device *dev) {
+    return STATUS_SUCCESS;
+}
 
-static void con_present(struct device *dev)
+extern int unicode_to_cp437(wchar_t codepoint);
+
+static status_t con_present(struct device *dev)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
 
     for (int y = 0; y < data->mode_info.height; y++) {
         for (int x = 0; x < data->mode_info.width; x++) {
-            if (data->diff_buffer[(y * data->mode_info.width + x) / 8] & (1 << ((y * data->mode_info.width + x) % 8))) {
-                const struct console_char_cell *src = &data->char_buffer[y * data->mode_info.width + x];
-                uint16_t cell = src->codepoint & 0xFF;
-                cell |= (rgb_to_irgb(src->attr.fg_color) & 0xF) << 8;
-                cell |= (rgb_to_irgb(src->attr.bg_color) & 0xF) << 12;
-                if (src->attr.text_dim) {
-                    cell &= 0x77FF;
-                }
-                ((uint16_t *)0xB8000)[y * data->mode_info.width + x] = cell;
-                data->diff_buffer[(y * data->mode_info.width + x) / 8] &= ~(1 << ((y * data->mode_info.width + x) % 8));
+            if (!(data->diff_buffer[(y * data->mode_info.width + x) / 8] &
+                (1 << ((y * data->mode_info.width + x) % 8)))) {
+                continue;
             }
+
+            const struct console_char_cell *src = &data->char_buffer[y * data->mode_info.width + x];
+            int ch = unicode_to_cp437(src->codepoint);
+            if (ch < 0) {
+                ch = 0;
+            }
+            uint16_t cell = ch;
+            cell |= (rgb_to_irgb(src->attr.text_reversed ? src->attr.bg_color : src->attr.fg_color) & 0xF) << 8;
+            cell |= (rgb_to_irgb(src->attr.text_reversed ? src->attr.fg_color : src->attr.bg_color) & 0xF) << 12;
+            if (src->attr.text_dim) {
+                cell &= 0x77FF;
+            }
+            ((uint16_t *)0xB8000)[y * data->mode_info.width + x] = cell;
+            data->diff_buffer[(y * data->mode_info.width + x) / 8] &= ~(1 << ((y * data->mode_info.width + x) % 8));
         }
     }
+
+    return STATUS_SUCCESS;
 }
 
-static void set_cursor_pos(struct device *dev, int col, int row)
+static status_t set_cursor_pos(struct device *dev, int col, int row)
 {
     if (col < 0 || row < 0) {
         uint8_t row_prev, col_prev;
-        _pc_bios_get_text_cursor(0, NULL, row < 0 ? &row_prev : NULL, col < 0 ? &col_prev : NULL);
+        _pc_bios_video_get_cursor_info(0, NULL, row < 0 ? &row_prev : NULL, col < 0 ? &col_prev : NULL);
         if (col < 0) {
             col = col_prev;
         }
@@ -472,17 +530,22 @@ static void set_cursor_pos(struct device *dev, int col, int row)
             row = row_prev;
         }
     }
-    _pc_bios_set_text_cursor_pos(0, row, col);
+
+    _pc_bios_video_set_cursor_pos(0, row, col);
+
+    return STATUS_SUCCESS;
 }
 
-static void get_cursor_pos(struct device *dev, int *col, int *row)
+static status_t get_cursor_pos(struct device *dev, int *col, int *row)
 {
     uint8_t b_col, b_row;
 
-    _pc_bios_get_text_cursor(0, NULL, &b_row, &b_col);
+    _pc_bios_video_get_cursor_info(0, NULL, &b_row, &b_col);
 
     if (col) *col = b_col;
     if (row) *row = b_row;
+    
+    return STATUS_SUCCESS;
 }
 
 static const struct console_interface conif = {
@@ -498,72 +561,131 @@ static const struct console_interface conif = {
     .get_cursor_attr = NULL,
 };
 
-static int probe(struct device *dev);
-static int remove(struct device *dev);
-static const void *get_interface(struct device *dev, const char *name);
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt);
+static status_t remove(struct device *dev);
+static status_t get_interface(struct device *dev, const char *name, const void **result);
 
-static struct device_driver drv = {
-    .name = "vbe_video",
-    .probe = probe,
-    .remove = remove,
-    .get_interface = get_interface,
-};
-
-static int probe(struct device *dev)
+static void vbe_init(void)
 {
-    struct vbe_controller_info vbe_info;
-    if (_pc_bios_get_vbe_controller_info(&vbe_info)) return 1;
-    
-    dev->name = "video";
-    dev->id = generate_device_id(dev->name);
+    status_t status;
+    struct device_driver *drv;
 
+    status = device_driver_create(&drv);
+    if (!CHECK_SUCCESS(status)) {
+        panic("cannot register device driver \"vbe\"");
+    }
+
+    drv->name = "vbe";
+    drv->probe = probe;
+    drv->remove = remove;
+    drv->get_interface = get_interface;
+}
+
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt)
+{
+    status_t status;
+    struct vbe_controller_info vbe_info;
+    struct device *dev = NULL;
     farptr_t pmi_table;
-    if (_pc_bios_get_vbe_pm_interface(&pmi_table)) {
+    uint16_t pmi_table_size;
+    struct vbe_data *data = NULL;
+    uint16_t vmode;
+    struct vbe_video_mode_info vmode_info;
+
+    if (_pc_bios_vbe_get_controller_info(&vbe_info)) {
+        status = STATUS_HARDWARE_NOT_FOUND;
+        goto has_error;
+    }
+    
+    status = device_create(&dev, drv, parent);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = device_generate_name("video", dev->name, sizeof(dev->name));
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = _pc_bios_vbe_get_pm_interface(&pmi_table, &pmi_table_size);
+    if (!CHECK_SUCCESS(status)) {
         pmi_table.segment = 0;
         pmi_table.offset = 0;
     }
 
-    struct vbe_data *data = mm_allocate(sizeof(*data));
+    data = malloc(sizeof(*data));
     data->char_buffer = NULL;
     data->frame_buffer = NULL;
     data->diff_buffer = NULL;
     data->current_page = 0;
     data->pmi_table = pmi_table;
-
     dev->data = data;
 
-    return 0;
+    status = _pc_bios_vbe_get_video_mode(&vmode);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = _pc_bios_vbe_get_video_mode_info(vmode, &vmode_info);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    switch (vmode_info.memory_model) {
+        case VBEMM_DIRECT:
+            status = set_mode(dev, vmode_info.width, vmode_info.height, vmode_info.bpp);
+            if (!CHECK_SUCCESS(status)) goto has_error;
+            break;
+        case VBEMM_TEXT:
+            status = set_dimension(dev, vmode_info.width, vmode_info.height);
+            if (!CHECK_SUCCESS(status)) goto has_error;
+            break;
+    }
+    
+    if (devout) *devout = dev;
+
+    return STATUS_SUCCESS;
+
+has_error:
+    if (data) {
+        free(data);
+    }
+
+    if (dev) {
+        device_remove(dev);
+    }
+
+    return status;
 }
 
-static int remove(struct device *dev)
+static status_t remove(struct device *dev)
 {
     struct vbe_data *data = (struct vbe_data *)dev->data;
 
     if (data->char_buffer) {
-        mm_free(data->char_buffer);
+        free(data->char_buffer);
     }
-    if (data->frame_buffer) {
-        _pc_bios_set_vbe_display_start(0, 0);
-        mm_free(data->frame_buffer);
-    }
-    if (data->diff_buffer) {
-        mm_free(data->diff_buffer);
-    }
-    mm_free(data);
 
-    return 0;
+    if (data->frame_buffer) {
+        _pc_bios_vbe_set_display_start(0, 0);
+        free(data->frame_buffer);
+    }
+
+    if (data->diff_buffer) {
+        free(data->diff_buffer);
+    }
+
+    free(data);
+
+    device_remove(dev);
+
+    return STATUS_SUCCESS;
 }
 
-static const void *get_interface(struct device *dev, const char *name)
+static status_t get_interface(struct device *dev, const char *name, const void **result)
 {
     if (strcmp(name, "framebuffer") == 0) {
-        return &fbif;
+        if (result) *result = &fbif;
+        return STATUS_SUCCESS;
     } else if (strcmp(name, "console") == 0) {
-        return &conif;
+        if (result) *result = &conif;
+        return STATUS_SUCCESS;
     }
 
-    return NULL;
+    return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(drv)
+DEVICE_DRIVER(vbe, vbe_init)
 

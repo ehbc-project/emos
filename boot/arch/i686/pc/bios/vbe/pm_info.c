@@ -1,3 +1,3 @@
-#include <asm/vbe/pm_interface.h>
+#include <eboot/asm/bios/vbe_pmi.h>
 
 #include <stddef.h>

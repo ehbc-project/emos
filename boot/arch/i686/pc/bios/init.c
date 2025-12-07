@@ -8,59 +8,77 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
-#include <macros.h>
+#include <stdlib.h>
 
-#include <compiler.h>
-#include <mm/mm.h>
-#include <device/driver.h>
-#include <interface/char.h>
-#include <interface/console.h>
-#include <interface/framebuffer.h>
+#include <eboot/asm/bios/bootinfo.h>
+#include <eboot/asm/bios/disk.h>
+#include <eboot/asm/bios/video.h>
+#include <eboot/asm/bios/keyboard.h>
+#include <eboot/asm/bios/mem.h>
+#include <eboot/asm/pci/cfgspace.h>
+#include <eboot/asm/io.h>
+#include <eboot/asm/idt.h>
+#include <eboot/asm/isr.h>
+#include <eboot/asm/pic.h>
 
-#include <asm/bootinfo.h>
-#include <asm/bios/disk.h>
-#include <asm/bios/video.h>
-#include <asm/bios/keyboard.h>
-#include <asm/bios/mem.h>
-#include <asm/pci/cfgspace.h>
-#include <sys/io.h>
-#include <asm/idt.h>
-#include <asm/pic.h>
-#include <asm/breakpoint.h>
+#include <eboot/compiler.h>
+#include <eboot/status.h>
+#include <eboot/macros.h>
+#include <eboot/debug.h>
+#include <eboot/mm.h>
+#include <eboot/device.h>
+#include <eboot/interface/char.h>
+#include <eboot/interface/console.h>
+#include <eboot/interface/framebuffer.h>
 
 #include <uacpi/uacpi.h>
 #include <uacpi/event.h>
 #include <uacpi/tables.h>
-
-#include <bus/bus.h>
-#include <bus/pci/scan.h>
-
-#include <debug.h>
-
 
 extern void main(void);
 
 extern void (*__init_array_start)(void);
 extern void (*__init_array_end)(void);
 
-struct pci_device pci_devices[32];
-
 static void bios_print_str(const char *str)
 {
     for (int i = 0; str[i]; i++) {
-        _pc_bios_tty_output(str[i]);
+        _pc_bios_video_write_tty(str[i]);
     }
 }
 
-static struct bus root_bus = {
-    .next = NULL,
-    .name = "root",
-    .dev = NULL,
+static ssize_t early_stderr_write(void *cookie, const char *buf, size_t count)
+{
+    for (size_t i = 0; buf[i] && i < count; i++) {
+        if (buf[i] == '\n') {
+            _pc_bios_video_write_tty('\r');
+        }
+        _pc_bios_video_write_tty(buf[i]);
+    }
+
+    return count;
+}
+
+struct cookie_io_functions early_stderr_io = {
+    .write = early_stderr_write,
 };
 
-static int init_root_bus(int has_acpi)
+static ssize_t early_stddbg_write(void *cookie, const char *buf, size_t count)
 {
-    int ret;
+    for (size_t i = 0; buf[i] && i < count; i++) {
+        io_out8(0x00E9, buf[i]);
+    }
+
+    return count;
+}
+
+struct cookie_io_functions early_stddbg_io = {
+    .write = early_stddbg_write,
+};
+
+static status_t init_nonpnp_devices(int has_acpi)
+{
+    status_t status;
     int skip_legacy = 0, skip_8042 = 0, skip_rtc = 0;
     
     if (has_acpi) {
@@ -84,215 +102,288 @@ static int init_root_bus(int has_acpi)
         }
     }
 
-    ret = register_bus(&root_bus);
-    if (ret) return ret;
-
+#ifndef NDEBUG
     {
-        struct device *dev = mm_allocate_clear(1, sizeof(struct device));
-        dev->bus = &root_bus;
-        struct resource *res = create_resource(NULL);
-        res->type = RT_IOPORT;
-        res->base = 0x00E9;
-        res->limit = 0x00E9;
-        res->flags = 0;
-        dev->resource = res;
-        dev->driver = find_device_driver("debugout");
-        ret = register_device(dev);
-        if (ret) return ret;
+        struct device *dev;
+        struct device_driver *drv;
 
-        ret = freopendevice("dbg0", stddbg);
-        if (ret) return ret;
+        struct resource res[] = {
+            {
+                .type = RT_IOPORT,
+                .base = 0x00E9,
+                .limit = 0x00E9,
+                .flags = 0,
+            },
+        };
+
+        status = device_driver_find("debugout", &drv);
+        if (!CHECK_SUCCESS(status)) return status;
+
+        status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
+        if (!CHECK_SUCCESS(status)) return status;
+
+        if (freopendevice("dbg0", stddbg)) return STATUS_UNKNOWN_ERROR;
+        if (freopendevice("dbg0", stderr)) return STATUS_UNKNOWN_ERROR;
     }
+
+#endif
 
     /* find Non-PnP ISA Components */
     if (!skip_8042) {
-        struct device *dev = mm_allocate_clear(1, sizeof(struct device));
-        dev->bus = &root_bus;
-        struct resource *res = create_resource(NULL);
-        res->type = RT_IOPORT;
-        res->base = 0x0060;
-        res->limit = 0x0060;
-        res->flags = 0;
-        dev->resource = res;
-        res = create_resource(res);
-        res->type = RT_IOPORT;
-        res->base = 0x0064;
-        res->limit = 0x0064;
-        res->flags = 0;
-        res = create_resource(res);
-        res->type = RT_IRQ;
-        res->base = 0x21;
-        res->limit = 0x21;
-        res->flags = 0;
-        res = create_resource(res);
-        res->type = RT_IRQ;
-        res->base = 0x2C;
-        res->limit = 0x2C;
-        res->flags = 0;
-        dev->driver = find_device_driver("i8042");
-        ret = register_device(dev);
-        if (ret) return ret;
+        struct device *dev;
+        struct device_driver *drv;
+
+        struct resource res[] = {
+            {
+                .type = RT_IOPORT,
+                .base = 0x0060,
+                .limit = 0x0060,
+                .flags = 0,
+            },
+            {
+                .type = RT_IOPORT,
+                .base = 0x0064,
+                .limit = 0x0064,
+                .flags = 0,
+            },
+            {
+                .type = RT_IRQ,
+                .base = 0x21,
+                .limit = 0x21,
+                .flags = 0,
+            },
+            {
+                .type = RT_IRQ,
+                .base = 0x2C,
+                .limit = 0x2C,
+                .flags = 0,
+            },
+        };
+
+        status = device_driver_find("i8042", &drv);
+        if (!CHECK_SUCCESS(status)) return status;
+
+        status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
+        if (!CHECK_SUCCESS(status)) return status;
     }
 
     if (!skip_rtc) {
-        struct device *dev = mm_allocate_clear(1, sizeof(struct device));
-        dev->bus = &root_bus;
-        struct resource *res = create_resource(NULL);
-        res->type = RT_IOPORT;
-        res->base = 0x0070;
-        res->limit = 0x0071;
-        res->flags = 0;
-        dev->resource = res;
-        res = create_resource(res);
-        res->type = RT_IRQ;
-        res->base = 0x28;
-        res->limit = 0x28;
-        res->flags = 0;
-        dev->driver = find_device_driver("rtc_isa");
-        ret = register_device(dev);
-        if (ret) return ret;
+        struct device *dev;
+        struct device_driver *drv;
+
+        struct resource res[] = {
+            {
+                .type = RT_IOPORT,
+                .base = 0x0070,
+                .limit = 0x0071,
+                .flags = 0,
+            },
+            {
+                .type = RT_IRQ,
+                .base = 0x28,
+                .limit = 0x28,
+                .flags = 0,
+            },
+        };
+
+        status = device_driver_find("rtc_isa", &drv);
+        if (!CHECK_SUCCESS(status)) return status;
+
+        status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
+        if (!CHECK_SUCCESS(status)) return status;
     }
 
     if (!skip_legacy) {
-        {
-            struct device *dev = mm_allocate_clear(1, sizeof(struct device));
-            dev->bus = &root_bus;
-            struct resource *res = create_resource(NULL);
-            res->type = RT_IOPORT;
-            res->base = 0x03F8;
-            res->limit = 0x03FF;
-            res->flags = 0;
-            dev->resource = res;
-            res = create_resource(res);
-            res->type = RT_IRQ;
-            res->base = 0x24;
-            res->limit = 0x24;
-            res->flags = 0;
-            dev->driver = find_device_driver("uart_isa");
-            ret = register_device(dev);
-            // if (ret) return ret;
+        if (0) {
+            struct device *dev;
+            struct device_driver *drv;
+
+            struct resource res[] = {
+                {
+                    .type = RT_IOPORT,
+                    .base = 0x03F8,
+                    .limit = 0x03FF,
+                    .flags = 0,
+                },
+                {
+                    .type = RT_IRQ,
+                    .base = 0x24,
+                    .limit = 0x24,
+                    .flags = 0,
+                },
+            };
+
+            status = device_driver_find("uart_isa", &drv);
+            if (!CHECK_SUCCESS(status)) return status;
+    
+            status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
+            if (!CHECK_SUCCESS(status)) return status;
         }
         
-        {
-            struct device *dev = mm_allocate_clear(1, sizeof(struct device));
-            dev->bus = &root_bus;
-            struct resource *res = create_resource(NULL);
-            res->type = RT_IOPORT;
-            res->base = 0x02F8;
-            res->limit = 0x02FF;
-            res->flags = 0;
-            dev->resource = res;
-            res = create_resource(res);
-            res->type = RT_IRQ;
-            res->base = 0x23;
-            res->limit = 0x23;
-            res->flags = 0;
-            dev->driver = find_device_driver("uart_isa");
-            ret = register_device(dev);
-            // if (ret) return ret;
+        if (0) {
+            struct device *dev;
+            struct device_driver *drv;
+    
+            struct resource res[] = {
+                {
+                    .type = RT_IOPORT,
+                    .base = 0x02F8,
+                    .limit = 0x02FF,
+                    .flags = 0,
+                },
+                {
+                    .type = RT_IRQ,
+                    .base = 0x23,
+                    .limit = 0x23,
+                    .flags = 0,
+                },
+            };
+
+            status = device_driver_find("i8042", &drv);
+            if (!CHECK_SUCCESS(status)) return status;
+    
+            status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
+            if (!CHECK_SUCCESS(status)) return status;
+        }
+
+        if (0) {
+            struct device *dev;
+            struct device_driver *drv;
+    
+            struct resource res[] = {
+                {
+                    .type = RT_IOPORT,
+                    .base = 0x0278,
+                    .limit = 0x027A,
+                    .flags = 0,
+                },
+                {
+                    .type = RT_IRQ,
+                    .base = 0x27,
+                    .limit = 0x27,
+                    .flags = 0, 
+                },
+            };
+
+            status = device_driver_find("ieee1284_isa", &drv);
+            if (!CHECK_SUCCESS(status)) return status;
+    
+            status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
+            if (!CHECK_SUCCESS(status)) return status;
         }
 
         {
-            struct device *dev = mm_allocate_clear(1, sizeof(struct device));
-            dev->bus = &root_bus;
-            struct resource *res = create_resource(NULL);
-            res->type = RT_IOPORT;
-            res->base = 0x0278;
-            res->limit = 0x027A;
-            res->flags = 0;
-            dev->resource = res;
-            res = create_resource(res);
-            res->type = RT_IRQ;
-            res->base = 0x27;
-            res->limit = 0x27;
-            res->flags = 0; 
-            dev->driver = find_device_driver("ieee1284_isa");
-            ret = register_device(dev);
-            // if (ret) return ret;
+            struct device *dev;
+            struct device_driver *drv;
+    
+            struct resource res[] = {
+                {
+                    .type = RT_IOPORT,
+                    .base = 0x03F0,
+                    .limit = 0x03F7,
+                    .flags = 0,
+                },
+                {
+                    .type = RT_IRQ,
+                    .base = 0x26,
+                    .limit = 0x26,
+                    .flags = 0,
+                },
+                {
+                    .type = RT_DMA,
+                    .base = 0,
+                    .limit = 0,
+                    .flags = 0,
+                },
+            };
+
+            status = device_driver_find("fdc_isa", &drv);
+            if (!CHECK_SUCCESS(status)) return status;
+    
+            status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
+            if (!CHECK_SUCCESS(status)) return status;
         }
 
         {
-            struct device *dev = mm_allocate_clear(1, sizeof(struct device));
-            dev->bus = &root_bus;
-            struct resource *res = create_resource(NULL);
-            res->type = RT_IOPORT;
-            res->base = 0x03F0;
-            res->limit = 0x03F7;
-            res->flags = 0;
-            dev->resource = res;
-            res = create_resource(res);
-            res->type = RT_IRQ;
-            res->base = 0x26;
-            res->limit = 0x26;
-            res->flags = 0;
-            res = create_resource(res);
-            res->type = RT_DMA;
-            res->base = 0;
-            res->limit = 0;
-            res->flags = 0;
-            dev->driver = find_device_driver("fdc_isa");
-            ret = register_device(dev);
-            // if (ret) return ret;
+            struct device *dev;
+            struct device_driver *drv;
+    
+            struct resource res[] = {
+                {
+                    .type = RT_IOPORT,
+                    .base = 0x01F0,
+                    .limit = 0x01F7,
+                    .flags = 0,
+                },
+                {
+                    .type = RT_IOPORT,
+                    .base = 0x03F6,
+                    .limit = 0x03F7,
+                    .flags = 0,
+                },
+                {
+                    .type = RT_IRQ,
+                    .base = 0x2E,
+                    .limit = 0x2E,
+                    .flags = 0,
+                },
+            };
+
+            status = device_driver_find("ide_isa", &drv);
+            if (!CHECK_SUCCESS(status)) return status;
+    
+            status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
+            if (!CHECK_SUCCESS(status)) return status;
         }
 
         {
-            struct device *dev = mm_allocate_clear(1, sizeof(struct device));
-            dev->bus = &root_bus;
-            struct resource *res = create_resource(NULL);
-            res->type = RT_IOPORT;
-            res->base = 0x01F0;
-            res->limit = 0x01F7;
-            res->flags = 0;
-            dev->resource = res;
-            res = create_resource(res);
-            res->type = RT_IOPORT;
-            res->base = 0x03F6;
-            res->limit = 0x03F7;
-            res->flags = 0;
-            res = create_resource(res);
-            res->type = RT_IRQ;
-            res->base = 0x2E;
-            res->limit = 0x2E;
-            res->flags = 0;
-            dev->driver = find_device_driver("ide_isa");
-            ret = register_device(dev);
-            // if (ret) return ret;
-        }
+            struct device *dev;
+            struct device_driver *drv;
+    
+            struct resource res[] = {
+                {
+                    .type = RT_IOPORT,
+                    .base = 0x0170,
+                    .limit = 0x0177,
+                    .flags = 0,
+                },
+                {
+                    .type = RT_IOPORT,
+                    .base = 0x0376,
+                    .limit = 0x0377,
+                    .flags = 0,
+                },
+                {
+                    .type = RT_IRQ,
+                    .base = 0x2F,
+                    .limit = 0x2F,
+                    .flags = 0,
+                },
+            };
 
-        {
-            struct device *dev = mm_allocate_clear(1, sizeof(struct device));
-            dev->bus = &root_bus;
-            struct resource *res = create_resource(NULL);
-            res->type = RT_IOPORT;
-            res->base = 0x0170;
-            res->limit = 0x0177;
-            res->flags = 0;
-            dev->resource = res;
-            res = create_resource(res);
-            res->type = RT_IOPORT;
-            res->base = 0x0376;
-            res->limit = 0x0377;
-            res->flags = 0;
-            res = create_resource(res);
-            res->type = RT_IRQ;
-            res->base = 0x2F;
-            res->limit = 0x2F;
-            res->flags = 0;
-            dev->driver = find_device_driver("ide_isa");
-            ret = register_device(dev);
-            if (ret) return ret;
+            status = device_driver_find("ide_isa", &drv);
+            if (!CHECK_SUCCESS(status)) return status;
+    
+            status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
+            if (!CHECK_SUCCESS(status)) return status;
         }
     }
-
-    struct vbe_controller_info vbe_info;
-    int vbe_found = !_pc_bios_get_vbe_controller_info(&vbe_info);
     
     {
-        struct device *dev = mm_allocate_clear(1, sizeof(struct device));
-        dev->bus = &root_bus;
-        dev->driver = find_device_driver(vbe_found ? "vbe_video" : "vga");
-        ret = register_device(dev);
-        if (ret) return ret;
+        struct device *dev;
+        struct device_driver *drv;
+
+        status = device_driver_find("vbe", &drv);
+        if (!CHECK_SUCCESS(status)) return status;
+
+        status = drv->probe(&dev, drv, NULL, NULL, 0);
+        if (!CHECK_SUCCESS(status)) {
+            status = device_driver_find("vga", &drv);
+            if (!CHECK_SUCCESS(status)) return status;
+    
+            status = drv->probe(&dev, drv, NULL, NULL, 0);
+            if (!CHECK_SUCCESS(status)) return status;
+        }
     }
 
     return 0;
@@ -300,14 +391,16 @@ static int init_root_bus(int has_acpi)
 
 static uint8_t rtc_century_offset = 0x00;
 
-static int acpi_init(void)
+static status_t acpi_init(void)
 {
+    status_t status;
+    uacpi_status uacpi_status;
     static uint8_t acpi_buf[4096];
 
-    uacpi_status ret = uacpi_setup_early_table_access(acpi_buf, sizeof(acpi_buf));
-    if (uacpi_unlikely_error(ret)) {
-        fprintf(stderr, "uacpi_initialize error: %s", uacpi_status_to_string(ret));
-        return ret;
+    uacpi_status = uacpi_setup_early_table_access(acpi_buf, sizeof(acpi_buf));
+    if (uacpi_unlikely_error(uacpi_status)) {
+        fprintf(stderr, "uacpi_initialize error: %s", uacpi_status_to_string(uacpi_status));
+        return 0x80010000 | uacpi_status;
     }
 
     struct acpi_fadt *fadt;
@@ -436,12 +529,26 @@ static void bkpt_handler(struct interrupt_frame *frame, struct trap_regs *regs, 
 __noreturn
 void _pc_init(void)
 {
-    int ret;
+    status_t status;
+    int has_acpi;
+
+    bios_print_str("Starting bootloader...\r\n");
 
     _pc_remap_pic_int(0x20, 0x28);
     _pc_init_idt();
 
-    bios_print_str("Starting bootloader...\r\n");
+    struct chs geom;
+    _pc_bios_disk_get_params(_pc_boot_drive, NULL, NULL, &geom, NULL);
+
+    struct chs bootsector_chs = disk_lba_to_chs(_pc_boot_part_base, geom);
+
+    _pc_bios_disk_read(_pc_boot_drive, bootsector_chs, 1, _pc_boot_sector, NULL);
+
+    mm_init();
+
+    freopencookie(NULL, "w", early_stderr_io, stderr);
+    freopencookie(NULL, "w", early_stddbg_io, stddbg);
+
     for (int i = 0; &(&__init_array_start)[i] != &__init_array_end; i++) {
         (&__init_array_start)[i]();
     }
@@ -456,22 +563,24 @@ void _pc_init(void)
     io_out8(0x70, 0x8B);
     io_out8(0x71, prev | 0x40);
 
-    _pc_set_trap_handler(0x03, bkpt_handler);
-    _pc_set_interrupt_handler(0x20, NULL, pit_isr);
-    _pc_set_interrupt_handler(0x28, NULL, rtc_isr);
+    _pc_isr_set_trap_handler(0x03, bkpt_handler);
+    _pc_isr_set_interrupt_handler(0x20, NULL, pit_isr);
+    _pc_isr_set_interrupt_handler(0x28, NULL, rtc_isr);
 
     static const uint16_t pit_value = 1193182 / 20;
     io_out8(0x43, 0x34);
     io_out8(0x40, pit_value & 0xFF);
     io_out8(0x40, (pit_value >> 8) & 0xFF);
     
-    int acpi_error = acpi_init();
+    status = acpi_init();
+    has_acpi = !CHECK_SUCCESS(status);
 
     interrupt_enable();
 
-    ret = init_root_bus(!acpi_error);
-    if (ret) {
-        panic("Failed to initialize root bus");
+    status = init_nonpnp_devices(has_acpi);
+    if (!CHECK_SUCCESS(status)) {
+        fprintf(stderr, "init_nonpnp_devices() failed: 0x%08X\n", status);
+        panic("failed to initialize essential non-PnP devices");
     }
 
     // /* Disable BIOS USB emulation */

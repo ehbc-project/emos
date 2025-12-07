@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include <compiler.h>
+#include <eboot/compiler.h>
 
 struct atapi_device_ident {
     uint16_t general_config;

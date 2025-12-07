@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-#include <compiler.h>
+#include <eboot/compiler.h>
 
 void *memcpy(void *__restrict dest, const void *__restrict src, size_t len);
 void *memmove(void *dest, const void *src, size_t len);

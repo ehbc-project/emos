@@ -1,19 +1,19 @@
-
 #include <stddef.h>
-#include <device/device.h>
+
+#include <eboot/device.h>
 
 extern void (*__fini_array_start)(void);
 extern void (*__fini_array_end)(void);
 
 void cleanup(void)
 {
-    struct device *dev = get_first_device();
+    struct device *dev = device_get_first_dev();
     struct device *last_root_dev = NULL;
 
     while (dev) {
         if (!dev->parent) {
             if (last_root_dev) {
-                unregister_device(last_root_dev);
+                last_root_dev->driver->remove(last_root_dev);
             }
 
             last_root_dev = dev;
@@ -23,7 +23,7 @@ void cleanup(void)
     }
 
     if (last_root_dev) {
-        unregister_device(last_root_dev);
+        last_root_dev->driver->remove(last_root_dev);
     }
 
     for (int i = 0; &(&__fini_array_start)[i] != &__fini_array_end; i++) {

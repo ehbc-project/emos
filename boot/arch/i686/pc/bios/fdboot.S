@@ -116,7 +116,7 @@ _start:
     push    %es
     push    %ecx
     call    read_disk
-    pop     %ecx
+    pop     %ecx    
 
     pop     %ax
     add     $0x20, %ax
@@ -126,8 +126,11 @@ _start:
 
 
 .jump_next:
-    xor     %dx, %dx
-    mov     .bpb_drive_number, %dl
+    xor     %eax, %eax
+    mov     .bpb_drive_number, %al
+    push    %eax
+    
+    pushl   .bpb_hidden_sectors
 
     jmp     ENTRY_ADDR
 

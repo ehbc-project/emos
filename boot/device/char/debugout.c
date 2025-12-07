@@ -1,69 +1,108 @@
 #include <string.h>
+#include <stdlib.h>
 
-#include <mm/mm.h>
-#include <device/driver.h>
-#include <interface/char.h>
+#include <eboot/asm/io.h>
 
-#include <sys/io.h>
+#include <eboot/device.h>
+#include <eboot/interface/char.h>
 
-static long write(struct device *dev, const char *buf, long len)
+struct debugout_data {
+    uint16_t ioport;
+};
+
+static status_t write(struct device *dev, const char *buf, size_t len, size_t *result)
 {
+    struct debugout_data *data = (struct debugout_data *)dev->data;
+
     for (int i = 0; i < len; i++) {
-        switch (dev->resource->type) {
-            case RT_IOPORT:
-                io_out8(dev->resource->base, buf[i]);
-                break;
-            case RT_MEMORY:
-                *(uint8_t *)(long)dev->resource->base = buf[i];
-                break;
-            default:
-                break;
-        }
+        io_out8(data->ioport, buf[i]);
     }
 
-    return len;
+    if (result) *result = len;
+
+    return STATUS_SUCCESS;
 }
 
 static const struct char_interface charif = {
     .write = write,
 };
 
-static int probe(struct device *dev);
-static int remove(struct device *dev);
-static const void *get_interface(struct device *dev, const char *name);
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt);
+static status_t remove(struct device *dev);
+static status_t get_interface(struct device *dev, const char *name, const void **result);
 
-static struct device_driver drv = {
-    .name = "debugout",
-    .probe = probe,
-    .remove = remove,
-    .get_interface = get_interface,
-};
-
-static int probe(struct device *dev)
+static void debugout_init(void)
 {
-    if (!dev->resource) return 1;
-    if (dev->resource->type != RT_MEMORY && dev->resource->type != RT_IOPORT) {
-        return 1;
+    status_t status;
+    struct device_driver *drv;
+
+    status = device_driver_create(&drv);
+    if (!CHECK_SUCCESS(status)) {
+        panic("cannot register device driver \"debugout\"");
     }
 
-    dev->name = "dbg";
-    dev->id = generate_device_id(dev->name);
-
-    return 0;
+    drv->name = "debugout";
+    drv->probe = probe;
+    drv->remove = remove;
+    drv->get_interface = get_interface;
 }
 
-static int remove(struct device *dev)
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt)
 {
-    return 0;
+    status_t status;
+    struct device *dev = NULL;
+    struct debugout_data *data = NULL;
+
+    if (!rsrc || rsrc_cnt != 1 || rsrc[0].type != RT_IOPORT || rsrc[0].base != rsrc[0].limit) {
+        status = STATUS_INVALID_RESOURCE;
+        goto has_error;
+    }
+
+    status = device_create(&dev, drv, parent);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = device_generate_name("dbg", dev->name, sizeof(dev->name));
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    data = malloc(sizeof(*data));
+    data->ioport = rsrc[0].base;
+    dev->data = data;
+    
+    if (devout) *devout = dev;
+
+    return STATUS_SUCCESS;
+
+has_error:
+    if (data) {
+        free(data);
+    }
+
+    if (dev) {
+        device_remove(dev);
+    }
+
+    return status;
 }
 
-static const void *get_interface(struct device *dev, const char *name)
+static status_t remove(struct device *dev)
+{
+    struct debugout_data *data = (struct debugout_data *)dev->data;
+
+    free(data);
+
+    device_remove(dev);
+
+    return STATUS_SUCCESS;
+}
+
+static status_t get_interface(struct device *dev, const char *name, const void **result)
 {
     if (strcmp(name, "char") == 0) {
-        return &charif;
+        if (result) *result = &charif;
+        return STATUS_SUCCESS;
     }
 
-    return NULL;
+    return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(drv)
+DEVICE_DRIVER(debugout, debugout_init)

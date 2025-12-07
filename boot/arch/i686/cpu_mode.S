@@ -11,6 +11,11 @@
     .globl  _i686_idt_ptr
     .lcomm  _i686_idt_ptr, 4
 
+    .lcomm  cr0_initialized, 2
+    .lcomm  cr3_initialized, 2
+    .lcomm  cr0, 4
+    .lcomm  cr3, 4
+
     .section .text
     .code16
     .globl  switch_real_to_prot
@@ -22,8 +27,23 @@ switch_real_to_prot:
 
     lgdt    gdtr                        # load gdt
 
-    mov     %cr0, %eax                  # get cr0
+    mov     cr3_initialized, %ax
+    test    %ax, %ax
+    jz      .skip_cr3_load
+    mov     cr3, %eax
+    mov     %eax, %cr3
+.skip_cr3_load:
+
+    mov     cr0_initialized, %ax
+    test    %ax, %ax
+    jnz     .skip_cr0_load
+    mov     %cr0, %eax
     or      $1, %eax                    # enable protected mode
+    mov     %eax, cr0
+    movw    $1, cr0_initialized
+
+.skip_cr0_load:
+    mov     cr0, %eax                   # get cr0
     mov     %eax, %cr0                  # set cr0
 
     jmp     $PROT_CODE_SEG, $.pmode     # switch code segment
@@ -65,6 +85,13 @@ switch_prot_to_real:
     cli                                 # clear interrupt
     lgdt    gdtr                        # load gdt
 
+    mov     %cr0, %eax                  # save cr0
+    mov     %eax, cr0
+
+    mov     %cr3, %eax                  # save cr3
+    mov     %eax, cr3
+    movw    $1, cr3_initialized
+
     pushl   $0
     pushw   $1023
     lidt    (%esp)
@@ -94,8 +121,11 @@ switch_prot_to_real:
     mov     %ax, %ss                    # set up segments
 
     mov     %cr0, %eax                  # get cr0
-    and     $~1, %eax                   # disable protected mode
+    and     $~0x80000001, %eax          # disable paging & protected mode
     mov     %eax, %cr0                  # set cr0
+
+    xor     %eax, %eax                  # clear cr3
+    mov     %eax, %cr3
 
     ljmp    $0, $.rmode                 # reload code segment
                                         # assuming that we're in 0-FFFFh area

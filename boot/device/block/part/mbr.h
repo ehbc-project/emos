@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include <compiler.h>
+#include <eboot/compiler.h>
 
 #define MBR_SIGNATURE           0xAA55
 

@@ -1,18 +1,18 @@
 #include <stdint.h>
 #include <stddef.h>
-#include <errno.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <wchar.h>
 
-#include <mm/mm.h>
-#include <device/driver.h>
-#include <interface/console.h>
-#include <interface/char.h>
+#include <eboot/macros.h>
+#include <eboot/device.h>
+#include <eboot/interface/console.h>
+#include <eboot/interface/char.h>
 
 struct ansiterm_data {
     struct device *condev;
-    const struct console_interface *condev_conif;
+    const struct console_interface *conif;
 
     int escape_seq_args[8];
     int escape_seq_arg_count;
@@ -126,40 +126,52 @@ static const struct console_char_attributes default_attr = {
     .text_reversed = 0,
 };
 
-static int console_backspace(struct device *dev, int *cursor_x_out)
+static status_t console_backspace(struct device *dev, int *cursor_x_out)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int width, cursor_x, cursor_y;
-    data->condev_conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
-    data->condev_conif->get_dimension(data->condev, &width, NULL);
-    struct console_char_cell *buffer = data->condev_conif->get_buffer(data->condev);
+    struct console_char_cell *buffer = NULL;
+
+    status = data->conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->conif->get_dimension(data->condev, &width, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->conif->get_buffer(data->condev, &buffer);
+    if (!CHECK_SUCCESS(status)) return status;
 
     if (cursor_x < 1) return 1;
 
     if (buffer[cursor_y * width + cursor_x - 1].codepoint) {
         *cursor_x_out = cursor_x - 1;
-        return 0;
+        return STATUS_SUCCESS;
     }
 
     for (int x = cursor_x - 2; x >= ((cursor_x - 1) & ~7); x--) {
         if (buffer[cursor_y * width + x].codepoint) {
             *cursor_x_out = x + 1;
-            return 0;
+            return STATUS_SUCCESS;
         }
     }
 
     *cursor_x_out = (cursor_x - 1) & ~7;
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-static void console_erase(struct device *dev, int x0, int y0, int x1, int y1)
+static status_t console_erase(struct device *dev, int x0, int y0, int x1, int y1)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int width;
-    data->condev_conif->get_dimension(data->condev, &width, NULL);
-    struct console_char_cell *buffer = data->condev_conif->get_buffer(data->condev);
+    struct console_char_cell *buffer = NULL;
+
+    status = data->conif->get_dimension(data->condev, &width, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->conif->get_buffer(data->condev, &buffer);
+    if (!CHECK_SUCCESS(status)) return status;
 
     for (int y = y0; y <= y1; y++) {
         for (int x = x0; x <= x1; x++) {
@@ -168,18 +180,26 @@ static void console_erase(struct device *dev, int x0, int y0, int x1, int y1)
         }
     }
 
-    data->condev_conif->invalidate(data->condev, x0, y0, x1, y1);
+    status = data->conif->invalidate(data->condev, x0, y0, x1, y1);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static void console_scroll(struct device *dev, int amount, int x0, int y0, int x1, int y1)
+static status_t console_scroll(struct device *dev, int amount, int x0, int y0, int x1, int y1)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int width;
-    data->condev_conif->get_dimension(data->condev, &width, NULL);
-    struct console_char_cell *buffer = data->condev_conif->get_buffer(data->condev);
+    struct console_char_cell *buffer = NULL;
 
-    if (amount == 0) return;
+    status = data->conif->get_dimension(data->condev, &width, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->conif->get_buffer(data->condev, &buffer);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    if (amount == 0) return STATUS_SUCCESS;
 
     if (amount > 0) {
         for (int y = y0; y <= y1 - amount; y++) {
@@ -201,30 +221,46 @@ static void console_scroll(struct device *dev, int amount, int x0, int y0, int x
         console_erase(dev, x0, y0, x1, y0 + amount);
     }
 
-    data->condev_conif->invalidate(data->condev, x0, y0, x1, y1);
+    status = data->conif->invalidate(data->condev, x0, y0, x1, y1);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static void console_putchar(struct device *dev, wchar_t ch)
+static status_t console_putchar(struct device *dev, wchar_t ch)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int x_cursor, y_cursor, width, cwidth = wcwidth(ch) > 1 ? 2 : 1;
-    data->condev_conif->get_cursor_pos(data->condev, &x_cursor, &y_cursor);
-    data->condev_conif->get_dimension(data->condev, &width, NULL);
-    struct console_char_cell *buffer = data->condev_conif->get_buffer(data->condev);
+    struct console_char_cell *buffer = NULL;
+
+    status = data->conif->get_cursor_pos(data->condev, &x_cursor, &y_cursor);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->conif->get_dimension(data->condev, &width, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->conif->get_buffer(data->condev, &buffer);
+    if (!CHECK_SUCCESS(status)) return status;
 
     buffer[y_cursor * width + x_cursor].attr = data->attr_state;
     buffer[y_cursor * width + x_cursor].codepoint = ch;
-    data->condev_conif->invalidate(data->condev, x_cursor, y_cursor, x_cursor, y_cursor);
+    
+    status = data->conif->invalidate(data->condev, x_cursor, y_cursor, x_cursor, y_cursor);
+    if (!CHECK_SUCCESS(status)) return status;
 
     if (cwidth == 2 && x_cursor + 1 < width) {
         buffer[y_cursor * width + x_cursor + 1].attr = data->attr_state;
         buffer[y_cursor * width + x_cursor + 1].codepoint = 0xFFFFFFFF;
-        data->condev_conif->invalidate(data->condev, x_cursor, y_cursor, x_cursor, y_cursor);
+        
+        status = data->conif->invalidate(data->condev, x_cursor, y_cursor, x_cursor, y_cursor);
+        if (!CHECK_SUCCESS(status)) return status;
     }
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_esc(struct device *dev, char ch)
+static status_t handle_esc(struct device *dev, char ch)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
 
@@ -265,129 +301,182 @@ static void handle_esc(struct device *dev, char ch)
             data->escape_seq_state = STATE_DEFAULT;
             break;
     }
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_cuu(struct device *dev)
+static status_t handle_cuu(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int cursor_y;
-    data->condev_conif->get_cursor_pos(data->condev, NULL, &cursor_y);
+    int count;
+
+    status = data->conif->get_cursor_pos(data->condev, NULL, &cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
     
-    int count = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
+    count = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
     count = (count < cursor_y) ? count : cursor_y;
     cursor_y -= count;
     data->escape_seq_state = STATE_DEFAULT;
 
-    data->condev_conif->set_cursor_pos(data->condev, -1, cursor_y);
+    status = data->conif->set_cursor_pos(data->condev, -1, cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_cud(struct device *dev)
+static status_t handle_cud(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int cursor_y, height;
-    data->condev_conif->get_cursor_pos(data->condev, NULL, &cursor_y);
-    data->condev_conif->get_dimension(data->condev, NULL, &height);
+    int count;
 
-    int count = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
+    status = data->conif->get_cursor_pos(data->condev, NULL, &cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->conif->get_dimension(data->condev, NULL, &height);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    count = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
     count = (count < height - cursor_y) ? count : height - cursor_y;
     cursor_y += count;
     data->escape_seq_state = STATE_DEFAULT;
 
-    data->condev_conif->set_cursor_pos(data->condev, -1, cursor_y);
+    status = data->conif->set_cursor_pos(data->condev, -1, cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_cuf(struct device *dev)
+static status_t handle_cuf(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-    
+    status_t status;
     int cursor_x, width;
-    data->condev_conif->get_cursor_pos(data->condev, &cursor_x, NULL);
-    data->condev_conif->get_dimension(data->condev, &width, NULL);
+    int count;
+
+    status = data->conif->get_cursor_pos(data->condev, &cursor_x, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->conif->get_dimension(data->condev, &width, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
     
-    int count = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
+    count = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
     count = (count < width - cursor_x) ? count : width - cursor_x;
     cursor_x += count;
     data->escape_seq_state = STATE_DEFAULT;
 
-    data->condev_conif->set_cursor_pos(data->condev, cursor_x, -1);
+    status = data->conif->set_cursor_pos(data->condev, cursor_x, -1);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_cub(struct device *dev)
+static status_t handle_cub(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-    
+    status_t status;
     int cursor_x;
-    data->condev_conif->get_cursor_pos(data->condev, &cursor_x, NULL);
+    int count;
 
-    int count = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
+    status = data->conif->get_cursor_pos(data->condev, &cursor_x, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    count = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
     count = (count < cursor_x) ? count : cursor_x;
     cursor_x -= count;
     data->escape_seq_state = STATE_DEFAULT;
     
-    data->condev_conif->set_cursor_pos(data->condev, cursor_x, -1);
+    status = data->conif->set_cursor_pos(data->condev, cursor_x, -1);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_cnl(struct device *dev)
+static status_t handle_cnl(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int cursor_x, cursor_y, height;
-    data->condev_conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
-    data->condev_conif->get_dimension(data->condev, NULL, &height);
+    int count;
 
-    int count = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
+    status = data->conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->conif->get_dimension(data->condev, NULL, &height);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    count = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
     count = (count < height - cursor_y) ? count : height - cursor_y;
     cursor_y += count;
     cursor_x = 0;
     data->escape_seq_state = STATE_DEFAULT;
 
-    data->condev_conif->set_cursor_pos(data->condev, cursor_x, cursor_y);
+    status = data->conif->set_cursor_pos(data->condev, cursor_x, cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_cpl(struct device *dev)
+static status_t handle_cpl(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int cursor_x, cursor_y;
-    data->condev_conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
+    int count;
+
+    status = data->conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
     
-    int count = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
+    count = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
     count = (count < cursor_y) ? count : cursor_y;
     cursor_y -= count;
     cursor_x = 0;
     data->escape_seq_state = STATE_DEFAULT;
 
-    data->condev_conif->set_cursor_pos(data->condev, cursor_x, cursor_y);
+    status = data->conif->set_cursor_pos(data->condev, cursor_x, cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_cha(struct device *dev)
+static status_t handle_cha(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int cursor_x;
-    data->condev_conif->get_cursor_pos(data->condev, &cursor_x, NULL);
+    int pos;
 
-    int pos = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
+    status = data->conif->get_cursor_pos(data->condev, &cursor_x, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    pos = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
     cursor_x = pos - 1;
     if (cursor_x < 0) {
         cursor_x = 0;
     }
     data->escape_seq_state = STATE_DEFAULT;
 
-    data->condev_conif->set_cursor_pos(data->condev, cursor_x, -1);
+    status = data->conif->set_cursor_pos(data->condev, cursor_x, -1);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_cup_hvp(struct device *dev)
+static status_t handle_cup_hvp(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int cursor_x, cursor_y;
-    data->condev_conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
+    int xpos, ypos;
 
-    int ypos = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
-    int xpos = (data->escape_seq_arg_count < 2) ? 1 : data->escape_seq_args[1];
+    status = data->conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    ypos = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
+    xpos = (data->escape_seq_arg_count < 2) ? 1 : data->escape_seq_args[1];
     cursor_x = xpos - 1;
     if (cursor_x < 0) {
         cursor_x = 0;
@@ -398,89 +487,137 @@ static void handle_cup_hvp(struct device *dev)
     }
     data->escape_seq_state = STATE_DEFAULT;
 
-    data->condev_conif->set_cursor_pos(data->condev, cursor_x, cursor_y);
+    status = data->conif->set_cursor_pos(data->condev, cursor_x, cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_ed(struct device *dev)
+static status_t handle_ed(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int cursor_x, cursor_y, width, height;
-    data->condev_conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
-    data->condev_conif->get_dimension(data->condev, &width, &height);
+    int option;
 
-    int option = (data->escape_seq_arg_count < 1) ? 0 : data->escape_seq_args[0];
+    status = data->conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->conif->get_dimension(data->condev, &width, &height);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    option = (data->escape_seq_arg_count < 1) ? 0 : data->escape_seq_args[0];
     switch (option) {
         case 0:
-            console_erase(dev, cursor_x, cursor_y, width - 1, cursor_y);
+            status = console_erase(dev, cursor_x, cursor_y, width - 1, cursor_y);
+            if (!CHECK_SUCCESS(status)) return status;
+
             if (cursor_y < height - 1) break;
-            console_erase(dev, 0, cursor_y + 1, width - 1, height - 1);
+
+            status = console_erase(dev, 0, cursor_y + 1, width - 1, height - 1);
+            if (!CHECK_SUCCESS(status)) return status;
+
             break;
         case 1:
-            console_erase(dev, 0, cursor_y, cursor_x, cursor_y);
+            status = console_erase(dev, 0, cursor_y, cursor_x, cursor_y);
+            if (!CHECK_SUCCESS(status)) return status;
+            
             if (cursor_x > 0) break;
-            console_erase(dev, 0, 0, width - 1, cursor_y - 1);
+
+            status = console_erase(dev, 0, 0, width - 1, cursor_y - 1);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 2:
         case 3:
-            console_erase(dev, 0, 0, width - 1, height - 1);
+            status = console_erase(dev, 0, 0, width - 1, height - 1);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
     }
     data->escape_seq_state = STATE_DEFAULT;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_el(struct device *dev)
+static status_t handle_el(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int cursor_x, cursor_y, width;
-    data->condev_conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
-    data->condev_conif->get_dimension(data->condev, &width, NULL);
+    int option;
 
-    int option = (data->escape_seq_arg_count < 1) ? 0 : data->escape_seq_args[0];
+    status = data->conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->conif->get_dimension(data->condev, &width, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    option = (data->escape_seq_arg_count < 1) ? 0 : data->escape_seq_args[0];
     switch (option) {
         case 0:
-            console_erase(dev, cursor_x, cursor_y, width - 1, cursor_y);
+            status = console_erase(dev, cursor_x, cursor_y, width - 1, cursor_y);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 1:
-            console_erase(dev, 0, cursor_y, cursor_x, cursor_y);
+            status = console_erase(dev, 0, cursor_y, cursor_x, cursor_y);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 2:
-            console_erase(dev, 0, cursor_y, width - 1, cursor_y);
+            status = console_erase(dev, 0, cursor_y, width - 1, cursor_y);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
     }
     data->escape_seq_state = STATE_DEFAULT;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_su(struct device *dev)
+static status_t handle_su(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int width, height;
-    data->condev_conif->get_dimension(data->condev, &width, &height);
+    int amount;
 
-    int amount = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
-    console_scroll(dev, amount, 0, 0, width - 1, height - 1);
+    status = data->conif->get_dimension(data->condev, &width, &height);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    amount = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
+
+    status = console_scroll(dev, amount, 0, 0, width - 1, height - 1);
+    if (!CHECK_SUCCESS(status)) return status;
+
     data->escape_seq_state = STATE_DEFAULT;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_sd(struct device *dev)
+static status_t handle_sd(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int width, height;
-    data->condev_conif->get_dimension(data->condev, &width, &height);
+    int amount;
 
-    int amount = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
-    console_scroll(dev, -amount, 0, 0, width - 1, height - 1);
+    status = data->conif->get_dimension(data->condev, &width, &height);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    amount = (data->escape_seq_arg_count < 1) ? 1 : data->escape_seq_args[0];
+
+    status = console_scroll(dev, -amount, 0, 0, width - 1, height - 1);
+    if (!CHECK_SUCCESS(status)) return status;
+
     data->escape_seq_state = STATE_DEFAULT;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_sgr(struct device *dev)
+static status_t handle_sgr(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
+    status_t status;
+    int option;
 
-    int option = (data->escape_seq_arg_count < 1) ? 0 : data->escape_seq_args[0];
+    option = (data->escape_seq_arg_count < 1) ? 0 : data->escape_seq_args[0];
     switch (option) {
         case 0:
             data->attr_state.bg_color = palette[0];
@@ -609,120 +746,162 @@ static void handle_sgr(struct device *dev)
             break;
     }
     data->escape_seq_state = STATE_DEFAULT;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_dsr(struct device *dev)
+static status_t handle_dsr(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
 
     data->escape_seq_state = STATE_DEFAULT;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_scosc(struct device *dev)
+static status_t handle_scosc(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
+    status_t status;
     int cursor_x, cursor_y;
-    data->condev_conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
+
+    status = data->conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
 
     data->saved_cursor_x = cursor_x;
     data->saved_cursor_y = cursor_y;
     data->escape_seq_state = STATE_DEFAULT;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_scorc(struct device *dev)
+static status_t handle_scorc(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
+    status_t status;
 
-    data->condev_conif->set_cursor_pos(data->condev, data->saved_cursor_x, data->saved_cursor_y);
+    status = data->conif->set_cursor_pos(data->condev, data->saved_cursor_x, data->saved_cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
     data->escape_seq_state = STATE_DEFAULT;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_dectcem_show(struct device *dev)
+static status_t handle_dectcem_show(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
+    status_t status;
 
-    data->condev_conif->set_cursor_visibility(data->condev, 1);
+    status = data->conif->set_cursor_visibility(data->condev, 1);
+    if (!CHECK_SUCCESS(status)) return status;
+
     data->escape_seq_state = STATE_DEFAULT;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_dectcem_hide(struct device *dev)
+static status_t handle_dectcem_hide(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
+    status_t status;
 
-    data->condev_conif->set_cursor_visibility(data->condev, 0);
+    status = data->conif->set_cursor_visibility(data->condev, 0);
+    if (!CHECK_SUCCESS(status)) return status;
+
     data->escape_seq_state = STATE_DEFAULT;
+
+    return STATUS_SUCCESS;
 }
 
-static void handle_csi(struct device *dev, char ch)
+static status_t handle_csi(struct device *dev, char ch)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
+    status_t status;
 
     switch (ch) {
         case 'A':
-            handle_cuu(dev);
+            status = handle_cuu(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'B':
-            handle_cud(dev);
+            status = handle_cud(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'C':
-            handle_cuf(dev);
+            status = handle_cuf(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'D':
-            handle_cub(dev);
+            status = handle_cub(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'E':
-            handle_cnl(dev);
+            status = handle_cnl(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'F':
-            handle_cpl(dev);
+            status = handle_cpl(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'G':
-            handle_cha(dev);
+            status = handle_cha(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'f':
         case 'H':
-            handle_cup_hvp(dev);
+            status = handle_cup_hvp(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'h':
-            handle_dectcem_show(dev);
+            status = handle_dectcem_show(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'J':
-            handle_ed(dev);
+            status = handle_ed(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'K':
-            handle_el(dev);
+            status = handle_el(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'l':
-            handle_dectcem_hide(dev);
+            status = handle_dectcem_hide(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'S':
-            handle_su(dev);
+            status = handle_su(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'T':
-            handle_sd(dev);
+            status = handle_sd(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'm':
-            handle_sgr(dev);
+            status = handle_sgr(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'n':
-            handle_dsr(dev);
+            status = handle_dsr(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 's':
-            handle_scosc(dev);
+            status = handle_scosc(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case 'u':
-            handle_scorc(dev);
+            status = handle_scorc(dev);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case '?':
-            if (data->escape_seq_arg_count >= sizeof(data->escape_seq_args) / sizeof(*data->escape_seq_args)) {
+            if (data->escape_seq_arg_count >= ARRAY_SIZE(data->escape_seq_args)) {
                 break;
             }
             data->escape_seq_args[data->escape_seq_arg_count++] = -'?';
             break;
         case '0':  case '1':  case '2':  case '3':  case '4':
         case '5': case '6': case '7': case '8': case '9':
-            if (data->escape_seq_arg_count >= sizeof(data->escape_seq_args) / sizeof(*data->escape_seq_args)) {
+            if (data->escape_seq_arg_count >= ARRAY_SIZE(data->escape_seq_args)) {
                 break;
             }
             if (!data->escape_seq_number_input) data->escape_seq_arg_count++;
@@ -738,45 +917,58 @@ static void handle_csi(struct device *dev, char ch)
             data->escape_seq_state = STATE_DEFAULT;
             break;
     }
+
+    return STATUS_SUCCESS;
 }
 
-static void put_char(struct device *dev, wchar_t ch)
+static status_t put_char(struct device *dev, wchar_t ch)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
+    status_t status;
+    int cursor_x, cursor_y, width, height;
 
     if (data->escape_seq_state != STATE_DEFAULT) {
         switch (data->escape_seq_state) {
             case STATE_ESC:
-                handle_esc(dev, ch);
+                status = handle_esc(dev, ch);
+                if (!CHECK_SUCCESS(status)) return status;
                 break;
             case STATE_CSI:
-                handle_csi(dev, ch);
+                status = handle_csi(dev, ch);
+                if (!CHECK_SUCCESS(status)) return status;
                 break;
             default:
                 data->escape_seq_state = STATE_DEFAULT;
                 break;
         }
-        return;
+        return STATUS_SUCCESS;
     }
 
-    int cursor_x, cursor_y, width, height;
-    data->condev_conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
-    data->condev_conif->get_dimension(data->condev, &width, &height);
+    status = data->conif->get_cursor_pos(data->condev, &cursor_x, &cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->conif->get_dimension(data->condev, &width, &height);
+    if (!CHECK_SUCCESS(status)) return status;
 
     switch (ch) {
         case '\a':
             break;
         case '\b':
-            console_backspace(dev, &cursor_x);
+            status = console_backspace(dev, &cursor_x);
+            if (!CHECK_SUCCESS(status)) return status;
             break;
         case '\t':
-            console_erase(dev, cursor_x, cursor_y, ((cursor_x / 8) + 1) * 8, cursor_y);
+            status = console_erase(dev, cursor_x, cursor_y, ((cursor_x / 8) + 1) * 8, cursor_y);
+            if (!CHECK_SUCCESS(status)) return status;
+
             cursor_x = ((cursor_x / 8) + 1) * 8;
             if (cursor_x < width) break;
             cursor_y++;
             if (cursor_y >= height) {
                 cursor_y = height - 1;
-                console_scroll(dev, 1, 0, 0, width - 1, height - 1);
+
+                status = console_scroll(dev, 1, 0, 0, width - 1, height - 1);
+                if (!CHECK_SUCCESS(status)) return status;
             }
             cursor_x = 0;
             break;
@@ -785,13 +977,19 @@ static void put_char(struct device *dev, wchar_t ch)
             cursor_y++;
             if (cursor_y < height) break;
             cursor_y = height - 1;
-            console_scroll(dev, 1, 0, 0, width - 1, height - 1);
+
+            status = console_scroll(dev, 1, 0, 0, width - 1, height - 1);
+            if (!CHECK_SUCCESS(status)) return status;
+
             break;
         case '\v':
             cursor_y++;
             if (cursor_y < height) break;
             cursor_y = height - 1;
-            console_scroll(dev, 1, 0, 0, width - 1, height - 1);
+
+            status = console_scroll(dev, 1, 0, 0, width - 1, height - 1);
+            if (!CHECK_SUCCESS(status)) return status;
+
             break;
         case '\f':
             break;
@@ -809,23 +1007,35 @@ static void put_char(struct device *dev, wchar_t ch)
                 cursor_y++;
                 if (cursor_y >= height) {
                     cursor_y = height - 1;
-                    console_scroll(dev, 1, 0, 0, width - 1, height - 1);
+
+                    status = console_scroll(dev, 1, 0, 0, width - 1, height - 1);
+                    if (!CHECK_SUCCESS(status)) return status;
                 }
-                data->condev_conif->set_cursor_pos(data->condev, cursor_x, cursor_y);
+
+                status = data->conif->set_cursor_pos(data->condev, cursor_x, cursor_y);
+                if (!CHECK_SUCCESS(status)) return status;
             } 
-            console_putchar(dev, ch);
+
+            status = console_putchar(dev, ch);
+            if (!CHECK_SUCCESS(status)) return status;
+
             cursor_x += cwidth;
             if (cursor_x < width) break;
             cursor_x = 0;
             cursor_y++;
             if (cursor_y < height) break;
             cursor_y = height - 1;
-            console_scroll(dev, 1, 0, 0, width - 1, height - 1);
+
+            status = console_scroll(dev, 1, 0, 0, width - 1, height - 1);
+            if (!CHECK_SUCCESS(status)) return status;
         }
             break;
     }
 
-    data->condev_conif->set_cursor_pos(data->condev, cursor_x, cursor_y);
+    status = data->conif->set_cursor_pos(data->condev, cursor_x, cursor_y);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
 static int get_seq_char(struct device *dev, const char *buf, long len, int idx)
@@ -841,13 +1051,12 @@ static int get_seq_char(struct device *dev, const char *buf, long len, int idx)
     return -1;
 }
 
-static long write(struct device *dev, const char *buf, long len)
+static status_t write(struct device *dev, const char *buf, size_t len, size_t *result)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
-    long written_len = 0;
+    status_t status;
+    size_t written_len = 0;
     int char_len, seq_char;
-
     wchar_t wch;
 
     while (len > 0) {
@@ -892,7 +1101,8 @@ static long write(struct device *dev, const char *buf, long len)
             char_len = 1;
         }
 
-        put_char(dev, wch);
+        status = put_char(dev, wch);
+        if (!CHECK_SUCCESS(status)) return status;
 
         buf += char_len - data->utf8_fragment_len;
         len -= char_len - data->utf8_fragment_len;
@@ -900,65 +1110,97 @@ static long write(struct device *dev, const char *buf, long len)
         data->utf8_fragment_len = 0;
     }
 
-    data->condev_conif->flush(data->condev);
-    data->condev_conif->present(data->condev);
+    status = data->conif->flush(data->condev);
+    if (!CHECK_SUCCESS(status)) return status;
 
-    return written_len;
+    status = data->conif->present(data->condev);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    if (result) *result = written_len;
+
+    return STATUS_SUCCESS;
 }
 
 static const struct char_interface charif = {
     .write = write,
 };
 
-static long wwrite(struct device *dev, const wchar_t *buf, long len)
+static status_t wwrite(struct device *dev, const wchar_t *buf, size_t len, size_t *result)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-
-    long written_len = 0;
-    int char_len, seq_char;
+    status_t status;
+    size_t written_len = 0;
 
     while (len > 0) {
-        put_char(dev, *buf);
+        status = put_char(dev, *buf);
+        if (!CHECK_SUCCESS(status)) return status;
 
         buf++;
         len--;
         written_len++;
     }
 
-    data->condev_conif->flush(data->condev);
-    data->condev_conif->present(data->condev);
+    status = data->conif->flush(data->condev);
+    if (!CHECK_SUCCESS(status)) return status;
 
-    return written_len;
+    status = data->conif->present(data->condev);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    if (result) *result = written_len;
+
+    return STATUS_SUCCESS;
 }
 
 static const struct wchar_interface wcharif = {
     .write = wwrite,
 };
 
-static int probe(struct device *dev);
-static int remove(struct device *dev);
-static const void *get_interface(struct device *dev, const char *name);
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt);
+static status_t remove(struct device *dev);
+static status_t get_interface(struct device *dev, const char *name, const void **result);
 
-static struct device_driver drv = {
-    .name = "ansiterm",
-    .probe = probe,
-    .remove = remove,
-    .get_interface = get_interface,
-};
-
-static int probe(struct device *dev)
+static void ansiterm_init(void)
 {
-    struct device *condev = dev->parent;
-    if (!condev) return 1;
-    const struct console_interface *condev_conif = condev->driver->get_interface(condev, "console");
-    if (!condev_conif) return 1;
+    status_t status;
+    struct device_driver *drv;
 
-    dev->name = "tty";
-    dev->id = generate_device_id(dev->name);
+    status = device_driver_create(&drv);
+    if (!CHECK_SUCCESS(status)) {
+        panic("cannot register device driver \"ansiterm\"");
+    }
 
-    struct ansiterm_data *data = mm_allocate(sizeof(*data));
+    drv->name = "ansiterm";
+    drv->probe = probe;
+    drv->remove = remove;
+    drv->get_interface = get_interface;
+}
+
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt)
+{
+    status_t status;
+    struct device *dev = NULL;
+    struct device *condev = NULL;
+    const struct console_interface *conif = NULL;
+    struct ansiterm_data *data = NULL;
+
+    condev = parent;
+    if (!condev) {
+        status = STATUS_INVALID_VALUE;
+        goto has_error;
+    }
+
+    status = condev->driver->get_interface(condev, "console", (const void **)&conif);
+    if (!conif) goto has_error;
+
+    status = device_create(&dev, drv, parent);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = device_generate_name("tty", dev->name, sizeof(dev->name));
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    data = malloc(sizeof(*data));
     data->condev = condev;
-    data->condev_conif = condev_conif;
+    data->conif = conif;
     data->escape_seq_arg_count = 0;
     data->saved_cursor_x = 0;
     data->saved_cursor_y = 0;
@@ -973,32 +1215,48 @@ static int probe(struct device *dev)
     data->attr_state.text_overlined = 0;
     data->attr_state.text_reversed = 0;
     data->utf8_fragment_len = 0;
-
     dev->data = data;
 
-    condev_conif->set_cursor_pos(condev, 0, 0);
+    conif->set_cursor_pos(condev, 0, 0);
+    
+    if (devout) *devout = dev;
 
-    return 0;
+    return STATUS_SUCCESS;
+
+has_error:
+    if (data) {
+        free(data);
+    }
+
+    if (dev) {
+        device_remove(dev);
+    }
+
+    return status;
 }
 
-static int remove(struct device *dev)
+static status_t remove(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
 
-    mm_free(data);
+    free(data);
 
-    return 0;
+    device_remove(dev);
+
+    return STATUS_SUCCESS;
 }
 
-static const void *get_interface(struct device *dev, const char *name)
+static status_t get_interface(struct device *dev, const char *name, const void **result)
 {
     if (strcmp(name, "char") == 0) {
-        return &charif;
+        if (result) *result = &charif;
+        return STATUS_SUCCESS;
     } else if (strcmp(name, "wchar") == 0) {
-        return &wcharif;
+        if (result) *result = &wcharif;
+        return STATUS_SUCCESS;
     }
 
-    return NULL;
+    return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(drv)
+DEVICE_DRIVER(ansiterm, ansiterm_init)

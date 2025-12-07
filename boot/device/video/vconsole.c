@@ -3,20 +3,24 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <stdlib.h>
 #include <wchar.h>
 
-#include <mm/mm.h>
-#include <device/driver.h>
-#include <interface/framebuffer.h>
-#include <interface/console.h>
-#include <interface/char.h>
-#include <sys/io.h>
-#include <font.h>
+#include <eboot/asm/io.h>
+
+#include <eboot/status.h>
+#include <eboot/macros.h>
+#include <eboot/compiler.h>
+#include <eboot/font.h>
+#include <eboot/device.h>
+#include <eboot/interface/framebuffer.h>
+#include <eboot/interface/console.h>
+#include <eboot/interface/char.h>
 
 struct vconsole_data {
     struct device *fbdev;
-    const struct framebuffer_interface *fbdev_fbif;
-    const struct console_interface *fbdev_conif;
+    const struct framebuffer_interface *fbif;
+    const struct console_interface *conif;
 
     int passthrough;
     int width, height;
@@ -28,34 +32,63 @@ struct vconsole_data {
     uint8_t *diff_buffer;
 };
 
-extern int font_is_glyph_full_width(uint32_t codepoint);
-
-static int get_glyph_bit(const uint8_t *glyph_data, int cwidth, int x, int y)
+inline static int get_glyph_bit(const uint8_t *glyph_data, int cwidth, int x, int y)
 {
-    uint8_t current_byte = glyph_data[(y * cwidth + x) / 8];
-    return current_byte & (0x80 >> ((y * cwidth + x) % 8));
+    return glyph_data[(y * cwidth + x) / 8] & (0x80 >> ((y * cwidth + x) % 8));
 }
 
-static void draw_char(struct device *dev, int col, int row)
+static status_t draw_char(struct device *dev, int col, int row)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
-
-    uint32_t *framebuffer = data->fbdev_fbif->get_framebuffer(data->fbdev);
+    status_t status;
+    uint32_t *framebuffer;
     int fb_width;
-    data->fbdev_fbif->get_mode(data->fbdev, &fb_width, NULL, NULL);
-
-    struct console_char_cell *cell = &data->char_buffer[row * data->width + col];
-    if (cell->codepoint == 0xFFFFFFFF) return;
+    struct console_char_cell *cell;
     int cwidth, cheight;
-    uint8_t glyph[32];
-    int x_offset = col * 8, y_offset = row * 16;
+    int x_offset, y_offset;
+    uint8_t font_glyph[32];
+    static const uint8_t fallback_glyph[16] = {
+        0x00, 0x00, 0x00, 0x7E, 0x66, 0x5A, 0x5A, 0x7A,
+        0x76, 0x76, 0x7E, 0x76, 0x76, 0x7E, 0x00, 0x00,
+    };
+    const uint8_t *glyph;
+    int use_fallback;
 
-    int err = font_get_glyph_dimension(cell->codepoint, &cwidth, &cheight);
-    if (err || cwidth > 16 || cheight > 16) return;
-    err = font_get_glyph_data(cell->codepoint, glyph, sizeof(glyph));
-    if (err) return;
+    status = data->fbif->get_framebuffer(data->fbdev, (void **)&framebuffer);
+    if (!CHECK_SUCCESS(status)) return status;
 
-    for (int y = 0; y < 16; y++) {
+    status = data->fbif->get_mode(data->fbdev, &fb_width, NULL, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    cell = &data->char_buffer[row * data->width + col];
+    if (cell->codepoint == 0xFFFFFFFF) {
+        return STATUS_SUCCESS;
+    }
+
+    x_offset = col * 8;
+    y_offset = row * 16;
+
+    use_fallback = 0;
+    status = font_get_glyph_dimension(cell->codepoint, &cwidth, &cheight);
+    if (!CHECK_SUCCESS(status) || (cwidth != 8 && cwidth != 16) || cheight != 16) {
+        use_fallback = 1;
+    }
+
+    if (!use_fallback) {
+        status = font_get_glyph_data(cell->codepoint, font_glyph, sizeof(font_glyph));
+        if (!CHECK_SUCCESS(status)) {
+            use_fallback = 1;
+        }
+    }
+
+    if (use_fallback) {
+        cwidth = 8;
+        cheight = 16;
+    }
+
+    glyph = use_fallback ? fallback_glyph : font_glyph;     
+
+    for (int y = 0; y < cheight; y++) {
         for (int x = 0; x < cwidth; x++) {
             int fg = get_glyph_bit(glyph, cwidth, x, y);
             if (cell->attr.text_bold && x > 0) {
@@ -83,23 +116,33 @@ static void draw_char(struct device *dev, int col, int row)
             (cell->attr.text_strike && y == 8) ||
             (cell->attr.text_underline && y == 15)) {
             for (int x = 0; x < cwidth; x++) {
-                framebuffer[(y_offset + y) * fb_width +  x_offset + x] = cell->attr.text_reversed ? cell->attr.bg_color : cell->attr.fg_color;
+                framebuffer[(y_offset + y) * fb_width + x_offset + x] = cell->attr.text_reversed ? cell->attr.bg_color : cell->attr.fg_color;
             }
         }
     }
     
-    data->fbdev_fbif->invalidate(data->fbdev, x_offset, y_offset, x_offset + cwidth, y_offset + 16);
+    status = data->fbif->invalidate(data->fbdev, x_offset, y_offset, x_offset + cwidth, y_offset + 16);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static void draw_cursor(struct device *dev)
+static status_t draw_cursor(struct device *dev)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
-
+    status_t status;
     int fb_width;
-    data->fbdev_fbif->get_mode(data->fbdev, &fb_width, NULL, NULL);
-    uint32_t *framebuffer = data->fbdev_fbif->get_framebuffer(data->fbdev);
-    int x_offset = data->cursor_x * 8;
-    int y_offset = data->cursor_y * 16;
+    uint32_t *framebuffer;
+    int x_offset, y_offset;
+
+    status = data->fbif->get_mode(data->fbdev, &fb_width, NULL, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = data->fbif->get_framebuffer(data->fbdev, (void **)&framebuffer);
+    if (!CHECK_SUCCESS(status)) return status;
+    
+    x_offset = data->cursor_x * 8;
+    y_offset = data->cursor_y * 16;
 
     for (int y = y_offset + 14; y < y_offset + 16; y++) {
         for (int x = x_offset; x < x_offset + 8; x++) {
@@ -107,38 +150,44 @@ static void draw_cursor(struct device *dev)
         }
     }
 
-    data->fbdev_fbif->invalidate(data->fbdev, x_offset, y_offset + 14, x_offset + 8, y_offset + 16);
+    status = data->fbif->invalidate(data->fbdev, x_offset, y_offset + 14, x_offset + 8, y_offset + 16);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static int set_dimension(struct device *dev, int width, int height)
+static status_t set_dimension(struct device *dev, int width, int height)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
+    status_t status;
 
     if (width < 0 && height < 0) {
-        if (!data->fbdev_conif) {
-            return 1;
-        }
-
-        if (data->fbdev_conif->get_dimension(data->fbdev, &width, &height)) {
-            return 1;
-        }
+        status = data->conif->get_dimension(data->fbdev, &width, &height);
+        if (!CHECK_SUCCESS(status)) goto has_error;
 
         data->passthrough = 1;
 
         if (data->char_buffer) {
-            mm_free(data->char_buffer);
+            free(data->char_buffer);
             data->char_buffer = NULL;
         }
         if (data->diff_buffer) {
-            mm_free(data->diff_buffer);
+            free(data->diff_buffer);
             data->diff_buffer = NULL;
         }
     } else {
         data->passthrough = 0;
     
-        data->char_buffer = mm_reallocate(data->char_buffer, width * height * sizeof(*data->char_buffer));
+        data->char_buffer = realloc(data->char_buffer, width * height * sizeof(*data->char_buffer));
+        if (!data->char_buffer) {
+            panic("I think there's no way to recover this");
+        }
         memset(data->char_buffer, 0, width * height * sizeof(*data->char_buffer));
-        data->diff_buffer = mm_reallocate(data->diff_buffer, width * height / 8);
+
+        data->diff_buffer = realloc(data->diff_buffer, width * height / 8);
+        if (!data->diff_buffer) {
+            panic("I think there's no way to recover this");
+        }
         memset(data->diff_buffer, 0, width * height / 8);
     }
 
@@ -148,41 +197,45 @@ static int set_dimension(struct device *dev, int width, int height)
     data->cursor_x = 0;
     data->cursor_y = 0;  
 
-    return 0;
+    return STATUS_SUCCESS;
+
+has_error:
+    return status;
 }
 
-static int get_dimension(struct device *dev, int *width, int *height)
+static status_t get_dimension(struct device *dev, int *width, int *height)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
 
     if (data->passthrough) {
-        return data->fbdev_conif->get_dimension(data->fbdev, width, height);
+        return data->conif->get_dimension(data->fbdev, width, height);
     }
 
     if (width) *width = data->width;
     if (height) *height = data->height;
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-static struct console_char_cell *get_buffer(struct device *dev)
+static status_t get_buffer(struct device *dev, struct console_char_cell **buf)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
 
     if (data->passthrough) {
-        return data->fbdev_conif->get_buffer(data->fbdev);
+        return data->conif->get_buffer(data->fbdev, buf);
     }
 
-    return data->char_buffer;
+    if (buf) *buf = data->char_buffer;
+
+    return STATUS_SUCCESS;
 }
 
-static void invalidate(struct device *dev, int x0, int y0, int x1, int y1)
+static status_t invalidate(struct device *dev, int x0, int y0, int x1, int y1)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
 
     if (data->passthrough) {
-        data->fbdev_conif->invalidate(data->fbdev, x0, y0, x1, y1);
-        return;
+        return data->conif->invalidate(data->fbdev, x0, y0, x1, y1);
     }
 
     for (int y = y0; y <= y1; y++) {
@@ -190,15 +243,17 @@ static void invalidate(struct device *dev, int x0, int y0, int x1, int y1)
             data->diff_buffer[(y * data->width + x) / 8] |= 1 << ((y * data->width + x) % 8);
         }
     }
+
+    return STATUS_SUCCESS;
 }
 
-static void flush(struct device *dev)
+static status_t flush(struct device *dev)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
+    status_t status;
 
     if (data->passthrough) {
-        data->fbdev_conif->flush(data->fbdev);
-        return;
+        return data->conif->flush(data->fbdev);
     }
 
     for (int y = 0; y < data->height; y++) {
@@ -206,7 +261,9 @@ static void flush(struct device *dev)
             if (data->diff_buffer[(y * data->width + x) / 8] & (1 << ((y * data->width + x) % 8)) ||
                 ((data->cursor_prev_x != data->cursor_x || data->cursor_prev_y != data->cursor_y) &&
                 (data->cursor_prev_x == x && data->cursor_prev_y == y))) {
-                draw_char(dev, x, y);
+                status = draw_char(dev, x, y);
+                // ignore status
+
                 data->diff_buffer[(y * data->width + x) / 8] &= ~(1 << ((y * data->width + x) % 8));
             }
         }
@@ -215,33 +272,36 @@ static void flush(struct device *dev)
     if (data->cursor_prev_x != data->cursor_x || data->cursor_prev_y != data->cursor_y) {
         data->cursor_prev_x = data->cursor_x;
         data->cursor_prev_y = data->cursor_y;
+        
         if (data->cursor_visible) {
-            draw_cursor(dev);
+            status = draw_cursor(dev);
+            // ignore status
         }
     }
 
-    data->fbdev_fbif->flush(data->fbdev);
+    status = data->fbif->flush(data->fbdev);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
-static void present(struct device *dev)
+static status_t present(struct device *dev)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
 
     if (data->passthrough) {
-        data->fbdev_conif->present(data->fbdev);
-        return;
+        return data->conif->present(data->fbdev);
     }
 
-    data->fbdev_fbif->present(data->fbdev);
+    return data->fbif->present(data->fbdev);
 }
 
-static void set_cursor_pos(struct device *dev, int col, int row)
+static status_t set_cursor_pos(struct device *dev, int col, int row)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
 
     if (data->passthrough) {
-        data->fbdev_conif->set_cursor_pos(data->fbdev, col, row);
-        return;
+        return data->conif->set_cursor_pos(data->fbdev, col, row);
     }
 
     if (col >= 0) {
@@ -251,33 +311,48 @@ static void set_cursor_pos(struct device *dev, int col, int row)
     if (row >= 0) {
         data->cursor_y = row;
     }
+
+    return STATUS_SUCCESS;
 }
 
-static void get_cursor_pos(struct device *dev, int *col, int *row)
+static status_t get_cursor_pos(struct device *dev, int *col, int *row)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
 
     if (data->passthrough) {
-        data->fbdev_conif->get_cursor_pos(data->fbdev, col, row);
-        return;
+        return data->conif->get_cursor_pos(data->fbdev, col, row);
     }
 
     if (col) *col = data->cursor_x;
     if (row) *row = data->cursor_y;
+
+    return STATUS_SUCCESS;
 }
 
-static void set_cursor_visibility(struct device *dev, int visible)
+static status_t set_cursor_visibility(struct device *dev, int visibility)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
 
-    data->cursor_visible = visible;
+    if (data->passthrough) {
+        return data->conif->set_cursor_visibility(dev, visibility);
+    }
+
+    data->cursor_visible = visibility;
+
+    return STATUS_SUCCESS;
 }
 
-static int get_cursor_visibility(struct device *dev)
+static status_t get_cursor_visibility(struct device *dev, int *visibility)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
 
-    return data->cursor_visible;
+    if (data->passthrough) {
+        return data->conif->get_cursor_visibility(dev, visibility);
+    }
+
+    if (visibility) *visibility = data->cursor_visible;
+
+    return STATUS_SUCCESS;
 }
 
 static const struct console_interface conif = {
@@ -295,32 +370,57 @@ static const struct console_interface conif = {
     .get_cursor_attr = NULL,
 };
 
-static int probe(struct device *dev);
-static int remove(struct device *dev);
-static const void *get_interface(struct device *dev, const char *name);
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt);
+static status_t remove(struct device *dev);
+static status_t get_interface(struct device *dev, const char *name, const void **result);
 
-static struct device_driver drv = {
-    .name = "vconsole",
-    .probe = probe,
-    .remove = remove,
-    .get_interface = get_interface,
-};
-
-static int probe(struct device *dev)
+static void vconsole_init(void)
 {
-    dev->name = "console";
-    dev->id = generate_device_id(dev->name);
+    status_t status;
+    struct device_driver *drv;
 
-    struct device *fbdev = dev->parent;
-    if (!fbdev) return 1;
-    const struct framebuffer_interface *fbdev_fbif = fbdev->driver->get_interface(fbdev, "framebuffer");
-    if (!fbdev_fbif) return 1;
-    const struct console_interface *fbdev_conif = fbdev->driver->get_interface(fbdev, "console");
+    status = device_driver_create(&drv);
+    if (!CHECK_SUCCESS(status)) {
+        panic("cannot register device driver \"vconsole\"");
+    }
 
-    struct vconsole_data *data = mm_allocate(sizeof(*data));
+    drv->name = "vconsole";
+    drv->probe = probe;
+    drv->remove = remove;
+    drv->get_interface = get_interface;
+}
+
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt)
+{
+    status_t status;
+    struct device *dev = NULL;
+    struct device *fbdev = NULL;
+    const struct framebuffer_interface *fbif = NULL;
+    const struct console_interface *conif = NULL;
+    struct vconsole_data *data = NULL;
+
+    fbdev = parent;
+    if (!fbdev) {
+        status = STATUS_INVALID_VALUE;
+        goto has_error;
+    }
+    
+    status = fbdev->driver->get_interface(fbdev, "framebuffer", (const void **)&fbif);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+    
+    status = fbdev->driver->get_interface(fbdev, "console", (const void **)&conif);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = device_create(&dev, drv, parent);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = device_generate_name("console", dev->name, sizeof(dev->name));
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    data = malloc(sizeof(*data));
     data->fbdev = fbdev;
-    data->fbdev_fbif = fbdev_fbif;
-    data->fbdev_conif = fbdev_conif;
+    data->fbif = fbif;
+    data->conif = conif;
     data->char_buffer = NULL;
     data->diff_buffer = NULL;
     data->width = 0;
@@ -331,34 +431,51 @@ static int probe(struct device *dev)
     data->cursor_y = 0;
     data->cursor_visible = 1;
     data->passthrough = 0;
-
     dev->data = data;
+    
+    if (devout) *devout = dev;
 
-    return 0;
+    return STATUS_SUCCESS;
+
+has_error:
+    if (data) {
+        free(data);
+    }
+
+    if (dev) {
+        device_remove(dev);
+    }
+
+    return status;
 }
 
-static int remove(struct device *dev)
+static status_t remove(struct device *dev)
 {
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
 
     if (data->char_buffer) {
-        mm_free(data->char_buffer);
+        free(data->char_buffer);
     }
-    if (data->diff_buffer) {
-        mm_free(data->diff_buffer);
-    }
-    mm_free(data);
 
-    return 0;
+    if (data->diff_buffer) {
+        free(data->diff_buffer);
+    }
+
+    free(data);
+
+    device_remove(dev);
+
+    return STATUS_SUCCESS;
 }
 
-static const void *get_interface(struct device *dev, const char *name)
+static status_t get_interface(struct device *dev, const char *name, const void **result)
 {
     if (strcmp(name, "console") == 0) {
-        return &conif;
+        if (result) *result = &conif;
+        return STATUS_SUCCESS;
     }
 
-    return NULL;
+    return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(drv)
+DEVICE_DRIVER(vconsole, vconsole_init)

@@ -1,8 +1,8 @@
-#include <asm/bios/mem.h>
+#include <eboot/asm/bios/mem.h>
 
-#include <asm/bios/bioscall.h>
+#include <eboot/asm/bios/bioscall.h>
 
-long _pc_bios_query_address_map(uint32_t *_cursor, struct smap_entry *buf, long buf_size)
+status_t _pc_bios_mem_query_map(uint32_t *_cursor, struct smap_entry *buf, long buf_size)
 {
     uint32_t cursor = _cursor ? *_cursor : 0;
 
@@ -15,9 +15,17 @@ long _pc_bios_query_address_map(uint32_t *_cursor, struct smap_entry *buf, long 
         .di.w = (uint32_t)buf & 0x000F,
     };
 
-    int err = _pc_bios_call(0x15, &regs);
+    if (_pc_bios_call(0x15, &regs)) {
+        return STATUS_UNKNOWN_ERROR;
+    }
 
-    if (_cursor) *_cursor = regs.b.l;
+    if (regs.a.l != 0x534D4150) {
+        return STATUS_UNSUPPORTED;
+    }
+
+    if (_cursor) {
+        *_cursor = regs.b.l;
+    }
     
-    return err ? -1 : regs.c.l;
+    return STATUS_SUCCESS;
 }

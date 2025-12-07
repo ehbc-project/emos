@@ -1,23 +1,16 @@
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-#include <mm/mm.h>
-#include <bus/bus.h>
-#include <device/driver.h>
-#include <interface/floppy.h>
-#include <sys/io.h>
-#include <asm/isr.h>
-#include <asm/time.h>
-#include <asm/pause.h>
+#include <eboot/asm/io.h>
+#include <eboot/asm/isr.h>
+#include <eboot/asm/time.h>
+#include <eboot/asm/intrinsics/misc.h>
 
-struct fdc_data {
-    struct resource *res;
-    uint8_t dor;
-    volatile uint8_t irq_received;
-    struct {
-        uint8_t recalib, state, track;
-    } drive_state[4];
-};
+#include <eboot/macros.h>
+#include <eboot/status.h>
+#include <eboot/device.h>
+#include <eboot/interface/fdc.h>
 
 #define FDCREG_SRA             0x0
 #define FDCREG_SRB             0x1
@@ -29,7 +22,19 @@ struct fdc_data {
 #define FDCREG_DIR             0x7
 #define FDCREG_CCR             0x7
 
-static int wait_irq(struct device *dev, unsigned int timeout)
+struct fdc_data {
+    uint16_t io_base;
+    int irq_ch, dma_ch;
+
+    uint8_t dor;
+    volatile uint8_t irq_received;
+
+    struct {
+        uint8_t recalib, state, track;
+    } drive_state[4];
+};
+
+static status_t wait_irq(struct device *dev, unsigned int timeout)
 {
     struct fdc_data *data = (struct fdc_data *)dev->data;
 
@@ -43,10 +48,10 @@ static int wait_irq(struct device *dev, unsigned int timeout)
     }
     data->irq_received = 0;
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-static int send_command(struct device *dev, struct fdc_command *cmd)
+static status_t send_command(struct device *dev, struct fdc_command *cmd)
 {
     struct fdc_data *data = (struct fdc_data *)dev->data;
 
@@ -54,18 +59,18 @@ static int send_command(struct device *dev, struct fdc_command *cmd)
     uint8_t status;
 
     for (int i = 0; i < cmd->send_size + 1; i++) {
-        while (!(io_in8(data->res->base + FDCREG_MSR) & 0x80)) {
+        while (!(io_in8(data->io_base + FDCREG_MSR) & 0x80)) {
             _i686_pause();
         }
-        status = io_in8(data->res->base + FDCREG_MSR);
+        status = io_in8(data->io_base + FDCREG_MSR);
         if (status & 0x40) {
             return 1;
         }
 
         if (i > 0) {
-            io_out8(data->res->base + FDCREG_FIFO, cmd->data[i - 1]);
+            io_out8(data->io_base + FDCREG_FIFO, cmd->data[i - 1]);
         } else {
-            io_out8(data->res->base + FDCREG_FIFO, cmd->data[0]);
+            io_out8(data->io_base + FDCREG_FIFO, cmd->data[0]);
         }
     }
 
@@ -75,26 +80,26 @@ static int send_command(struct device *dev, struct fdc_command *cmd)
     }
 
     for (int i = 0; i < cmd->recv_size; i++) {
-        while (!(io_in8(data->res->base + FDCREG_MSR) & 0x80)) {
+        while (!(io_in8(data->io_base + FDCREG_MSR) & 0x80)) {
             _i686_pause();
         }
-        status = io_in8(data->res->base + FDCREG_MSR);
+        status = io_in8(data->io_base + FDCREG_MSR);
         if (status & 0x40) {
             return 1;
         }
 
-        cmd->data[i] = io_in8(data->res->base + FDCREG_FIFO);
+        cmd->data[i] = io_in8(data->io_base + FDCREG_FIFO);
     }
 
-    status = io_in8(data->res->base + FDCREG_MSR);
+    status = io_in8(data->io_base + FDCREG_MSR);
     if (status & 0x40) {
         return 1;
     }
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-static int fdc_reset(struct device *dev)
+static status_t fdc_reset(struct device *dev)
 {
     struct fdc_data *data = (struct fdc_data *)dev->data;
 
@@ -114,17 +119,17 @@ static int fdc_reset(struct device *dev)
     cmd.data[0] = 0x00;
     send_command(dev, &cmd);
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-static int detect_device(struct device *dev, int slave, int *atapi)
+static status_t detect_device(struct device *dev, int slave, int *atapi)
 {
     struct fdc_data *data = (struct fdc_data *)dev->data;
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-static int reset(struct device *dev, int drive)
+static status_t reset(struct device *dev, int drive)
 {
     struct fdc_data *data = (struct fdc_data *)dev->data;
 
@@ -132,91 +137,147 @@ static int reset(struct device *dev, int drive)
     data->drive_state[drive].state = 0;
     data->drive_state[drive].track = 0;
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-struct floppy_interface flpif = {
+struct fdc_interface fdcif = {
     .reset = reset,
 };
 
 static void isr(struct device *dev, int num)
 {
-    
+    struct fdc_data *data = (struct fdc_data *)dev->data;
 }
 
-static int probe(struct device *dev);
-static int remove(struct device *dev);
-static const void *get_interface(struct device *dev, const char *name);
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt);
+static status_t remove(struct device *dev);
+static status_t get_interface(struct device *dev, const char *name, const void **result);
 
-static struct device_driver drv = {
-    .name = "fdc_isa",
-    .probe = probe,
-    .remove = remove,
-    .get_interface = get_interface,
-};
-
-static int probe(struct device *dev)
+static void fdc_isa_init(void)
 {
-    if (!dev->resource || !dev->resource->next || !dev->resource->next->next) return 1;
-    if (dev->resource->type != RT_IOPORT || dev->resource->next->type != RT_IRQ || dev->resource->next->next->type != RT_DMA) return 1;
-    if (dev->resource->limit - dev->resource->base != 7 || dev->resource->next->base != dev->resource->next->limit || dev->resource->next->next->base != dev->resource->next->next->limit) return 1;
+    status_t status;
+    struct device_driver *drv;
 
-    dev->name = "fdc";
-    dev->id = generate_device_id(dev->name);
+    status = device_driver_create(&drv);
+    if (!CHECK_SUCCESS(status)) {
+        panic("cannot register device driver \"fdc_isa\"");
+    }
 
-    struct bus *floppy_bus = mm_allocate_clear(1, sizeof(*floppy_bus));
-    floppy_bus->dev = dev;
-    floppy_bus->name = "floppy";
-    register_bus(floppy_bus);
+    drv->name = "fdc_isa";
+    drv->probe = probe;
+    drv->remove = remove;
+    drv->get_interface = get_interface;
+}
 
-    struct fdc_data *data = mm_allocate(sizeof(*data));
-    data->res = dev->resource;
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt)
+{
+    status_t status;
+    struct device *dev = NULL;
+    struct fdc_data *data = NULL;
+    struct device *fpdev = NULL;
+    struct device_driver *fpdrv = NULL;
+
+    if (!rsrc || rsrc_cnt != 3 ||
+        rsrc[0].type != RT_IOPORT || rsrc[0].limit - rsrc[0].base != 7 ||
+        rsrc[1].type != RT_IRQ || rsrc[1].base != rsrc[1].limit ||
+        rsrc[2].type != RT_DMA || rsrc[2].base != rsrc[2].limit) {
+        status = STATUS_INVALID_RESOURCE;
+        goto has_error;
+    }
+
+    status = device_create(&dev, drv, parent);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = device_generate_name("fdc", dev->name, sizeof(dev->name));
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    data = malloc(sizeof(*data));
+    data->io_base = rsrc[0].base;
+    data->irq_ch = rsrc[1].base;
+    data->dma_ch = rsrc[2].base;
     data->dor = 0;
+    data->irq_received = 0;
     for (int i = 0; i < 4; i++) {
         data->drive_state[i].recalib = 0;
         data->drive_state[i].state = 0;
         data->drive_state[i].track = 0;
     }
-
     dev->data = data;
 
-    _pc_set_interrupt_handler(dev->resource->next->base, dev, isr);
+    status = _pc_isr_set_interrupt_handler(data->irq_ch, dev, isr);
+    if (!CHECK_SUCCESS(status)) goto has_error;
 
-    if (fdc_reset(dev)) return 1;
+    status = fdc_reset(dev);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = device_driver_find("floppy", &fpdrv);
+    if (!CHECK_SUCCESS(status)) goto has_error;
 
     for (int i = 0; i < 4; i++) {
-        struct device *drive = mm_allocate_clear(1, sizeof(*drive));
-        drive->bus = floppy_bus;
-        drive->parent = dev;
-        struct resource *res = create_resource(NULL);
-        res->type = RT_BUS;
-        res->base = i;
-        res->limit = i;
-        res->flags = 0;
-        drive->resource = res;
-        drive->driver = find_device_driver("floppy");
-        register_device(drive);
+        struct resource res[] = {
+            {
+                .type = RT_BUS,
+                .base = i,
+                .limit = i,
+                .flags = 0,
+            },
+        };
+
+        status = fpdrv->probe(&fpdev, fpdrv, dev, res, ARRAY_SIZE(res));
+        if (!CHECK_SUCCESS(status)) goto has_error;
+    }
+    
+    if (devout) *devout = dev;
+
+    return STATUS_SUCCESS;
+
+has_error:
+    if (dev) {
+        for (struct device *partdev = dev->first_child; partdev; partdev = partdev->sibling) {
+            partdev->driver->remove(partdev);
+        }
     }
 
-    return 0;
+    if (data) {
+        free(data);
+    }
+
+    if (dev) {
+        device_remove(dev);
+    }
+
+    return status;
 }
 
-static int remove(struct device *dev)
+static status_t remove(struct device *dev)
 {
     struct fdc_data *data = (struct fdc_data *)dev->data;
 
-    mm_free(data);
-
-    return 0;
-}
-
-static const void *get_interface(struct device *dev, const char *name)
-{
-    if (strcmp(name, "floppy") == 0) {
-        return &flpif;
+    if (dev) {
+        for (struct device *partdev = dev->first_child; partdev; partdev = partdev->sibling) {
+            partdev->driver->remove(partdev);
+        }
     }
-    
-    return NULL;
+
+    if (data) {
+        free(data);
+    }
+
+    if (dev) {
+        device_remove(dev);
+    }
+
+    return STATUS_SUCCESS;
 }
 
-DEVICE_DRIVER(drv)
+static status_t get_interface(struct device *dev, const char *name, const void **result)
+{
+    if (strcmp(name, "fdc") == 0) {
+        if (result) *result = &fdcif;
+        return STATUS_SUCCESS;
+    }
+
+    return STATUS_ENTRY_NOT_FOUND;
+}
+
+DEVICE_DRIVER(fdc_isa, fdc_isa_init)

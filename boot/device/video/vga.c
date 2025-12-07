@@ -3,15 +3,17 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
 #include <errno.h>
 
-#include <mm/mm.h>
-#include <device/device.h>
-#include <device/driver.h>
-#include <interface/framebuffer.h>
-#include <interface/console.h>
-#include <asm/bios/video.h>
-#include <debug.h>
+#include <eboot/asm/bios/video.h>
+
+#include <eboot/status.h>
+#include <eboot/macros.h>
+#include <eboot/debug.h>
+#include <eboot/device.h>
+#include <eboot/interface/framebuffer.h>
+#include <eboot/interface/console.h>
 
 #define DIFF_REGION_SIZE 16
 
@@ -51,11 +53,12 @@ static uint8_t rgb_to_irgb(uint32_t color)
     return (((max >= 192) ? 1 : 0) << 3) | ((r >= 0x80 ? 1 : 0) << 2) | ((g >= 0x80 ? 1 : 0) << 1) | (b >= 0x80 ? 1 : 0);
 }
 
-static int set_dimension(struct device *dev, int width, int height)
+static status_t set_dimension(struct device *dev, int width, int height)
 {
     struct vga_data *data = (struct vga_data*)dev->data;
-
+    status_t status;
     uint8_t new_mode;
+
     if (width == 80 && height == 25) {
         new_mode = 0x03;
     } else if (width == 40 && height == 25) {
@@ -63,29 +66,43 @@ static int set_dimension(struct device *dev, int width, int height)
     } else if (width == 80 && height == 30) {
         new_mode = 0x0C;
     } else {
-        return 1;
+        status = STATUS_ENTRY_NOT_FOUND;
+        goto has_error;
     }
-    int err = _pc_bios_set_video_mode(new_mode);
-    if (err) return 1;
+
+    _pc_bios_video_set_mode(new_mode);
 
     data->video_mode = new_mode;
     data->width = width;
     data->height = height;
 
-    data->char_buffer = mm_reallocate(data->char_buffer, width * height * sizeof(*data->char_buffer));
+    data->char_buffer = realloc(data->char_buffer, width * height * sizeof(*data->char_buffer));
+    if (!data->diff_buffer) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
     memset(data->char_buffer, 0, width * height * sizeof(*data->char_buffer));
     
-    data->diff_buffer = mm_reallocate(data->diff_buffer, width * height / 8);
+    data->diff_buffer = realloc(data->diff_buffer, width * height / 8);
+    if (!data->diff_buffer) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
     memset(data->diff_buffer, 0, width * height / 8);
 
     memset((void *)0xB8000, 0, width * height * sizeof(uint16_t));
 
-    _pc_bios_set_text_cursor_pos(0, 0, 0);
+    _pc_bios_video_set_cursor_pos(0, 0, 0);
 
-    return 0;
+    return STATUS_SUCCESS;
+
+has_error:
+    panic("I don't know what more can I do");
+
+    return status;
 }
 
-static int get_dimension(struct device *dev, int *width, int *height)
+static status_t get_dimension(struct device *dev, int *width, int *height)
 {
     struct vga_data *data = (struct vga_data*)dev->data;
 
@@ -96,17 +113,19 @@ static int get_dimension(struct device *dev, int *width, int *height)
     if (width) *width = data->width;
     if (height) *height = data->height;
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-static struct console_char_cell *get_buffer(struct device *dev)
+static status_t get_buffer(struct device *dev, struct console_char_cell **buf)
 {
     struct vga_data *data = (struct vga_data*)dev->data;
 
-    return data->char_buffer;
+    if (buf) *buf = data->char_buffer;
+
+    return STATUS_SUCCESS;
 }
 
-static void con_invalidate(struct device *dev, int x0, int y0, int x1, int y1)
+static status_t con_invalidate(struct device *dev, int x0, int y0, int x1, int y1)
 {
     struct vga_data *data = (struct vga_data*)dev->data;
 
@@ -115,11 +134,15 @@ static void con_invalidate(struct device *dev, int x0, int y0, int x1, int y1)
             data->diff_buffer[(y * data->width + x) / 8] |= 1 << ((y * data->width + x) % 8);
         }
     }
+
+    return STATUS_SUCCESS;
 }
 
-static void con_flush(struct device *dev) {}
+static status_t con_flush(struct device *dev) {
+    return STATUS_SUCCESS;
+}
 
-static void con_present(struct device *dev)
+static status_t con_present(struct device *dev)
 {
     struct vga_data *data = (struct vga_data*)dev->data;
 
@@ -138,21 +161,27 @@ static void con_present(struct device *dev)
             }
         }
     }
+
+    return STATUS_SUCCESS;
 }
 
-static void set_cursor_pos(struct device *dev, int col, int row)
+static status_t set_cursor_pos(struct device *dev, int col, int row)
 {
-    _pc_bios_set_text_cursor_pos(0, row, col);
+    _pc_bios_video_set_cursor_pos(0, row, col);
+
+    return STATUS_SUCCESS;
 }
 
-static void get_cursor_pos(struct device *dev, int *col, int *row)
+static status_t get_cursor_pos(struct device *dev, int *col, int *row)
 {
     uint8_t b_col, b_row;
 
-    _pc_bios_get_text_cursor(0, NULL, &b_row, &b_col);
+    _pc_bios_video_get_cursor_info(0, NULL, &b_row, &b_col);
 
     if (col) *col = b_col;
     if (row) *row = b_row;
+
+    return STATUS_SUCCESS;
 }
 
 static const struct console_interface conif = {
@@ -168,58 +197,92 @@ static const struct console_interface conif = {
     .get_cursor_attr = NULL,
 };
 
-static int probe(struct device *dev);
-static int remove(struct device *dev);
-static const void *get_interface(struct device *dev, const char *name);
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt);
+static status_t remove(struct device *dev);
+static status_t get_interface(struct device *dev, const char *name, const void **result);
 
-static struct device_driver drv = {
-    .name = "vga",
-    .probe = probe,
-    .remove = remove,
-    .get_interface = get_interface,
-};
-
-static int probe(struct device *dev)
+static void vga_init(void)
 {
-    dev->name = "video";
-    dev->id = generate_device_id(dev->name);
+    status_t status;
+    struct device_driver *drv;
 
-    struct vga_data *data = mm_allocate(sizeof(*data));
+    status = device_driver_create(&drv);
+    if (!CHECK_SUCCESS(status)) {
+        panic("cannot register device driver \"vga\"");
+    }
+
+    drv->name = "vga";
+    drv->probe = probe;
+    drv->remove = remove;
+    drv->get_interface = get_interface;
+}
+
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt)
+{
+    status_t status;
+    struct device *dev = NULL;
+    struct vga_data *data = NULL;
+
+    status = device_create(&dev, drv, parent);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = device_generate_name("video", dev->name, sizeof(dev->name));
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    data = malloc(sizeof(*data));
     data->char_buffer = NULL;
     data->diff_buffer = NULL;
     data->current_page = 0;
     data->video_mode = 0xFF;
     data->width = 0;
     data->height = 0;
-
     dev->data = data;
 
-    return 0;
+    status = set_dimension(dev, 80, 25);
+    
+    if (devout) *devout = dev;
+
+    return STATUS_SUCCESS;
+
+has_error:
+    if (data) {
+        free(data);
+    }
+
+    if (dev) {
+        device_remove(dev);
+    }
+
+    return status;
 }
 
-static int remove(struct device *dev)
+static status_t remove(struct device *dev)
 {
     struct vga_data *data = (struct vga_data *)dev->data;
 
     if (data->char_buffer) {
-        mm_free(data->char_buffer);
+        free(data->char_buffer);
     }
-    if (data->diff_buffer) {
-        mm_free(data->diff_buffer);
-    }
-    mm_free(data);
 
-    return 0;
+    if (data->diff_buffer) {
+        free(data->diff_buffer);
+    }
+
+    free(data);
+
+    device_remove(dev);
+
+    return STATUS_SUCCESS;
 }
 
-static const void *get_interface(struct device *dev, const char *name)
+static status_t get_interface(struct device *dev, const char *name, const void **result)
 {
     if (strcmp(name, "console") == 0) {
-        return &conif;
+        if (result) *result = &conif;
+        return STATUS_SUCCESS;
     }
 
-    return NULL;
+    return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(drv)
-
+DEVICE_DRIVER(vga, vga_init)

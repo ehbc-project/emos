@@ -5,8 +5,8 @@ ENTRY(_start)
 
 SECTIONS
 {
-    . = 0x00200000;
-    
+    . = 0xC0000000;
+
     .text :
     {
         PROVIDE_HIDDEN(__text_start = .);
@@ -15,9 +15,9 @@ SECTIONS
         PROVIDE_HIDDEN(__text_end = .);
     }
 
+    . = ALIGN(4096);
     .data :
     {
-        . = ALIGN(16);
         PROVIDE_HIDDEN(__data_start = .);
         *(.data .data.*)
         PROVIDE_HIDDEN(__data_end = .);
@@ -52,7 +52,6 @@ SECTIONS
     . = ALIGN(4096);
     .rodata :
     {
-        . = ALIGN(16);
         PROVIDE_HIDDEN(__rodata_start = .);
         KEEP(*(.rodata .rodata.*))
         PROVIDE_HIDDEN(__rodata_end = .);

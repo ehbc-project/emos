@@ -4,47 +4,46 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
-#include <macros.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <getopt.h>
-#include <path.h>
 
 #include <zlib.h>
-
-#include <cleanup.h>
-#include <mm/mm.h>
-#include <device/driver.h>
-#include <interface/char.h>
-#include <interface/console.h>
-#include <interface/framebuffer.h>
-#include <interface/block.h>
-#include <interface/hid.h>
-#include <bus/pci/scan.h>
-#include <bus/pci/class.h>
-#include <bus/pci/cfgspace.h>
 #include <uacpi/acpi.h>
 #include <uacpi/kernel_api.h>
 #include <uacpi/tables.h>
-#include <asm/cpuid.h>
-#include <asm/bios/video.h>
-#include <asm/bios/disk.h>
-#include <asm/bios/misc.h>
-#include <asm/reboot.h>
-#include <asm/poweroff.h>
-#include <asm/pci/cfgspace.h>
-#include <asm/bootinfo.h>
-#include <sys/io.h>
-#include <asm/breakpoint.h>
-#include <asm/interrupt.h>
-#include <asm/pic.h>
-#include <asm/time.h>
-#include <asm/boot.h>
-#include <asm/isr.h>
-#include <debug.h>
-#include <fs/driver.h>
-#include <font.h>
-#include <elf.h>
+
+#include <eboot/asm/intrinsics/cpuid.h>
+#include <eboot/asm/intrinsics/misc.h>
+#include <eboot/asm/bios/video.h>
+#include <eboot/asm/bios/disk.h>
+#include <eboot/asm/bios/misc.h>
+#include <eboot/asm/bios/bootinfo.h>
+#include <eboot/asm/power.h>
+#include <eboot/asm/pci/cfgspace.h>
+#include <eboot/asm/io.h>
+#include <eboot/asm/interrupt.h>
+#include <eboot/asm/pic.h>
+#include <eboot/asm/time.h>
+#include <eboot/asm/isr.h>
+
+#include <eboot/cleanup.h>
+#include <eboot/macros.h>
+#include <eboot/debug.h>
+#include <eboot/path.h>
+#include <eboot/device.h>
+#include <eboot/filesystem.h>
+#include <eboot/font.h>
+#include <eboot/elf.h>
+#include <eboot/hid.h>
+#include <eboot/interface/char.h>
+#include <eboot/interface/console.h>
+#include <eboot/interface/framebuffer.h>
+#include <eboot/interface/block.h>
+#include <eboot/interface/hid.h>
+#include <eboot/pci/id.h>
+#include <eboot/pci/class.h>
+#include <eboot/pci/cfgspace.h>
 
 struct shell_instance {
     struct filesystem *fs;
@@ -60,6 +59,7 @@ struct command {
 
 static int tick_handler(struct shell_instance *inst, int argc, char **argv);
 static int echo_handler(struct shell_instance *inst, int argc, char **argv);
+static int devecho_handler(struct shell_instance *inst, int argc, char **argv);
 static int clear_handler(struct shell_instance *inst, int argc, char **argv);
 static int vmode_handler(struct shell_instance *inst, int argc, char **argv);
 static int dispinfo_handler(struct shell_instance *inst, int argc, char **argv);
@@ -75,7 +75,6 @@ static int in_handler(struct shell_instance *inst, int argc, char **argv);
 static int out_handler(struct shell_instance *inst, int argc, char **argv);
 static int readblk_handler(struct shell_instance *inst, int argc, char **argv);
 static int mount_handler(struct shell_instance *inst, int argc, char **argv);
-static int chfs_handler(struct shell_instance *inst, int argc, char **argv);
 static int lsfs_handler(struct shell_instance *inst, int argc, char **argv);
 static int lsfile_handler(struct shell_instance *inst, int argc, char **argv);
 static int chdir_handler(struct shell_instance *inst, int argc, char **argv);
@@ -83,7 +82,6 @@ static int readfile_handler(struct shell_instance *inst, int argc, char **argv);
 static int crc32_handler(struct shell_instance *inst, int argc, char **argv);
 static int dispimg_handler(struct shell_instance *inst, int argc, char **argv);
 static int lsint_handler(struct shell_instance *inst, int argc, char **argv);
-static int chainload_handler(struct shell_instance *inst, int argc, char **argv);
 static int bootnext_handler(struct shell_instance *inst, int argc, char **argv);
 static int drvinfo_handler(struct shell_instance *inst, int argc, char **argv);
 static int usefont_handler(struct shell_instance *inst, int argc, char **argv);
@@ -100,13 +98,11 @@ static const struct command commands[] = {
     { "boot", boot_handler, "Boot from file" },
     { "bootnext", bootnext_handler, "Boot from next device" },
     { "cd", chdir_handler, "Change working directory" },
-    { "cf", chfs_handler, "Change filesystem" },
-    { "chainload", chainload_handler, "Boot from other disk" },
     { "chdir", chdir_handler, "Change working directory" },
-    { "chfs", chfs_handler, "Change filesystem" },
     { "clear", clear_handler, "Clear console" },
     { "cpuid", cpuid_handler, "Invoke CPUID" },
     { "crc32", crc32_handler, "Get CRC32 checksum of a file" },
+    { "devecho", devecho_handler, "Write arguments to a device" },
     { "drvinfo", drvinfo_handler, "Show drive information" },
     { "dispimg", dispimg_handler, "Display a .bmp image file" },
     { "dispinfo", dispinfo_handler, "Get information of the display" },
@@ -158,6 +154,41 @@ static int echo_handler(struct shell_instance *inst, int argc, char **argv)
     return 0;
 }
 
+static int devecho_handler(struct shell_instance *inst, int argc, char **argv)
+{
+    status_t status;
+
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s device message\n", argv[0]);
+        return 1;
+    }
+    if (argc < 3) return 0;
+
+    struct device *dev;
+    status = device_find(argv[1], &dev);
+    if (!CHECK_SUCCESS(status)) {
+        fprintf(stderr, "%s: cannot find device: 0x%08X\n", argv[0], status);
+        return 1;
+    }
+
+    const struct char_interface *cif;
+    status = dev->driver->get_interface(dev, "char", (const void **)&cif);
+    if (!CHECK_SUCCESS(status)) {
+        fprintf(stderr, "%s: device is not a char device: 0x%08X\n", argv[0], status);
+        return 1;
+    }
+
+    for (int i = 2; i < argc; i++) {
+        cif->write(dev, argv[i], strlen(argv[i]), NULL);
+        if (i != argc - 1) {
+            cif->write(dev, " ", 1, NULL);
+        }
+    }
+    cif->write(dev, "\n", 1, NULL);
+
+    return 0;
+}
+
 static int clear_handler(struct shell_instance *inst, int argc, char **argv)
 {
     printf("\x1b[3J\x1b[0;0f");
@@ -167,6 +198,8 @@ static int clear_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int vmode_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    status_t status;
+
     if (argc < 2) {
         printf("usage: %s [-l] [mode]\n", argv[0]);
         return 1;
@@ -177,93 +210,122 @@ static int vmode_handler(struct shell_instance *inst, int argc, char **argv)
         { NULL, 0, NULL, 0 },
     };
 
-    int opt, err;
+    int opt, list = 0;
     getopt_init();
     while ((opt = getopt_long(argc, argv, "l", opts, NULL)) != -1) {
         switch (opt) {
-            case 'l': {
-                static const char *memory_models[] = {
-                    "Text",
-                    "CGA",
-                    "Hercules",
-                    "Planar",
-                    "Packed",
-                    "Non-chain",
-                    "Direct",
-                    "YUV",
-                };
-
-                struct vbe_controller_info vbe_info;
-                err = _pc_bios_get_vbe_controller_info(&vbe_info);
-                if (err) {
-                    fprintf(stderr, "%s: could not list video modes\n", argv[0]);
-                    return 1;
-                }
-            
-                uint16_t *mode_list = (uint16_t *)((vbe_info.video_modes.segment << 4) + vbe_info.video_modes.offset);
-                struct vbe_video_mode_info vbe_mode_info;
-                uint16_t mode = 0xFFFF;
-                printf("Video Modes:\r\n");
-                for (int i = 0; mode_list[i] != 0xFFFF; i++) {
-                    err = _pc_bios_get_vbe_video_mode_info(mode_list[i], &vbe_mode_info);
-                    if (err) {
-                        fprintf(stderr, "%s: could not get video mode info\n", argv[0]);
-                        return 1;
-                    }
-                    printf("Mode %03X: w=%4d h=%4d bpp=%2d addr=%08lX attr=%04X mm=%s\r\n",
-                        mode_list[i],
-                        vbe_mode_info.width, vbe_mode_info.height, vbe_mode_info.bpp,
-                        vbe_mode_info.framebuffer, vbe_mode_info.attributes, memory_models[vbe_mode_info.memory_model]
-                    );
-                }
-
-                return 0;
-            }
+            case 'l':
+                list = 1;
+                break;
             default:
                 printf("usage: %s [-l] [mode]\n", argv[0]);
                 return 1;
         }
     }
 
-    int mode = strtol(argv[1], NULL, 16);
-    struct vbe_video_mode_info vbe_mode_info;
-    err = _pc_bios_get_vbe_video_mode_info(mode, &vbe_mode_info);
-    if (err) {
-        fprintf(stderr, "%s: could not get video mode info\n", argv[0]);
-        return 1;
+    if (list) {
+        struct vbe_controller_info vbe_info;
+        status = _pc_bios_vbe_get_controller_info(&vbe_info);
+        if (!CHECK_SUCCESS(status)) {
+            fprintf(stderr, "%s: could not list video modes\n", argv[0]);
+            return 1;
+        }
+    
+        uint16_t *mode_list = (uint16_t *)((vbe_info.video_modes.segment << 4) + vbe_info.video_modes.offset);
+        struct vbe_video_mode_info vbe_mode_info;
+        uint16_t mode = 0xFFFF;
+        printf("Video Modes:\r\n");
+        for (int i = 0; mode_list[i] != 0xFFFF; i++) {
+            status = _pc_bios_vbe_get_video_mode_info(mode_list[i], &vbe_mode_info);
+            if (!CHECK_SUCCESS(status)) {
+                fprintf(stderr, "%s: could not get video mode info\n", argv[0]);
+                return 1;
+            }
+            if (vbe_mode_info.memory_model == VBEMM_TEXT) {
+                printf("t%dx%d\t",
+                    vbe_mode_info.width,
+                    vbe_mode_info.height
+                );
+            } else if (vbe_mode_info.memory_model == VBEMM_DIRECT) {
+                printf("%dx%dx%d\t",
+                    vbe_mode_info.width,
+                    vbe_mode_info.height,
+                    vbe_mode_info.bpp
+                );
+            }
+        }
+        fputs("\n", stdout);
+
+        return 0;
     }
 
-    struct device *fbdev = find_device("video0");
-    struct device *condev = find_device("console0");
-    const struct console_interface *conif = condev->driver->get_interface(condev, "console");
+    struct device *fbdev;
+    status = device_find("video0", &fbdev);
+    if (!CHECK_SUCCESS(status)) return 1;
+
+    struct device *condev;
+    status = device_find("console0", &condev);
+    if (!CHECK_SUCCESS(status)) return 1;
+
+    const struct console_interface *conif;
+    status = condev->driver->get_interface(condev, "console", (const void **)&conif);
+    if (!CHECK_SUCCESS(status)) return 1;
+
     
-    if (vbe_mode_info.memory_model == VBEMM_TEXT) {
-        const struct console_interface *fbconif = fbdev->driver->get_interface(fbdev, "console");
-        err = fbconif->set_dimension(fbdev, vbe_mode_info.width, vbe_mode_info.height);
-        if (err) {
+    if (argv[1][0] == 't') {
+        char *heightstr;
+        int width = strtol(argv[1] + 1, &heightstr, 10);
+        if (!heightstr || !heightstr[0]) {
+            fprintf(stderr, "%s: invalid video mode\n", argv[0]);
+            return 1;
+        }
+        int height = strtol(heightstr + 1, NULL, 10);
+
+        const struct console_interface *fbconif;
+        status = fbdev->driver->get_interface(fbdev, "console", (const void **)&fbconif);
+        if (!CHECK_SUCCESS(status)) return 1;
+
+        status = fbconif->set_dimension(fbdev, width, height);
+        if (!CHECK_SUCCESS(status)) {
             fprintf(stderr, "%s: could not switch video mode\n", argv[0]);
             return 1;
         }
-        err = conif->set_dimension(condev, -1, -1);
-        if (err) {
-            fprintf(stderr, "%s: unknown error\n", argv[0]);
+
+        status = conif->set_dimension(condev, -1, -1);
+        if (!CHECK_SUCCESS(status)) {
+            fprintf(stderr, "%s: could not set dimension\n", argv[0]);
             return 1;
         }
     } else {
-        const struct framebuffer_interface *framebuffer = fbdev->driver->get_interface(fbdev, "framebuffer");
-        err = framebuffer->set_mode(fbdev, vbe_mode_info.width, vbe_mode_info.height, vbe_mode_info.bpp);
-        if (err) {
+        char *heightstr, *bppstr;
+        int width = strtol(argv[1], &heightstr, 10);
+        if (!heightstr || !heightstr[0]) {
+            fprintf(stderr, "%s: invalid video mode\n", argv[0]);
+            return 1;
+        }
+        int height = strtol(heightstr + 1, &bppstr, 10);
+        if (!bppstr || !bppstr[0]) {
+            fprintf(stderr, "%s: invalid video mode\n", argv[0]);
+            return 1;
+        }
+        int bpp = strtol(bppstr + 1, NULL, 10);
+
+        const struct framebuffer_interface *framebuffer;
+        status = fbdev->driver->get_interface(fbdev, "framebuffer", (const void **)&framebuffer);
+        if (!CHECK_SUCCESS(status)) return 1;
+
+        status = framebuffer->set_mode(fbdev, width, height, bpp);
+        if (!CHECK_SUCCESS(status)) {
             fprintf(stderr, "%s: could not switch video mode\n", argv[0]);
             return 1;
         }
-        err = conif->set_dimension(condev, vbe_mode_info.width / 8, vbe_mode_info.height / 16);
-        if (err) {
+
+        status = conif->set_dimension(condev, width / 8, height / 16);
+        if (!CHECK_SUCCESS(status)) {
             fprintf(stderr, "%s: could not set console dimension\n", argv[0]);
             return 1;
         }
-        printf("Framebuffer: 0x%p\n", framebuffer->get_framebuffer(fbdev));
     }
-    printf("Text buffer: 0x%p\n", (void *)conif->get_buffer(condev));
 
     return 0;
 }
@@ -271,7 +333,21 @@ static int vmode_handler(struct shell_instance *inst, int argc, char **argv)
 static int dispinfo_handler(struct shell_instance *inst, int argc, char **argv)
 {
     struct edid buf;
-    _pc_bios_get_vbe_edid(0, 0, &buf);
+    int unit, block, err;
+
+    if (argc < 3) {
+        printf("usage: %s unit block\n", argv[0]);
+        return 1;
+    }
+
+    unit = strtol(argv[1], NULL, 10);
+    block = strtol(argv[2], NULL, 10);
+
+    err = _pc_bios_vbeddc_get_edid(unit, block, &buf);
+    if (err) {
+        printf("%s: edid error\n", argv[0]);
+        return 1;
+    }
 
     uint16_t manufacturer_id = ((buf.manufacturer_id & 0x00FF) << 8) | ((buf.manufacturer_id & 0xFF00) >> 8);
 
@@ -286,7 +362,6 @@ static int dispinfo_handler(struct shell_instance *inst, int argc, char **argv)
 
         printf("Preferred resolution #%d: %dx%d\n", i, w, h);
     }
-
 
     return 0;
 }
@@ -478,7 +553,7 @@ static void print_dev_tree(struct device *parent_dev, int indent, uint32_t chain
             printf(((chain >> i) & 1) ? "│   " : "    ");
         }
         printf(dev->sibling ? "├───" : "└───");
-        printf("%s%d: %s\n", dev->name, dev->id, dev->driver->name);
+        printf("%s: %s\n", dev->name, dev->driver->name);
 
         if (dev->first_child) {
             print_dev_tree(dev, indent + 1, chain | (dev->sibling ? (1 << indent) : 0));
@@ -490,7 +565,7 @@ static void print_dev_tree(struct device *parent_dev, int indent, uint32_t chain
 
 static int lsdev_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    struct device *dev = get_first_device();
+    struct device *dev = device_get_first_dev();
     struct device *last_root_dev = NULL;
 
     printf("System\n");
@@ -498,7 +573,7 @@ static int lsdev_handler(struct shell_instance *inst, int argc, char **argv)
     while (dev) {
         if (!dev->parent) {
             if (last_root_dev) {
-                printf("├───%s%d: %s\n", last_root_dev->name, last_root_dev->id, last_root_dev->driver->name);
+                printf("├───%s: %s\n", last_root_dev->name, last_root_dev->driver->name);
                 print_dev_tree(last_root_dev, 1, 1);
             }
 
@@ -509,7 +584,7 @@ static int lsdev_handler(struct shell_instance *inst, int argc, char **argv)
     }
 
     if (last_root_dev) {
-        printf("└───%s%d: %s\n", last_root_dev->name, last_root_dev->id, last_root_dev->driver->name);
+        printf("└───%s: %s\n", last_root_dev->name, last_root_dev->driver->name);
         print_dev_tree(last_root_dev, 1, 0);
     }
 
@@ -552,7 +627,7 @@ static int acpi_handler(struct shell_instance *inst, int argc, char **argv)
     printf("\tTables: \n");
     for (int i = 0; i < (rsdt->hdr.length - sizeof(rsdt->hdr)) / sizeof(uint32_t); i++) {
         struct acpi_sdt_hdr *header = (struct acpi_sdt_hdr *)(rsdt->entries[i]);
-        printf("\t- %4s: 0x%p\n", header->signature, (void *)header);
+        printf("\t- %.4s: 0x%p\n", header->signature, (void *)header);
     }
 
     struct acpi_fadt *fadt;
@@ -778,25 +853,34 @@ static int testtty_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    struct device *msdev = find_device("mouse0");
-    if (!msdev) {
+    status_t status;
+    struct device *msdev;
+    status = device_find("mouse0", &msdev);
+    if (!CHECK_SUCCESS(status)) {
         fprintf(stderr, "%s: cannot find device\n", argv[0]);
         return 1;
     }
 
-    const struct hid_interface *hidif = msdev->driver->get_interface(msdev, "hid");
+    const struct hid_interface *hidif;
+    status = msdev->driver->get_interface(msdev, "hid", (const void **)&hidif);
 
-    struct device *fbdev = find_device("video0");
-    if (!fbdev) {
+    struct device *fbdev;
+    status = device_find("video0", &fbdev);
+    if (!CHECK_SUCCESS(status)) {
         fprintf(stderr, "%s: cannot find device\n", argv[0]);
         return 1;
     }
 
-    const struct framebuffer_interface *fbif = fbdev->driver->get_interface(fbdev, "framebuffer");
+    const struct framebuffer_interface *fbif;
+    status = fbdev->driver->get_interface(fbdev, "framebuffer", (const void **)&fbif);
+    if (!CHECK_SUCCESS(status)) return 1;
 
     int width, height;
-    uint32_t *framebuffer = fbif->get_framebuffer(fbdev);
-    fbif->get_mode(fbdev, &width, &height, NULL);
+    uint32_t *framebuffer;
+    status = fbif->get_framebuffer(fbdev, (void **)&framebuffer);
+    if (!CHECK_SUCCESS(status)) return 1;
+    status = fbif->get_mode(fbdev, &width, &height, NULL);
+    if (!CHECK_SUCCESS(status)) return 1;
 
     int xpos = width / 2, ypos = height / 2, should_exit = 0;
     uint16_t key, flags;
@@ -804,10 +888,9 @@ static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
     puts("\x1b[3J\x1b[0;0f\x1b[?25lclose");
 
     while (!should_exit) {
-        hidif->wait_event(msdev);
-        if (hidif->poll_event(msdev, &key, &flags)) {
-            continue;
-        }
+        status = hidif->wait_event(msdev);
+        status = hidif->poll_event(msdev, &key, &flags);
+        if (!CHECK_SUCCESS(status)) continue;
 
         switch (flags & KEY_FLAG_TYPEMASK) {
             case 0:
@@ -847,12 +930,10 @@ static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
                     }
                 }
 
-                interrupt_disable();
                 framebuffer[ypos * width + xpos] = 0xFFFFFF;
                 fbif->invalidate(fbdev, xpos, ypos, xpos, ypos);
                 fbif->flush(fbdev);
                 fbif->present(fbdev);
-                interrupt_enable();
                 break;
             default:
                 break;
@@ -963,6 +1044,8 @@ static int out_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int readblk_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    status_t status;
+
     if (argc < 3) {
         fprintf(stderr, "usage: %s device lba\n", argv[0]);
         return 1;
@@ -970,15 +1053,18 @@ static int readblk_handler(struct shell_instance *inst, int argc, char **argv)
 
     lba_t lba = strtoull(argv[2], NULL, 16);
 
-    struct device *blkdev = find_device(argv[1]);
-    if (!blkdev) {
+    struct device *blkdev;
+    status = device_find(argv[1], &blkdev);
+    if (!CHECK_SUCCESS(status)) {
         fprintf(stderr, "%s: could not find device\n", argv[0]);
         return 1;
     }
-    const struct block_interface *blkif = blkdev->driver->get_interface(blkdev, "block");
+    const struct block_interface *blkif;
+    status = blkdev->driver->get_interface(blkdev, "block", (const void **)&blkif);
+    if (!CHECK_SUCCESS(status)) return 1;
 
     uint8_t buf[512];
-    blkif->read(blkdev, lba, buf, 1);
+    blkif->read(blkdev, lba, buf, 1, NULL);
 
     hexdump(buf, sizeof(buf), 0);
 
@@ -987,51 +1073,35 @@ static int readblk_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int mount_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    status_t status;
+
     if (argc < 3) {
         fprintf(stderr, "usage: %s device fs_name\n", argv[0]);
         return 1;
     }
 
-    struct device *blkdev = find_device(argv[1]);
-    if (!blkdev) {
+    struct device *blkdev;
+    status = device_find(argv[1], &blkdev);
+    if (!CHECK_SUCCESS(status)) {
         fprintf(stderr, "%s: could not find device\n", argv[0]);
         return 1;
     }
     
-    return fs_auto_mount(blkdev, argv[2]);
-}
-
-static int lsfs_handler(struct shell_instance *inst, int argc, char **argv)
-{
-    struct filesystem *current = get_first_filesystem();
-    
-    while (current) {
-        printf("%s: %s\n", current->name, current->driver->name);
-
-        current = current->next;
-    }
+    status = filesystem_auto_mount(blkdev, argv[2]);
+    if (!CHECK_SUCCESS(status)) return 1;
 
     return 0;
 }
 
-static int chfs_handler(struct shell_instance *inst, int argc, char **argv)
+static int lsfs_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    if (argc < 2) {
-        fprintf(stderr, "usage: %s fs_name\n", argv[0]);
-        return 1;
-    }
+    struct filesystem *current = filesystem_get_first_fs();
+    
+    while (current) {
+        printf("%s: type=%s dev=%s\n", current->name, current->driver->name, current->dev->name);
 
-    struct filesystem *newfs = find_filesystem(argv[1]);
-    if (!newfs) {
-        fprintf(stderr, "%s: could not find filesystem\n", argv[0]);
-        return 1;
+        current = current->next;
     }
-
-    if (inst->working_dir) inst->working_dir->fs->driver->close_directory(inst->working_dir);
-    inst->working_dir = newfs->driver->open_root_directory(newfs);
-    inst->working_dir_path[0] = '/';
-    inst->working_dir_path[1] = '\0';
-    inst->fs = newfs;
 
     return 0;
 }
@@ -1059,40 +1129,118 @@ static int lsfile_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int chdir_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    status_t status;
+
     if (argc < 2) {
         fprintf(stderr, "usage: %s dir_name\n", argv[0]);
         return 1;
     }
 
-    if (!inst->fs) {
-        fprintf(stderr, "%s: filesystem not selected\n", argv[0]);
-        return 1;
-    }
+    if (path_is_absolute(argv[1])) {
+        struct path_iterator iter;
+        path_iter_init(&iter, argv[1]);
 
-    struct fs_directory *newdir = inst->working_dir->fs->driver->open_directory(inst->working_dir, argv[1]);
-    if (!newdir) {
-        fprintf(stderr, "%s: failed to open directory\n", argv[0]);
-        return 1;
-    }
-    inst->working_dir->fs->driver->close_directory(inst->working_dir);
-    
-    inst->working_dir = newdir;
-    if (strcmp(argv[1], ".") == 0) {
-    } else if (strcmp(argv[1], "..") == 0) {
-        int prev_path_len = strlen(inst->working_dir_path);
-        char *end = strrchr(inst->working_dir_path, '/');
-        if (inst->working_dir_path == end) {
-            end[1] = '\0';
+        struct filesystem *newfs;
+        if (iter.element[0]) {
+            status = filesystem_find(iter.element, &newfs);
+            if (!CHECK_SUCCESS(status)) {
+                fprintf(stderr, "%s: failed to open filesystem\n", argv[0]);
+                return 1;
+            }
         } else {
-            *end = '\0';
+            newfs = inst->fs;
+            if (!newfs) {
+                fprintf(stderr, "%s: no open filesystem\n", argv[0]);
+                return 1;
+            }
         }
+
+        struct fs_directory *newdir;
+        status = newfs->driver->open_root_directory(newfs, &newdir);
+        if (!CHECK_SUCCESS(status)) {
+            fprintf(stderr, "%s: failed to open root directory\n", argv[0]);
+            return 1;
+        }
+
+        int iter_result;
+        do {
+            iter_result = path_iter_next(&iter);
+            if (iter.element[0] == '\0') {
+                continue;
+            }
+            if (strcmp(".", iter.element) == 0) {
+                continue;
+            }
+
+            struct fs_directory *tmp;
+            status = newfs->driver->open_directory(newdir, iter.element, &tmp);
+            newfs->driver->close_directory(newdir);
+
+            if (!CHECK_SUCCESS(status)) {
+                fprintf(stderr, "%s: failed to open directory\n", argv[0]);
+                return 1;
+            }
+
+            newdir = tmp;
+        } while (!iter_result);
+
+        if (inst->working_dir) {
+            inst->working_dir->fs->driver->close_directory(inst->working_dir);
+        }
+        inst->working_dir = newdir;
+        inst->fs = newfs;
+
+        char pathbuf[PATH_MAX];
+        if (!path_get_fsname(pathbuf, sizeof(pathbuf), argv[1])[0]) {
+            snprintf(pathbuf, sizeof(pathbuf), "%s:%s", inst->fs->name, argv[1]);
+        } else {
+            strncpy(pathbuf, argv[1], sizeof(pathbuf));
+        }
+        path_normalize(inst->working_dir_path, sizeof(inst->working_dir_path), pathbuf);
     } else {
-        int prev_path_len = strlen(inst->working_dir_path);
-        int dirname_len = strlen(argv[1]);
-        if (prev_path_len == 1) prev_path_len--;
-        inst->working_dir_path[prev_path_len] = '/';
-        strcpy(inst->working_dir_path + prev_path_len + 1, argv[1]);
-        inst->working_dir_path[prev_path_len + dirname_len + 1] = '\0';
+        if (!inst->fs) {
+            fprintf(stderr, "%s: filesystem not selected\n", argv[0]);
+            return 1;
+        }
+    
+        char pathbuf[PATH_MAX];
+        struct path_iterator iter;
+        path_iter_init(&iter, argv[1]);
+
+        struct fs_directory *newdir = inst->working_dir;
+        int iter_result;
+        do {
+            iter_result = path_iter_next(&iter);
+            if (iter.element[0] == '\0') {
+                continue;
+            }
+            if (strcmp(".", iter.element) == 0) {
+                continue;
+            }
+
+            struct fs_directory *tmp;
+            status = inst->fs->driver->open_directory(newdir, iter.element, &tmp);
+            if (newdir != inst->working_dir) {
+                inst->fs->driver->close_directory(newdir);
+            }
+
+            if (!CHECK_SUCCESS(status)) {
+                fprintf(stderr, "%s: failed to open directory\n", argv[0]);
+                return 1;
+            }
+
+            newdir = tmp;
+        } while (!iter_result);
+
+        stpncpy(pathbuf, inst->working_dir_path, sizeof(pathbuf));
+        path_join(pathbuf, sizeof(pathbuf), argv[1]);
+
+        if (inst->working_dir) {
+            inst->working_dir->fs->driver->close_directory(inst->working_dir);
+        }
+        inst->working_dir = newdir;
+
+        path_normalize(inst->working_dir_path, sizeof(inst->working_dir_path), pathbuf);
     }
 
     return 0;
@@ -1109,7 +1257,7 @@ static int readfile_handler(struct shell_instance *inst, int argc, char **argv)
     if (path_is_absolute(argv[1])) {
         strncpy(path, argv[1], sizeof(path));
     } else {
-        snprintf(path, sizeof(path), "%s:%s", inst->fs->name, inst->working_dir_path);
+        strncpy(path, inst->working_dir_path, sizeof(path));
         path_join(path, sizeof(path), argv[1]);
 
         if (!inst->fs) {
@@ -1127,7 +1275,7 @@ static int readfile_handler(struct shell_instance *inst, int argc, char **argv)
     char buf[512];
     int read_count;
     while ((read_count = fread(buf, 1, sizeof(buf), fp)) > 0) {
-        printf("%*s", read_count, buf);
+        printf("%.*s", read_count, buf);
     }
     printf("\n");
     
@@ -1147,7 +1295,7 @@ static int crc32_handler(struct shell_instance *inst, int argc, char **argv)
     if (path_is_absolute(argv[1])) {
         strncpy(path, argv[1], sizeof(path));
     } else {
-        snprintf(path, sizeof(path), "%s:%s", inst->fs->name, inst->working_dir_path);
+        strncpy(path, inst->working_dir_path, sizeof(path));
         path_join(path, sizeof(path), argv[1]);
 
         if (!inst->fs) {
@@ -1177,6 +1325,8 @@ static int crc32_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    status_t status;
+
     if (argc < 2) {
         fprintf(stderr, "usage: %s path\n", argv[0]);
         return 1;
@@ -1186,7 +1336,7 @@ static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
     if (path_is_absolute(argv[1])) {
         strncpy(path, argv[1], sizeof(path));
     } else {
-        snprintf(path, sizeof(path), "%s:%s", inst->fs->name, inst->working_dir_path);
+        strncpy(path, inst->working_dir_path, sizeof(path));
         path_join(path, sizeof(path), argv[1]);
 
         if (!inst->fs) {
@@ -1201,17 +1351,24 @@ static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
         return 1;
     }
 
-    struct device *fbdev = find_device("video0");
-    if (!fbdev) {
+    struct device *fbdev;
+    status = device_find("video0", &fbdev);
+    if (!CHECK_SUCCESS(status)) {
         fprintf(stderr, "%s: cannot find device\n", argv[0]);
         return 1;
     }
 
-    const struct framebuffer_interface *fbif = fbdev->driver->get_interface(fbdev, "framebuffer");
+    const struct framebuffer_interface *fbif;
+    status = fbdev->driver->get_interface(fbdev, "framebuffer", (const void **)&fbif);
+    if (!CHECK_SUCCESS(status)) return 1;
 
     int width, height;
-    uint32_t *framebuffer = fbif->get_framebuffer(fbdev);
-    fbif->get_mode(fbdev, &width, &height, NULL);
+    uint32_t *framebuffer;
+    status = fbif->get_framebuffer(fbdev, (void **)&framebuffer);
+    if (!CHECK_SUCCESS(status)) return 1;
+
+    status = fbif->get_mode(fbdev, &width, &height, NULL);
+    if (!CHECK_SUCCESS(status)) return 1;
 
     struct bmp_header {
         char signature[2];
@@ -1244,11 +1401,15 @@ static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
     printf("width: %lu, height: %lu, bpp: %u\n", dibheader.width, dibheader.height, dibheader.bpp);
 
     fseek(fp, header.bitmap_offset, SEEK_SET);
+
+    int ystart = (height - dibheader.height) / 2;
+    int xstart = (width - dibheader.width) / 2;
+
     for (int y = 0; y < dibheader.height; y++) {
         for (int x = 0; x < dibheader.width; x++) {
             uint32_t buf;
             fread(&buf, dibheader.bpp / 8, 1, fp);
-            framebuffer[(dibheader.height - y - 1) * width + x] = buf;
+            framebuffer[(ystart + dibheader.height - y - 1) * width + xstart + x] = buf;
         }
     }
     fbif->invalidate(fbdev, 0, 0, width - 1, height - 1);
@@ -1260,24 +1421,26 @@ static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
     char ch;
     fread(&ch, sizeof(ch), 1, stdin);
 
-    puts("\x1b[3J\x1b[0;0f");
+    fputs("\x1b[3J\x1b[0;0f", stdout);
 
     return 0;
 }
 
 static int drvinfo_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    status_t status;
+    
     if (argc < 2) {
         fprintf(stderr, "usage: %s drvnum\n", argv[0]);
         return 1;
     }
 
     uint8_t drive = strtol(argv[1], NULL, 16);
-    enum bios_drive_type drive_type;
+    uint8_t drive_type;
     struct chs drive_geometry;
 
-    int err = _pc_bios_get_drive_params(drive, &drive_type, &drive_geometry, NULL);
-    if (err) return err;
+    status = _pc_bios_disk_get_params(drive, NULL, &drive_type, &drive_geometry, NULL);
+    if (!CHECK_SUCCESS(status)) return 1;
 
     static const char *const drive_types[] = {
         "Hard disk",
@@ -1293,24 +1456,24 @@ static int drvinfo_handler(struct shell_instance *inst, int argc, char **argv)
     printf("Geometry: cylinder=%d, head=%d, sector=%d\n", drive_geometry.cylinder, drive_geometry.head, drive_geometry.sector);
 
     struct bios_extended_drive_params params;
-    enum bios_edd_version edd_version;
-    err = _pc_bios_check_ext(drive, &edd_version, NULL);
-    if (err) {
+    uint8_t edd_version;
+    status = _pc_bios_disk_check_ext(drive, &edd_version, NULL);
+    if (!CHECK_SUCCESS(status)) {
         printf("EDD Not supported\n");
         return 0;
     }
 
     switch (edd_version) {
-        case BIOS_EDD_1_X:
+        case EDD_VER_1_X:
             printf("EDD Version: 1.x\n");
             break;
-        case BIOS_EDD_2_0:
+        case EDD_VER_2_0:
             printf("EDD Version: 2.0\n");
             break;
-        case BIOS_EDD_2_1:
+        case EDD_VER_2_1:
             printf("EDD Version: 2.1\n");
             break;
-        case BIOS_EDD_3_0:
+        case EDD_VER_3_0:
             printf("EDD Version: 3.0\n");
             break;
         default:
@@ -1319,17 +1482,17 @@ static int drvinfo_handler(struct shell_instance *inst, int argc, char **argv)
     }
 
 
-    err = _pc_bios_get_drive_params_ext(drive, &params);
-    if (err) return err;
+    status = _pc_bios_disk_get_params_ext(drive, &params);
+    if (!CHECK_SUCCESS(status)) return 1;
 
-    if (edd_version >= BIOS_EDD_1_X) {
+    if (edd_version >= EDD_VER_1_X) {
         printf("Flags: %04X\n", params.flags);
         printf("Geometry: cylinder=%lu, head=%lu, sector=%lu\n", params.geom_cylinders, params.geom_heads, params.geom_sectors);
         printf("Bytes per sector: %u\n", params.bytes_per_sector);
         printf("Total sectors: %llu\n", params.total_sectors);
     }
 
-    if (edd_version >= BIOS_EDD_3_0 && params.device_path_signature == 0xBEDD) {
+    if (edd_version >= EDD_VER_3_0 && params.device_path_signature == 0xBEDD) {
         printf("Host bus: %4s\n", params.host_bus);
         printf("Interface: %8s\n", params.interface);
     }
@@ -1358,7 +1521,7 @@ static int lsint_handler(struct shell_instance *inst, int argc, char **argv)
             while (entry) {
                 if (entry->interrupt_handler) {
                     if (entry->dev) {
-                        printf("\ttype=int dev=%s%d handler=%p\n", entry->dev->name, entry->dev->id, (void *)entry->interrupt_handler);
+                        printf("\ttype=int dev=%s handler=%p\n", entry->dev->name, (void *)entry->interrupt_handler);
                     } else {
                         printf("\ttype=int dev=none handler=%p\n", (void *)entry->interrupt_handler);
                     }
@@ -1374,18 +1537,6 @@ static int lsint_handler(struct shell_instance *inst, int argc, char **argv)
     return 0;
 }
 
-static int chainload_handler(struct shell_instance *inst, int argc, char **argv)
-{
-    if (argc < 2) {
-        fprintf(stderr, "usage: %s drvnum\n", argv[0]);
-        return 1;
-    }
-
-    uint8_t drive = argc < 2 ? _pc_boot_drive : strtol(argv[1], NULL, 16);
-    printf("Booting into drive 0x%02X...\n", drive);
-    return _pc_chainload(drive);
-}
-
 static int bootnext_handler(struct shell_instance *inst, int argc, char **argv)
 {
     _pc_bios_bootnext();
@@ -1394,12 +1545,14 @@ static int bootnext_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int usefont_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    status_t status;
+
     char path[PATH_MAX];
     if (argc > 1) {
         if (path_is_absolute(argv[1])) {
             strncpy(path, argv[1], sizeof(path));
         } else {
-            snprintf(path, sizeof(path), "%s:%s", inst->fs->name, inst->working_dir_path);
+            strncpy(path, inst->working_dir_path, sizeof(path));
             path_join(path, sizeof(path), argv[1]);
     
             if (!inst->fs) {
@@ -1412,11 +1565,13 @@ static int usefont_handler(struct shell_instance *inst, int argc, char **argv)
     int ret = font_use(argc > 1 ? path : NULL);
     if (ret) return 1;
     
-    struct device *condev = find_device("console0");
-    if (!condev) {
-        return 0;
-    }
-    const struct console_interface *conif = condev->driver->get_interface(condev, "console");
+    struct device *condev;
+    status = device_find("console0", &condev);
+    if (!CHECK_SUCCESS(status)) return 1;
+
+    const struct console_interface *conif;
+    status = condev->driver->get_interface(condev, "console", (const void **)&conif);
+    if (!CHECK_SUCCESS(status)) return 1;
 
     int width, height;
     conif->get_dimension(condev, &width, &height);
@@ -1441,6 +1596,8 @@ static int jump_handler(struct shell_instance *inst, int argc, char **argv)
 
 static int boot_handler(struct shell_instance *inst, int argc, char **argv)
 {
+    status_t status;
+
     if (argc < 2) {
         fprintf(stderr, "usage: %s path\n", argv[0]);
         return 1;
@@ -1450,7 +1607,7 @@ static int boot_handler(struct shell_instance *inst, int argc, char **argv)
     if (path_is_absolute(argv[1])) {
         strncpy(path, argv[1], sizeof(path));
     } else {
-        snprintf(path, sizeof(path), "%s:%s", inst->fs->name, inst->working_dir_path);
+        strncpy(path, inst->working_dir_path, sizeof(path));
         path_join(path, sizeof(path), argv[1]);
 
         if (!inst->fs) {
@@ -1459,8 +1616,9 @@ static int boot_handler(struct shell_instance *inst, int argc, char **argv)
         }
     }
 
-    struct elf_file *elf = elf_open(path);
-    if (!elf) {
+    struct elf_file *elf;
+    status = elf_open(path, &elf);
+    if (!CHECK_SUCCESS(status)) {
         fprintf(stderr, "%s: failed to open file\n", argv[0]);
         return 1;
     }
@@ -1469,8 +1627,8 @@ static int boot_handler(struct shell_instance *inst, int argc, char **argv)
     do {
         struct elf_program_header phdr;
 
-        int err = elf_get_current_program_header(elf, &phdr);
-        if (err) break;
+        status = elf_get_current_program_header(elf, &phdr);
+        if (!CHECK_SUCCESS(status)) return 1;
 
         printf("phdr #%d:\n", idx);
         printf("\toffset: %08lX\n", phdr.elf32.offset);
@@ -1484,22 +1642,25 @@ static int boot_handler(struct shell_instance *inst, int argc, char **argv)
         idx++;
     } while (!elf_advance_program_header(elf));
     
-    struct device *fbdev = find_device("video0");
-    if (!fbdev) {
+    struct device *fbdev;
+    status = device_find("video0", &fbdev);
+    if (!CHECK_SUCCESS(status)) {
         fprintf(stderr, "%s: cannot find device\n", argv[0]);
         return 1;
     }
 
-    const struct framebuffer_interface *fbif = fbdev->driver->get_interface(fbdev, "framebuffer");
+    const struct framebuffer_interface *fbif;
+    status = fbdev->driver->get_interface(fbdev, "framebuffer", (const void **)&fbif);
+    if (!CHECK_SUCCESS(status)) return 1;
 
     struct fb_hw_mode hwmode;
 
     fbif->get_hw_mode(fbdev, &hwmode);
 
-    cleanup();
+    // cleanup();
 
     char arg_buffer[1024];
-    static const char *memory_model_lut[] = { "direct", "text" } ;
+    static const char *memory_model_lut[] = { "direct", "text" };
 
     snprintf(
         arg_buffer,
@@ -1549,18 +1710,66 @@ static int help_handler(struct shell_instance *inst, int argc, char **argv)
 __noreturn
 static int reboot_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    _i686_pc_reboot();
+    _pc_reboot();
 }
 
 __noreturn
 static int poweroff_handler(struct shell_instance *inst, int argc, char **argv)
 {
-    _i686_pc_poweroff();
+    _pc_poweroff();
 }
 
 static int exit_handler(struct shell_instance *inst, int argc, char **argv)
 {
     return 0;
+}
+
+static struct shell_instance global_inst = {
+    .fs = NULL,
+    .working_dir = NULL,
+    .working_dir_path = { 0, },
+};
+
+int shell_execute(struct shell_instance *inst, const char *line)
+{
+    char line_buf[512], elem_buf[512], *newargv[32];
+
+    if (!inst) {
+        inst = &global_inst;
+    }
+
+    char *elem_cursor = elem_buf;
+    long elem_buf_len = sizeof(elem_buf);
+    int newargc = 0;
+
+    while (newargc < ARRAY_SIZE(newargv)) {
+        line = shell_parse(line, elem_cursor, elem_buf_len);
+        newargv[newargc] = elem_cursor;
+        if (!line) break;
+
+        long elem_len = strnlen(elem_cursor, elem_buf_len);
+        elem_cursor += elem_len + 1;
+        elem_buf_len -= elem_len + 1;
+
+        newargc++;
+    }
+
+    if (newargc < 1) {
+        return 0;
+    }
+
+    if (strcmp("exit", newargv[0]) == 0) {
+        return -1;
+    }
+
+    for (int i = 0; i < ARRAY_SIZE(commands); i++) {
+        if (strcmp(commands[i].name, newargv[0]) == 0) {
+            return commands[i].handler(inst, newargc, newargv);
+        }
+    }
+
+    printf("command not found: %s\n", newargv[0]);
+    return 1;
 }
 
 int shell_handler(struct shell_instance *inst, int argc, char **argv)
@@ -1579,71 +1788,14 @@ int shell_handler(struct shell_instance *inst, int argc, char **argv)
             printf("(%d) ", result);
         }
         if (new_inst.fs) {
-            printf("%s:%s", new_inst.fs->name, new_inst.working_dir_path);
+            printf("%s", new_inst.working_dir_path);
         }
 
         shell_readline("> ", line_buf, sizeof(line_buf));
 
-        const char *line_cursor = line_buf;
-        char *elem_cursor = elem_buf;
-        long elem_buf_len = sizeof(elem_buf);
-        int newargc = 0;
-
-        while (newargc < ARRAY_SIZE(newargv)) {
-            line_cursor = shell_parse(line_cursor, elem_cursor, elem_buf_len);
-            newargv[newargc] = elem_cursor;
-            if (!line_cursor) break;
-
-            long elem_len = strnlen(elem_cursor, elem_buf_len);
-            elem_cursor += elem_len + 1;
-            elem_buf_len -= elem_len + 1;
-
-            newargc++;
-        }
-
-        if (newargc < 1) {
-            result = 0;
-            continue;
-        }
-
-        if (strcmp("exit", newargv[0]) == 0) {
-            break;
-        }
-
-        int command_found = 0;
-        for (int i = 0; i < ARRAY_SIZE(commands); i++) {
-            if (strcmp(commands[i].name, newargv[0]) == 0) {
-                result = commands[i].handler(&new_inst, newargc, newargv);
-                command_found = 1;
-                break;
-            }
-        }
-    
-        if (!command_found) {
-            printf("command not found: %s\n", newargv[0]);
-            result = 1;
-        }
+        result = shell_execute(&new_inst, line_buf);
+        if (result < 0) break;
     }
 
     return 0;
-}
-
-void shell_start(void)
-{
-    printf("\x1b[3J\x1b[0;0f\x1b[?25h\x1b[0m");
-
-    struct shell_instance inst = {
-        .fs = NULL,
-        .working_dir = NULL,
-        .working_dir_path = { 0, },
-    };
-
-    char buf[6];
-    strncpy(buf, "shell", 6);
-
-    for (;;) {
-        shell_handler(&inst, 1, (char **)&buf);
-    }
-
-    interrupt_disable();
 }

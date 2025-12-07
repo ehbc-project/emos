@@ -1,18 +1,15 @@
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-#include <mm/mm.h>
-#include <bus/bus.h>
-#include <device/driver.h>
-#include <interface/ide.h>
-#include <sys/io.h>
-#include <asm/isr.h>
-#include <asm/pause.h>
+#include <eboot/asm/io.h>
+#include <eboot/asm/isr.h>
+#include <eboot/asm/intrinsics/misc.h>
 
-struct ide_data {
-    struct bus *ide_bus;
-    struct resource *res[2];
-};
+#include <eboot/macros.h>
+#include <eboot/status.h>
+#include <eboot/device.h>
+#include <eboot/interface/ide.h>
 
 #define IDEREG_DATA     0
 #define IDEREG_ERROR    1
@@ -29,125 +26,142 @@ struct ide_data {
 #define IDEREG_DEVCTRL  0
 #define IDEREG_DRVADDR  1
 
-static int bus_soft_reset(struct device *dev)
+struct ide_data {
+    struct bus *ide_bus;
+    uint16_t io_base0, io_base1;
+    int irq_ch;
+};
+
+
+static status_t bus_soft_reset(struct device *dev)
 {
     struct ide_data *data = (struct ide_data *)dev->data;
+    uint8_t sr;
 
-    io_out8(data->res[1]->base + IDEREG_DEVCTRL, 0x04);
-    io_in8(data->res[1]->base + IDEREG_ALTSTAT);
-    io_out8(data->res[1]->base + IDEREG_DEVCTRL, 0x00);
+    io_out8(data->io_base1 + IDEREG_DEVCTRL, 0x04);
+    io_in8(data->io_base1 + IDEREG_ALTSTAT);
+    io_out8(data->io_base1 + IDEREG_DEVCTRL, 0x00);
     for (int i = 0; i < 20; i++) {
-        io_in8(data->res[1]->base + IDEREG_ALTSTAT);
+        io_in8(data->io_base1 + IDEREG_ALTSTAT);
     }
 
-    uint8_t status = io_in8(data->res[1]->base + IDEREG_ALTSTAT);
-    if (status == 0xFF) {
-        return 1;
-    }
+    sr = io_in8(data->io_base1 + IDEREG_ALTSTAT);
+    if (sr == 0xFF) return STATUS_HARDWARE_NOT_FOUND;
+    
     do {
         _i686_pause();
-        status = io_in8(data->res[1]->base + IDEREG_ALTSTAT);
-    } while (status & 0x80);
+        sr = io_in8(data->io_base1 + IDEREG_ALTSTAT);
+    } while (sr & 0x80);
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-static int send_command(struct device *dev, struct ata_command *cmd)
+static status_t send_command(struct device *dev, struct ata_command *cmd)
 {
     struct ide_data *data = (struct ide_data *)dev->data;
+    uint8_t sr;
 
-    uint8_t status;
     do {
         _i686_pause();
-        status = io_in8(data->res[0]->base + IDEREG_STATUS);
-    } while (status & 0x80);
+        sr = io_in8(data->io_base0 + IDEREG_STATUS);
+    } while (sr & 0x80);
 
-    if ((io_in8(data->res[0]->base + IDEREG_DRVHEAD) & 0x10) != (cmd->drive_head & 0x10)) {
-        io_out8(data->res[0]->base + IDEREG_DRVHEAD, cmd->drive_head);
-        io_in8(data->res[1]->base + IDEREG_ALTSTAT);
-        io_in8(data->res[1]->base + IDEREG_ALTSTAT);
-        io_in8(data->res[1]->base + IDEREG_ALTSTAT);
-        io_in8(data->res[1]->base + IDEREG_ALTSTAT);
+    if ((io_in8(data->io_base0 + IDEREG_DRVHEAD) & 0x10) != (cmd->drive_head & 0x10)) {
+        io_out8(data->io_base0 + IDEREG_DRVHEAD, cmd->drive_head);
+        io_in8(data->io_base1 + IDEREG_ALTSTAT);
+        io_in8(data->io_base1 + IDEREG_ALTSTAT);
+        io_in8(data->io_base1 + IDEREG_ALTSTAT);
+        io_in8(data->io_base1 + IDEREG_ALTSTAT);
     }
 
-    io_out8(data->res[0]->base + IDEREG_DRVHEAD, cmd->drive_head);
+    io_out8(data->io_base0 + IDEREG_DRVHEAD, cmd->drive_head);
 
     if (cmd->extended) {
-        io_out8(data->res[0]->base + IDEREG_FEATURES, (cmd->features >> 8) & 0xFF);
-        io_out8(data->res[0]->base + IDEREG_COUNT, (cmd->count >> 8) & 0xFF);
-        io_out8(data->res[0]->base + IDEREG_SECTOR, (cmd->sector >> 8) & 0xFF);
-        io_out8(data->res[0]->base + IDEREG_CYLLOW, (cmd->cylinder_low >> 8) & 0xFF);
-        io_out8(data->res[0]->base + IDEREG_CYLHIGH, (cmd->cylinder_high >> 8) & 0xFF);
+        io_out8(data->io_base0 + IDEREG_FEATURES, (cmd->features >> 8) & 0xFF);
+        io_out8(data->io_base0 + IDEREG_COUNT, (cmd->count >> 8) & 0xFF);
+        io_out8(data->io_base0 + IDEREG_SECTOR, (cmd->sector >> 8) & 0xFF);
+        io_out8(data->io_base0 + IDEREG_CYLLOW, (cmd->cylinder_low >> 8) & 0xFF);
+        io_out8(data->io_base0 + IDEREG_CYLHIGH, (cmd->cylinder_high >> 8) & 0xFF);
     }
 
-    io_out8(data->res[0]->base + IDEREG_FEATURES, cmd->features & 0xFF);
-    io_out8(data->res[0]->base + IDEREG_COUNT, cmd->count & 0xFF);
-    io_out8(data->res[0]->base + IDEREG_SECTOR, cmd->sector & 0xFF);
-    io_out8(data->res[0]->base + IDEREG_CYLLOW, cmd->cylinder_low & 0xFF);
-    io_out8(data->res[0]->base + IDEREG_CYLHIGH, cmd->cylinder_high & 0xFF);
+    io_out8(data->io_base0 + IDEREG_FEATURES, cmd->features & 0xFF);
+    io_out8(data->io_base0 + IDEREG_COUNT, cmd->count & 0xFF);
+    io_out8(data->io_base0 + IDEREG_SECTOR, cmd->sector & 0xFF);
+    io_out8(data->io_base0 + IDEREG_CYLLOW, cmd->cylinder_low & 0xFF);
+    io_out8(data->io_base0 + IDEREG_CYLHIGH, cmd->cylinder_high & 0xFF);
     
-    io_out8(data->res[0]->base + IDEREG_COMMAND, cmd->command);
+    io_out8(data->io_base0 + IDEREG_COMMAND, cmd->command);
 
     do {
         _i686_pause();
-        status = io_in8(data->res[0]->base + IDEREG_STATUS);
-    } while (status & 0x80);
+        sr = io_in8(data->io_base0 + IDEREG_STATUS);
+    } while (sr & 0x80);
 
-    cmd->features = io_in8(data->res[0]->base + IDEREG_ERROR);
-    cmd->count = io_in8(data->res[0]->base + IDEREG_COUNT);
-    cmd->sector = io_in8(data->res[0]->base + IDEREG_SECTOR);
-    cmd->cylinder_low = io_in8(data->res[0]->base + IDEREG_CYLLOW);
-    cmd->cylinder_high = io_in8(data->res[0]->base + IDEREG_CYLHIGH);
+    cmd->features = io_in8(data->io_base0 + IDEREG_ERROR);
+    cmd->count = io_in8(data->io_base0 + IDEREG_COUNT);
+    cmd->sector = io_in8(data->io_base0 + IDEREG_SECTOR);
+    cmd->cylinder_low = io_in8(data->io_base0 + IDEREG_CYLLOW);
+    cmd->cylinder_high = io_in8(data->io_base0 + IDEREG_CYLHIGH);
 
-    return status & 0x21;
+    if (sr & 0x21) return STATUS_HARDWARE_FAILED;
+
+    return STATUS_SUCCESS;
 }
 
-static int send_command_pio_input(struct device *dev, struct ata_command *cmd, void *buf, long size, long count)
+static status_t send_command_pio_input(struct device *dev, struct ata_command *cmd, void *buf, size_t size, size_t count, size_t *result)
 {
     struct ide_data *data = (struct ide_data *)dev->data;
+    status_t status;
+    uint8_t sr;
+    size_t xfer_count = 0;
 
-    int err = send_command(dev, cmd);
-    if (err) return err;
-
-    uint8_t status;
-    long transferred_count = 0;
+    status = send_command(dev, cmd);
+    if (!CHECK_SUCCESS(status)) return status;
 
     do {
         do {
             _i686_pause();
-            status = io_in8(data->res[0]->base + IDEREG_STATUS);
-            if (status & 0x21) goto end;
-        } while (status & 0x80);
+            sr = io_in8(data->io_base0 + IDEREG_STATUS);
+            if (sr & 0x21) goto end;
+        } while (sr & 0x80);
     
-        io_ins16(data->res[0]->base + IDEREG_DATA, buf + transferred_count * size, size / sizeof(uint16_t));
-    } while (++transferred_count < count);
+        io_ins16(data->io_base0 + IDEREG_DATA, buf + xfer_count * size, size / sizeof(uint16_t));
+    } while (++xfer_count < count);
 
 end:
-    return io_in8(data->res[0]->base + IDEREG_ERROR);
+    if (result) *result = xfer_count;
+
+    sr = io_in8(data->io_base0 + IDEREG_STATUS);
+
+    return (sr & 0x21) ? STATUS_HARDWARE_FAILED : STATUS_SUCCESS;
 }
 
-static int send_command_pio_output(struct device *dev, struct ata_command *cmd, const void *buf, long size, long count)
+static status_t send_command_pio_output(struct device *dev, struct ata_command *cmd, const void *buf, size_t size, size_t count, size_t *result)
 {
     struct ide_data *data = (struct ide_data *)dev->data;
+    status_t status;
+    uint8_t sr;
+    size_t xfer_count = 0;
 
-    int err = send_command(dev, cmd);
-    if (err) return err;
-
-    uint8_t status;
-    long transferred_count = 0;
+    status = send_command(dev, cmd);
+    if (!CHECK_SUCCESS(status)) return status;
 
     do {
         do {
             _i686_pause();
-            status = io_in8(data->res[0]->base + IDEREG_STATUS);
-            if (status & 0x01) goto end;
-        } while (status & 0x08);
+            sr = io_in8(data->io_base0 + IDEREG_STATUS);
+            if (sr & 0x01) goto end;
+        } while (sr & 0x08);
     
-        io_outs16(data->res[0]->base + IDEREG_DATA, buf + transferred_count * size, size / sizeof(uint16_t));
-    } while (++transferred_count < count);
+        io_outs16(data->io_base0 + IDEREG_DATA, buf + xfer_count * size, size / sizeof(uint16_t));
+    } while (++xfer_count < count);
 
 end:
-    return io_in8(data->res[0]->base + IDEREG_ERROR);
+    if (result) *result = xfer_count;
+
+    sr = io_in8(data->io_base0 + IDEREG_STATUS);
+
+    return (sr & 0x01) ? STATUS_HARDWARE_FAILED : STATUS_SUCCESS;
 }
 
 const struct ide_interface ideif = {
@@ -156,20 +170,19 @@ const struct ide_interface ideif = {
     .send_command_pio_output = send_command_pio_output,
 };
 
-static int detect_device(struct device *dev, int slave, int *atapi)
+static status_t detect_device(struct device *dev, int slave, int *atapi)
 {
     struct ide_data *data = (struct ide_data *)dev->data;
-
-    io_out8(data->res[0]->base + IDEREG_DRVHEAD, 0xA0 | (slave ? 0x10 : 0x00));
-    io_in8(data->res[1]->base + IDEREG_ALTSTAT);
-    io_in8(data->res[1]->base + IDEREG_ALTSTAT);
-    io_in8(data->res[1]->base + IDEREG_ALTSTAT);
-    io_in8(data->res[1]->base + IDEREG_ALTSTAT);
-    if (io_in8(data->res[1]->base + IDEREG_ALTSTAT) == 0x00) return 1;
-
+    status_t status;
     uint16_t idbuf[256];
-    struct atapi_device_ident *atapi_ident = (struct atapi_device_ident *)&idbuf;
-    
+
+    io_out8(data->io_base0 + IDEREG_DRVHEAD, 0xA0 | (slave ? 0x10 : 0x00));
+    io_in8(data->io_base1 + IDEREG_ALTSTAT);
+    io_in8(data->io_base1 + IDEREG_ALTSTAT);
+    io_in8(data->io_base1 + IDEREG_ALTSTAT);
+    io_in8(data->io_base1 + IDEREG_ALTSTAT);
+    if (io_in8(data->io_base1 + IDEREG_ALTSTAT) == 0x00) return 1;
+
     struct ata_command cmd = {
         .extended = 0,
         .command = 0xEC,  /* IDENTIFY DEVICE */
@@ -181,15 +194,16 @@ static int detect_device(struct device *dev, int slave, int *atapi)
         .drive_head = 0xA0 | (slave ? 0x10 : 0x00),
     };
     
-    if (send_command_pio_input(dev, &cmd, idbuf, sizeof(idbuf), 1)) {
+    status = send_command_pio_input(dev, &cmd, idbuf, sizeof(idbuf), 1, NULL);
+    if (!CHECK_SUCCESS(status)) {
         if (cmd.cylinder_low != 0x14 || cmd.cylinder_high != 0xEB) {
-            return 1;
+            return STATUS_HARDWARE_FAILED;
         }
     }
 
     if (cmd.cylinder_low != 0x14 || cmd.cylinder_high != 0xEB) {
         if (atapi) *atapi = 0;
-        return 0;
+        return STATUS_SUCCESS;
     }
 
     cmd = (struct ata_command){
@@ -203,12 +217,13 @@ static int detect_device(struct device *dev, int slave, int *atapi)
         .drive_head = 0xA0 | (slave ? 0x10 : 0x00),
     };
 
-    if (send_command_pio_input(dev, &cmd, idbuf, sizeof(idbuf), 1)) {
-        return 1;
+    status = send_command_pio_input(dev, &cmd, idbuf, sizeof(idbuf), 1, NULL);
+    if (!CHECK_SUCCESS(status)) {
+        return status;
     }
 
     if (atapi) *atapi = 1;
-    return 0;
+    return STATUS_SUCCESS;
 }
 
 static void isr(struct device *dev, int num)
@@ -216,96 +231,149 @@ static void isr(struct device *dev, int num)
     struct ide_data *data = (struct ide_data *)dev->data;
 }
 
-static int probe(struct device *dev);
-static int remove(struct device *dev);
-static const void *get_interface(struct device *dev, const char *name);
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt);
+static status_t remove(struct device *dev);
+static status_t get_interface(struct device *dev, const char *name, const void **result);
 
-static struct device_driver drv = {
-    .name = "ide_isa",
-    .probe = probe,
-    .remove = remove,
-    .get_interface = get_interface,
-};
-
-static int probe(struct device *dev)
+static void ide_isa_init(void)
 {
-    struct resource *res[2];
-    if (!dev->resource || !dev->resource->next) return 1;
-    res[0] = dev->resource;
-    res[1] = dev->resource->next;
-    if (res[0]->type != RT_IOPORT || res[1]->type != RT_IOPORT || dev->resource->next->next->type != RT_IRQ) return 1;
-    if (res[0]->limit - res[0]->base != 7 || res[1]->limit - res[1]->base != 1 || dev->resource->next->next->limit != dev->resource->next->next->base) {
-        return 1;
+    status_t status;
+    struct device_driver *drv;
+
+    status = device_driver_create(&drv);
+    if (!CHECK_SUCCESS(status)) {
+        panic("cannot register device driver \"ide_isa\"");
     }
 
-    dev->name = "idectrl";
-    dev->id = generate_device_id(dev->name);
+    drv->name = "ide_isa";
+    drv->probe = probe;
+    drv->remove = remove;
+    drv->get_interface = get_interface;
+}
 
-    struct bus *ide_bus = mm_allocate_clear(1, sizeof(*ide_bus));
-    ide_bus->dev = dev;
-    ide_bus->name = "ide";
-    register_bus(ide_bus);
+static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt)
+{
+    status_t status;
+    struct device *dev = NULL;
+    struct ide_data *data = NULL;
+    int master_atapi, master_present, slave_atapi, slave_present;
+    struct device *drvdev = NULL;
+    struct device_driver *atadrv = NULL;
+    struct device_driver *atapidrv = NULL;
 
-    struct ide_data *data = mm_allocate(sizeof(*data));
-    data->ide_bus = ide_bus;
-    data->res[0] = res[0];
-    data->res[1] = res[1];
+    if (!rsrc || rsrc_cnt != 3 ||
+        rsrc[0].type != RT_IOPORT || rsrc[0].limit - rsrc[0].base != 7 ||
+        rsrc[1].type != RT_IOPORT || rsrc[1].limit - rsrc[1].base != 1 ||
+        rsrc[2].type != RT_IRQ || rsrc[2].base != rsrc[2].limit) {
+        status = STATUS_INVALID_RESOURCE;
+        goto has_error;
+    }
 
+    status = device_create(&dev, drv, parent);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = device_generate_name("idec", dev->name, sizeof(dev->name));
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    data = malloc(sizeof(*data));
+    data->io_base0 = rsrc[0].base;
+    data->io_base1 = rsrc[1].base;
+    data->irq_ch = rsrc[2].base;
     dev->data = data;
 
-    if (bus_soft_reset(dev)) return 1;
+    status = bus_soft_reset(dev);
+    if (!CHECK_SUCCESS(status)) goto has_error;
     
-    _pc_set_interrupt_handler(dev->resource->next->next->base, dev, isr);
+    status = isr_set_interrupt_handler(rsrc[2].base, dev, isr);
+    if (!CHECK_SUCCESS(status)) goto has_error;
 
-    int master_atapi, master_present = !detect_device(dev, 0, &master_atapi);
-    int slave_atapi, slave_present = !detect_device(dev, 1, &slave_atapi);
-    if (!master_present && !slave_present) return 1;
+    status = !detect_device(dev, 0, &master_atapi);
+    master_present = CHECK_SUCCESS(status);
+
+    status = !detect_device(dev, 1, &slave_atapi);
+    slave_present = CHECK_SUCCESS(status);
+
+    if ((master_present && !master_atapi) || (slave_present && !slave_atapi)) {
+        status = device_driver_find("ata", &atadrv);
+        if (!CHECK_SUCCESS(status)) goto has_error;
+    }
+
+    if ((master_present && master_atapi) || (slave_present && slave_atapi)) {
+        status = device_driver_find("atapi", &atapidrv);
+        if (!CHECK_SUCCESS(status)) goto has_error;
+    }
 
     if (master_present) {
-        struct device *master_drive = mm_allocate_clear(1, sizeof(*master_drive));
-        master_drive->bus = ide_bus;
-        master_drive->parent = dev;
-        struct resource *res = create_resource(NULL);
-        res->type = RT_BUS;
-        res->base = res->limit = 0;
-        res->flags = 0;
-        master_drive->resource = res;
-        master_drive->driver = find_device_driver(master_atapi ? "atapi" : "ata");
-        register_device(master_drive);
+        struct resource res[] = {
+            {
+                .type = RT_BUS,
+                .base = 0,
+                .limit = 0,
+                .flags = 0,
+            },
+        };
+
+        if (master_atapi) {
+            atapidrv->probe(&drvdev, atapidrv, dev, res, ARRAY_SIZE(res));
+        } else {
+            atadrv->probe(&drvdev, atadrv, dev, res, ARRAY_SIZE(res));
+        }
     }
 
     if (slave_present) {
-        struct device *slave_drive = mm_allocate_clear(1, sizeof(*slave_drive));
-        slave_drive->bus = ide_bus;
-        slave_drive->parent = dev;
-        struct resource *res = create_resource(NULL);
-        res->type = RT_BUS;
-        res->base = res->limit = 1;
-        res->flags = 0;
-        slave_drive->resource = res;
-        slave_drive->driver = find_device_driver(slave_atapi ? "atapi" : "ata");
-        register_device(slave_drive);    
-    }
+        struct resource res[] = {
+            {
+                .type = RT_BUS,
+                .base = 1,
+                .limit = 1,
+                .flags = 0,
+            },
+        };
 
-    return 0;
+        if (slave_atapi) {
+            atapidrv->probe(&drvdev, atapidrv, dev, res, ARRAY_SIZE(res));
+        } else {
+            atadrv->probe(&drvdev, atadrv, dev, res, ARRAY_SIZE(res));
+        }
+    }
+    
+    if (devout) *devout = dev;
+
+    return STATUS_SUCCESS;
+
+has_error:
+    return status;
 }
 
-static int remove(struct device *dev)
+static status_t remove(struct device *dev)
 {
     struct ide_data *data = (struct ide_data *)dev->data;
 
-    mm_free(data);
+    if (dev) {
+        for (struct device *partdev = dev->first_child; partdev; partdev = partdev->sibling) {
+            partdev->driver->remove(partdev);
+        }
+    }
 
-    return 0;
+    if (data) {
+        free(data);
+    }
+
+    if (dev) {
+        device_remove(dev);
+    }
+
+    return STATUS_SUCCESS;
 }
 
-static const void *get_interface(struct device *dev, const char *name)
+static status_t get_interface(struct device *dev, const char *name, const void **result)
 {
     if (strcmp(name, "ide") == 0) {
-        return &ideif;
+        if (result) *result = &ideif;
+        return STATUS_SUCCESS;
     }
-    
-    return NULL;
+
+    return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(drv)
+DEVICE_DRIVER(ide_isa, ide_isa_init)

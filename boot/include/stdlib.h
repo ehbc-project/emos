@@ -3,7 +3,9 @@
 
 #include <stddef.h>
 
-#include <compiler.h>
+#include <liballoc.h>
+
+#include <eboot/compiler.h>
 
 #define EXIT_SUCCESS    0
 #define EXIT_FAILURE    1

@@ -110,8 +110,8 @@ _pc_bios_call:
     mov     %ax, .Lds
 
     call    switch_real_to_prot         # switch back to protected mode
-    .code32 
 
+    .code32 
     pop     %ebp                        # restore stack base pointer
 
     mov     12(%ebp), %edx              # load stuct pointer

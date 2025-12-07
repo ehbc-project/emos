@@ -4,7 +4,11 @@
     "theme": "default",
     "timeout": 5,
     "default_entry": 0,
-    "entries": [
+    "start_script": [
+        "vmode 1024x768x32",
+        "usefont boot:/unifont.bfn"
+    ],
+    "options": [
         {
             "name": "Boot from next device",
             "script": "bootnext"
@@ -12,13 +16,16 @@
         {
             "name": "Boot from current device",
             "script": [
-                "mount rd0 fs1",
-                "boot fs1:/system/kernel/kernel.elf"
+                "mount fd0pt0p2 sys",
+                "boot sys:/system/kernel/kernel.elf"
             ]
         },
-        {
+        {   
             "name": "Start bootloader shell",
-            "script": "shell"
+            "script": [
+                "clear",
+                "shell"
+            ]
         }
     ]
 }
