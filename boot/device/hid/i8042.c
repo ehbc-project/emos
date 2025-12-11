@@ -24,21 +24,7 @@ struct key_event {
     uint16_t flags;
 };
 
-static status_t wait_output_buffer_full(struct device *dev, unsigned int timeout)
-{
-    struct i8042_data *data = (struct i8042_data *)dev->data;
-
-    uint64_t tick_start = get_global_tick();
-
-    while (io_in8(data->io_ctrl) & 0x01) {
-        if (get_global_tick() - tick_start > timeout) return STATUS_IO_TIMEOUT;
-        _i686_pause();
-    }
-
-    return STATUS_SUCCESS;
-}
-
-static status_t wait_output_buffer_empty(struct device *dev, unsigned int timeout)
+static status_t wait_for_output_buffer_full(struct device *dev, unsigned int timeout)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
 
@@ -52,7 +38,21 @@ static status_t wait_output_buffer_empty(struct device *dev, unsigned int timeou
     return STATUS_SUCCESS;
 }
 
-static status_t wait_input_buffer_full(struct device *dev, unsigned int timeout)
+static status_t wait_for_output_buffer_empty(struct device *dev, unsigned int timeout)
+{
+    struct i8042_data *data = (struct i8042_data *)dev->data;
+
+    uint64_t tick_start = get_global_tick();
+
+    while (io_in8(data->io_ctrl) & 0x01) {
+        if (get_global_tick() - tick_start > timeout) return STATUS_IO_TIMEOUT;
+        _i686_pause();
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static status_t wait_for_input_buffer_empty(struct device *dev, unsigned int timeout)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
 
@@ -105,15 +105,17 @@ static status_t send_data(struct device *dev, int port, const uint8_t *buf, int 
     struct i8042_data *data = (struct i8042_data *)dev->data;
     status_t status;
 
-    for (int i = 0; i < len; i++) {
-        if (port) {
-            io_out8(data->io_ctrl, 0xD4);
-        }
+    if (port) {
+        io_out8(data->io_ctrl, 0xD4);
+    }
 
-        status = wait_input_buffer_full(dev, 1);
+    for (int i = 0; i < len; i++) {
+        status = wait_for_input_buffer_empty(dev, 1);
         if (!CHECK_SUCCESS(status)) return status;
 
         io_out8(data->io_data, buf[i]);
+
+        fprintf(stderr, "[i8042] send byte %02X ok\n", buf[i]);
     }
 
     return STATUS_SUCCESS;
@@ -125,10 +127,12 @@ static status_t recv_data(struct device *dev, int port, uint8_t *buf, int len)
     status_t status;
 
     for (int i = 0; i < len; i++) {
-        status = wait_output_buffer_empty(dev, 1);
+        status = wait_for_output_buffer_full(dev, 1);
         if (!CHECK_SUCCESS(status)) return status;
 
         buf[i] = io_in8(data->io_data);
+
+        fprintf(stderr, "[i8042] recv byte %02X ok\n", buf[i]);
     }
 
     return STATUS_SUCCESS;
@@ -222,12 +226,14 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     fprintf(stderr, "[i8042] disabling translation & IRQ...\n");
     /* disable translation & IRQ */
     io_out8(data->io_ctrl, 0x60);
+    status = wait_for_input_buffer_empty(dev, 1);
+    if (!CHECK_SUCCESS(status)) goto has_error;
     io_out8(data->io_data, 0x00);
 
     fprintf(stderr, "[i8042] running controller self-test...\n");
     /* perform controller self-test */
     io_out8(data->io_ctrl, 0xAA);
-    status = wait_output_buffer_full(dev, 5);
+    status = wait_for_output_buffer_full(dev, 5);
     if (!CHECK_SUCCESS(status)) goto has_error;
     if (io_in8(data->io_data) != 0x55) {
         return STATUS_HARDWARE_FAILED;
@@ -236,12 +242,16 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     fprintf(stderr, "[i8042] disabling translation & IRQ again...\n");
     /* disable translation & IRQ (again) */
     io_out8(data->io_ctrl, 0x60);
+    status = wait_for_input_buffer_empty(dev, 1);
+    if (!CHECK_SUCCESS(status)) goto has_error;
     io_out8(data->io_data, 0x00);
 
     fprintf(stderr, "[i8042] checking if the second port is available...\n");
     /* determine if the second port is available */
     io_out8(data->io_ctrl, 0xA8);
     io_out8(data->io_ctrl, 0x20);
+    status = wait_for_output_buffer_full(dev, 1);
+    if (!CHECK_SUCCESS(status)) goto has_error;
     if (!(io_in8(data->io_data) & 0x20)) {
         has_second_port = 1;
         io_out8(data->io_ctrl, 0xA7);

@@ -625,9 +625,9 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     status = ps2if->send_data(ps2dev, rsrc[0].base, buf, 1);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 1);
+    status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 2);
     if (!CHECK_SUCCESS(status)) goto has_error;
-    if (buf[0] != 0xFA) {
+    if (buf[0] != 0xFA || buf[1] != 0xAA) {
         status = STATUS_HARDWARE_FAILED;
         goto has_error;
     }
