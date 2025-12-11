@@ -5,7 +5,8 @@
 ```sh
 git clone https://github.com/ehbc-project/emos
 cd emos
-cmake -S. -Bbuild
+cmake -S. -Bbuild -DTARGET=i686-pc-bios
+cmake --build build
 scripts/mkdisk.sh -a i686 disk.img
 scripts/run.sh pc-i386
 ```
