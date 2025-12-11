@@ -671,8 +671,6 @@ has_error:
         device_remove(dev);
     }
 
-    for (;;) {}
-
     return status;
 }
 

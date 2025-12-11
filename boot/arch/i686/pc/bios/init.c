@@ -565,9 +565,7 @@ void _pc_init(void)
     freopencookie(NULL, "w", early_stddbg_io, stddbg);
 
     _pc_bios_disk_get_params(_pc_boot_drive, NULL, NULL, &bootdisk_geom, NULL);
-    struct chs chs = disk_lba_to_chs(_pc_boot_part_base, bootdisk_geom);
-    status = _pc_bios_disk_read(_pc_boot_drive, chs, 1, _pc_boot_sector, NULL);
-    fprintf(stderr, "%d %d %d %08X\n", chs.cylinder, chs.head, chs.sector, status);
+    status = _pc_bios_disk_read(_pc_boot_drive, disk_lba_to_chs(_pc_boot_part_base, bootdisk_geom), 1, _pc_boot_sector, NULL);
 
     _pc_remap_pic_int(0x20, 0x28);
     _pc_init_idt();
@@ -642,8 +640,6 @@ void _pc_init(void)
     if (!CHECK_SUCCESS(status)) {
         panic(status, "failed to mount bootloader partition");
     }
-
-    for (;;) {}
 
     main();
 
