@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #include <eboot/status.h>
-#include <eboot/debug.h>
+#include <eboot/panic.h>
 #include <eboot/resource.h>
 #include <eboot/compiler.h>
 
@@ -57,7 +57,7 @@ status_t device_create(struct device **devout, struct device_driver *drv, struct
 void device_remove(struct device *dev);
 
 struct device *device_get_first_dev(void);
-status_t device_find(const char *id, struct device **dev);
+status_t device_find(const char *name, struct device **dev);
 
 status_t device_generate_name(const char *basename, char *buf, size_t len);
 

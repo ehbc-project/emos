@@ -10,7 +10,7 @@
 
 #include <eboot/status.h>
 #include <eboot/macros.h>
-#include <eboot/debug.h>
+#include <eboot/panic.h>
 #include <eboot/device.h>
 #include <eboot/interface/framebuffer.h>
 #include <eboot/interface/console.h>
@@ -57,7 +57,7 @@ static status_t set_dimension(struct device *dev, int width, int height)
 {
     struct vga_data *data = (struct vga_data*)dev->data;
     status_t status;
-    uint8_t new_mode;
+    uint8_t new_mode = 0xFF;
 
     if (width == 80 && height == 25) {
         new_mode = 0x03;
@@ -97,7 +97,9 @@ static status_t set_dimension(struct device *dev, int width, int height)
     return STATUS_SUCCESS;
 
 has_error:
-    panic("I don't know what more can I do");
+    if (new_mode != 0xFF) {
+        panic(status, "I don't know what more can I do (vga, set_dimension())");
+    }
 
     return status;
 }
@@ -208,7 +210,7 @@ static void vga_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"vga\"");
+        panic(status, "cannot register device driver \"vga\"");
     }
 
     drv->name = "vga";

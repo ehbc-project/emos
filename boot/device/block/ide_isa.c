@@ -175,13 +175,13 @@ static status_t detect_device(struct device *dev, int slave, int *atapi)
     struct ide_data *data = (struct ide_data *)dev->data;
     status_t status;
     uint16_t idbuf[256];
-
+    
     io_out8(data->io_base0 + IDEREG_DRVHEAD, 0xA0 | (slave ? 0x10 : 0x00));
     io_in8(data->io_base1 + IDEREG_ALTSTAT);
     io_in8(data->io_base1 + IDEREG_ALTSTAT);
     io_in8(data->io_base1 + IDEREG_ALTSTAT);
     io_in8(data->io_base1 + IDEREG_ALTSTAT);
-    if (io_in8(data->io_base1 + IDEREG_ALTSTAT) == 0x00) return 1;
+    if (io_in8(data->io_base1 + IDEREG_ALTSTAT) == 0x00) return STATUS_HARDWARE_FAILED;
 
     struct ata_command cmd = {
         .extended = 0,
@@ -195,15 +195,15 @@ static status_t detect_device(struct device *dev, int slave, int *atapi)
     };
     
     status = send_command_pio_input(dev, &cmd, idbuf, sizeof(idbuf), 1, NULL);
-    if (!CHECK_SUCCESS(status)) {
-        if (cmd.cylinder_low != 0x14 || cmd.cylinder_high != 0xEB) {
-            return STATUS_HARDWARE_FAILED;
-        }
-    }
+    if (!CHECK_SUCCESS(status)) return status;
 
-    if (cmd.cylinder_low != 0x14 || cmd.cylinder_high != 0xEB) {
+    // if (cmd.count != 0x01 || cmd.sector != 0x01) return STATUS_HARDWARE_FAILED;
+
+    if (cmd.cylinder_low == 0x00 && cmd.cylinder_high == 0x00) {
         if (atapi) *atapi = 0;
         return STATUS_SUCCESS;
+    } else if (cmd.cylinder_low != 0x14 || cmd.cylinder_high != 0xEB) {
+        return STATUS_UNSUPPORTED;
     }
 
     cmd = (struct ata_command){
@@ -218,9 +218,7 @@ static status_t detect_device(struct device *dev, int slave, int *atapi)
     };
 
     status = send_command_pio_input(dev, &cmd, idbuf, sizeof(idbuf), 1, NULL);
-    if (!CHECK_SUCCESS(status)) {
-        return status;
-    }
+    if (!CHECK_SUCCESS(status)) return status;
 
     if (atapi) *atapi = 1;
     return STATUS_SUCCESS;
@@ -228,7 +226,6 @@ static status_t detect_device(struct device *dev, int slave, int *atapi)
 
 static void isr(struct device *dev, int num)
 {
-    struct ide_data *data = (struct ide_data *)dev->data;
 }
 
 static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt);
@@ -242,7 +239,7 @@ static void ide_isa_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"ide_isa\"");
+        panic(status, "cannot register device driver \"ide_isa\"");
     }
 
     drv->name = "ide_isa";
@@ -287,10 +284,10 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     status = isr_set_interrupt_handler(rsrc[2].base, dev, isr);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    status = !detect_device(dev, 0, &master_atapi);
+    status = detect_device(dev, 0, &master_atapi);
     master_present = CHECK_SUCCESS(status);
 
-    status = !detect_device(dev, 1, &slave_atapi);
+    status = detect_device(dev, 1, &slave_atapi);
     slave_present = CHECK_SUCCESS(status);
 
     if ((master_present && !master_atapi) || (slave_present && !slave_atapi)) {

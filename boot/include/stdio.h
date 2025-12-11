@@ -107,19 +107,19 @@ void perror(const char *str);
 
 #if __has_builtin(__builtin___sprintf_chk)
 #   define sprintf(buf, ...) \
-    __builtin___sprintf_chk(buf, 0, __builtin_object_size(buf, 0), __VA_ARGS__);
+    __builtin___sprintf_chk(buf, 0, __builtin_object_size(buf, 0), __VA_ARGS__)
 
 #endif
 
 
-#if __has_builtin(__buitin_snprintf)
+#if __has_builtin(__builtin_snprintf)
 #   define __HAVE_BUILTIN_SNPRINTF
 
 #endif
 
 #if __has_builtin(__builtin___snprintf_chk)
 #   define snprintf(buf, len, ...) \
-    __builtin___snprintf_chk(buf, len, 0, __builtin_object_size(buf, 0), __VA_ARGS__);
+    __builtin___snprintf_chk(buf, len, 0, __builtin_object_size(buf, 0), __VA_ARGS__)
 
 #endif
 
@@ -131,7 +131,7 @@ void perror(const char *str);
 
 #if __has_builtin(__builtin___printf_chk)
 #   define printf(...) \
-    __builtin___printf_chk(0, __VA_ARGS__);
+    __builtin___printf_chk(0, __VA_ARGS__)
 
 #endif
 

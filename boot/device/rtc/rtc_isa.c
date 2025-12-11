@@ -23,7 +23,7 @@ static void rtc_isa_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"rtc_isa\"");
+        panic(status, "cannot register device driver \"rtc_isa\"");
     }
 
     drv->name = "rtc_isa";

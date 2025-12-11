@@ -39,7 +39,7 @@ static void atapi_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"atapi\"");
+        panic(status, "cannot register device driver \"atapi\"");
     }
 
     drv->name = "atapi";

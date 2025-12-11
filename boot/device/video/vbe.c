@@ -11,9 +11,10 @@
 
 #include <eboot/status.h>
 #include <eboot/macros.h>
-#include <eboot/debug.h>
+#include <eboot/panic.h>
 #include <eboot/mm.h>
 #include <eboot/device.h>
+#include <eboot/encoding/cp437.h>
 #include <eboot/interface/framebuffer.h>
 #include <eboot/interface/console.h>
 
@@ -168,6 +169,43 @@ static void convert_color_generic(const struct vbe_video_mode_info *mode, const 
     }
 }
 
+static status_t setup_bitmap_buffer(struct device *dev, int width, int height, int bpp)
+{
+    struct vbe_data *data = (struct vbe_data*)dev->data;
+    status_t status;
+    size_t hw_frame_size;
+
+    if (data->char_buffer) {
+        free(data->char_buffer);
+        data->char_buffer = NULL;
+    }
+
+    data->frame_buffer = realloc(data->frame_buffer, width * height * sizeof(*data->frame_buffer));
+    if (!data->frame_buffer) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+    memset(data->frame_buffer, 0, width * height * sizeof(*data->frame_buffer));
+    
+    data->diff_buffer = realloc(data->diff_buffer, (width / DIFF_REGION_SIZE) * (height / DIFF_REGION_SIZE));
+    if (!data->diff_buffer) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+    memset(data->diff_buffer, 0, (width / DIFF_REGION_SIZE) * (height / DIFF_REGION_SIZE));
+
+    hw_frame_size = data->mode_info.pitch * data->mode_info.height * data->mode_info.bpp / 8;
+    mm_map(data->mode_info.framebuffer, (void *)data->mode_info.framebuffer, ALIGN((data->mode_info.lin_num_image_pages + 1) * hw_frame_size, 4096) >> 12, PF_WTCACHE);
+    memset((void *)data->mode_info.framebuffer, 0, (data->mode_info.lin_num_image_pages + 1) * hw_frame_size);
+
+    return STATUS_SUCCESS;
+
+has_error:
+    panic(status, "I don't know what more can I do (vbe, set_mode())");
+
+    return status;
+}
+
 static status_t set_mode(struct device *dev, int width, int height, int bpp)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
@@ -175,14 +213,12 @@ static status_t set_mode(struct device *dev, int width, int height, int bpp)
     struct vbe_controller_info vbe_info;
     uint16_t *mode_list;
     struct vbe_video_mode_info vbe_mode_info;
-    uint16_t mode;
-    size_t hw_frame_size;
+    uint16_t mode = 0xFFFF;
 
     status = _pc_bios_vbe_get_controller_info(&vbe_info);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     mode_list = (uint16_t *)FARPTR_TO_VPTR(vbe_info.video_modes);
-    mode = 0xFFFF;
     for (int i = 0; mode_list[i] != 0xFFFF; i++) {
         status = _pc_bios_vbe_get_video_mode_info(mode_list[i], &vbe_mode_info);
         if (!CHECK_SUCCESS(status)) goto has_error;
@@ -204,29 +240,8 @@ static status_t set_mode(struct device *dev, int width, int height, int bpp)
     status = _pc_bios_vbe_set_video_mode(mode);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    if (data->char_buffer) {
-        free(data->char_buffer);
-        data->char_buffer = NULL;
-    }
-
-    void *temp = data->frame_buffer;
-    data->frame_buffer = realloc(data->frame_buffer, width * height * sizeof(*data->frame_buffer));
-    if (!data->frame_buffer) {
-        status = STATUS_UNKNOWN_ERROR;
-        goto has_error;
-    }
-    memset(data->frame_buffer, 0, width * height * sizeof(*data->frame_buffer));
-    
-    data->diff_buffer = realloc(data->diff_buffer, (width / DIFF_REGION_SIZE) * (height / DIFF_REGION_SIZE));
-    if (!data->diff_buffer) {
-        status = STATUS_UNKNOWN_ERROR;
-        goto has_error;
-    }
-    memset(data->diff_buffer, 0, (width / DIFF_REGION_SIZE) * (height / DIFF_REGION_SIZE));
-
-    hw_frame_size = data->mode_info.pitch * data->mode_info.height * data->mode_info.bpp / 8;
-    mm_map(data->mode_info.framebuffer, (void *)data->mode_info.framebuffer, ALIGN((data->mode_info.lin_num_image_pages + 1) * hw_frame_size, 4096) >> 12, PF_WTCACHE);
-    memset((void *)data->mode_info.framebuffer, 0, (data->mode_info.lin_num_image_pages + 1) * hw_frame_size);
+    status = setup_bitmap_buffer(dev, width, height, bpp);
+    if (!CHECK_SUCCESS(status)) goto has_error;
 
     if (vbe_mode_info.bpp == 24) {
         data->convert_color = convert_color_rgb888;
@@ -241,8 +256,6 @@ static status_t set_mode(struct device *dev, int width, int height, int bpp)
     return STATUS_SUCCESS;
 
 has_error:
-    panic("I don't know what more can I do");
-
     return status;
 }
 
@@ -301,8 +314,6 @@ static status_t get_framebuffer(struct device *dev, void **framebuffer)
 
 static status_t fb_invalidate(struct device *dev, int x0, int y0, int x1, int y1)
 {
-    struct vbe_data *data = (struct vbe_data*)dev->data;
-
     for (int yr = y0 / DIFF_REGION_SIZE; yr < (y1 + DIFF_REGION_SIZE - 1) / DIFF_REGION_SIZE; yr++) {
         for (int xr = x0 / DIFF_REGION_SIZE; xr < (x1 + DIFF_REGION_SIZE - 1) / DIFF_REGION_SIZE; xr++) {
             set_region_diff(dev, xr, yr);
@@ -379,39 +390,10 @@ static const struct framebuffer_interface fbif = {
     .present = fb_present,
 };
 
-static status_t set_dimension(struct device *dev, int width, int height)
+static status_t setup_text_buffer(struct device *dev, int width, int height)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
     status_t status;
-    struct vbe_controller_info vbe_info;
-    uint16_t *mode_list;
-    struct vbe_video_mode_info vbe_mode_info;
-    uint16_t mode;
-
-    status = _pc_bios_vbe_get_controller_info(&vbe_info);
-    if (!CHECK_SUCCESS(status)) goto has_error;
-
-    mode_list = (uint16_t *)FARPTR_TO_VPTR(vbe_info.video_modes);
-    mode = 0xFFFF;
-    for (int i = 0; mode_list[i] != 0xFFFF; i++) {
-        status = _pc_bios_vbe_get_video_mode_info(mode_list[i], &vbe_mode_info);
-        if (!CHECK_SUCCESS(status)) goto has_error;
-
-        if (vbe_mode_info.width == width &&
-            vbe_mode_info.height == height &&
-            vbe_mode_info.memory_model == VBEMM_TEXT) {
-            mode = mode_list[i];
-            memcpy(&data->mode_info, &vbe_mode_info, sizeof(vbe_mode_info));
-            break;
-        }
-    }
-    if (mode == 0xFFFF) {
-        status = STATUS_ENTRY_NOT_FOUND;
-        goto has_error;
-    }
-
-    status = _pc_bios_vbe_set_video_mode(mode);
-    if (!CHECK_SUCCESS(status)) goto has_error;
 
     if (data->frame_buffer) {
         free(data->frame_buffer);
@@ -432,6 +414,50 @@ static status_t set_dimension(struct device *dev, int width, int height)
     }
     memset(data->diff_buffer, 0, width * height / 8);
 
+    return STATUS_SUCCESS;
+
+has_error:
+    panic(status, "I don't know what more can I do");
+
+    return status;
+}
+
+static status_t set_dimension(struct device *dev, int width, int height)
+{
+    struct vbe_data *data = (struct vbe_data*)dev->data;
+    status_t status;
+    struct vbe_controller_info vbe_info;
+    uint16_t *mode_list;
+    struct vbe_video_mode_info vbe_mode_info;
+    uint16_t mode = 0xFFFF;
+
+    status = _pc_bios_vbe_get_controller_info(&vbe_info);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    mode_list = (uint16_t *)FARPTR_TO_VPTR(vbe_info.video_modes);
+    for (int i = 0; mode_list[i] != 0xFFFF; i++) {
+        status = _pc_bios_vbe_get_video_mode_info(mode_list[i], &vbe_mode_info);
+        if (!CHECK_SUCCESS(status)) goto has_error;
+
+        if (vbe_mode_info.width == width &&
+            vbe_mode_info.height == height &&
+            vbe_mode_info.memory_model == VBEMM_TEXT) {
+            mode = mode_list[i];
+            memcpy(&data->mode_info, &vbe_mode_info, sizeof(vbe_mode_info));
+            break;
+        }
+    }
+    if (mode == 0xFFFF) {
+        status = STATUS_ENTRY_NOT_FOUND;
+        goto has_error;
+    }
+
+    status = _pc_bios_vbe_set_video_mode(mode);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = setup_text_buffer(dev, width, height);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
     if (!vbe_mode_info.framebuffer) {
         memset((void *)0xB8000, 0, width * height * sizeof(uint16_t));
     }
@@ -441,8 +467,6 @@ static status_t set_dimension(struct device *dev, int width, int height)
     return STATUS_SUCCESS;
 
 has_error:
-    panic("I don't know what more can I do");
-
     return status;
 }
 
@@ -486,11 +510,13 @@ static status_t con_flush(struct device *dev) {
     return STATUS_SUCCESS;
 }
 
-extern int unicode_to_cp437(wchar_t codepoint);
-
 static status_t con_present(struct device *dev)
 {
     struct vbe_data *data = (struct vbe_data*)dev->data;
+    status_t status;
+    const struct console_char_cell *src;
+    uint8_t cp437_char;
+    uint16_t cell;
 
     for (int y = 0; y < data->mode_info.height; y++) {
         for (int x = 0; x < data->mode_info.width; x++) {
@@ -499,12 +525,12 @@ static status_t con_present(struct device *dev)
                 continue;
             }
 
-            const struct console_char_cell *src = &data->char_buffer[y * data->mode_info.width + x];
-            int ch = unicode_to_cp437(src->codepoint);
-            if (ch < 0) {
-                ch = 0;
+            src = &data->char_buffer[y * data->mode_info.width + x];
+            status = enc_utf32_to_cp437(src->codepoint, &cp437_char);
+            if (!CHECK_SUCCESS(status)) {
+                cp437_char = 0;
             }
-            uint16_t cell = ch;
+            cell = cp437_char;
             cell |= (rgb_to_irgb(src->attr.text_reversed ? src->attr.bg_color : src->attr.fg_color) & 0xF) << 8;
             cell |= (rgb_to_irgb(src->attr.text_reversed ? src->attr.fg_color : src->attr.bg_color) & 0xF) << 12;
             if (src->attr.text_dim) {
@@ -572,7 +598,7 @@ static void vbe_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"vbe\"");
+        panic(status, "cannot register device driver \"vbe\"");
     }
 
     drv->name = "vbe";
@@ -592,10 +618,8 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     uint16_t vmode;
     struct vbe_video_mode_info vmode_info;
 
-    if (_pc_bios_vbe_get_controller_info(&vbe_info)) {
-        status = STATUS_HARDWARE_NOT_FOUND;
-        goto has_error;
-    }
+    status = _pc_bios_vbe_get_controller_info(&vbe_info);
+    if (!CHECK_SUCCESS(status)) goto has_error;
     
     status = device_create(&dev, drv, parent);
     if (!CHECK_SUCCESS(status)) goto has_error;
@@ -625,11 +649,11 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
 
     switch (vmode_info.memory_model) {
         case VBEMM_DIRECT:
-            status = set_mode(dev, vmode_info.width, vmode_info.height, vmode_info.bpp);
+            status = setup_bitmap_buffer(dev, vmode_info.width, vmode_info.height, vmode_info.bpp);
             if (!CHECK_SUCCESS(status)) goto has_error;
             break;
         case VBEMM_TEXT:
-            status = set_dimension(dev, vmode_info.width, vmode_info.height);
+            status = setup_text_buffer(dev, vmode_info.width, vmode_info.height);
             if (!CHECK_SUCCESS(status)) goto has_error;
             break;
     }
@@ -646,6 +670,8 @@ has_error:
     if (dev) {
         device_remove(dev);
     }
+
+    for (;;) {}
 
     return status;
 }

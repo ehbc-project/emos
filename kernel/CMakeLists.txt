@@ -21,8 +21,6 @@ target_compile_options(kernel PUBLIC
         -Werror
         -Wall
         -Wno-unused-function
-        -Wno-unused-variable
-        -Wno-unused-but-set-variable
         -pedantic
         -pedantic-errors
     >

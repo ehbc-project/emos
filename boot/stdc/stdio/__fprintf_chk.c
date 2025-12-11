@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include <eboot/debug.h>
+#include <eboot/panic.h>
 
 #undef fprintf
 

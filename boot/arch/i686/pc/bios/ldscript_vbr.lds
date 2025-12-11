@@ -5,7 +5,7 @@ ENTRY(_start)
 
 SECTIONS
 {
-    . = 0x00000500;
+    . = 0x00001000;
     .bss :
     {
         PROVIDE_HIDDEN(__bss_start = .);

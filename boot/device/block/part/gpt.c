@@ -47,7 +47,7 @@ static void gpt_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"gpt\"");
+        panic(status, "cannot register device driver \"gpt\"");
     }
 
     drv->name = "gpt";

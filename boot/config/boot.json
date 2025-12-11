@@ -5,7 +5,6 @@
     "timeout": 5,
     "default_entry": 0,
     "start_script": [
-        "vmode 1024x768x32",
         "usefont boot:/unifont.bfn"
     ],
     "options": [
@@ -17,6 +16,7 @@
             "name": "Boot from current device",
             "script": [
                 "mount fd0pt0p2 sys",
+                "vmode 640x480x32",
                 "boot sys:/system/kernel/kernel.elf"
             ]
         },

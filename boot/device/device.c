@@ -18,7 +18,6 @@ struct device *device_get_first_dev(void)
 
 status_t device_create(struct device **devout, struct device_driver *drv, struct device *parent)
 {
-    status_t status;
     struct device *dev;
 
     dev = calloc(1, sizeof(*dev));
@@ -68,10 +67,9 @@ void device_remove(struct device *dev)
             break;
         }
     }
+    if (!prev_device) return;
 
-    if (prev_device) {
-        prev_device->next = dev->next;
-    }
+    prev_device->next = dev->next;
 
     if (prev_sibling) {
         prev_sibling->sibling = dev->sibling;
@@ -100,7 +98,6 @@ status_t device_generate_name(const char *basename, char *buf, size_t len)
 {
     int id_max = -1;
     size_t basename_len = strlen(basename);
-    size_t name_len;
     char *name_end;
     int id;
     
@@ -108,8 +105,7 @@ status_t device_generate_name(const char *basename, char *buf, size_t len)
         if (strncmp(basename, current->name, basename_len) != 0) {
             continue;
         }
-
-        name_len = strlen(current->name);
+        
         id = strtol(current->name + basename_len, &name_end, 10);
         if (*name_end) {
             continue;

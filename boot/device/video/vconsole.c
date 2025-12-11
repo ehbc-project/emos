@@ -180,13 +180,13 @@ static status_t set_dimension(struct device *dev, int width, int height)
     
         data->char_buffer = realloc(data->char_buffer, width * height * sizeof(*data->char_buffer));
         if (!data->char_buffer) {
-            panic("I think there's no way to recover this");
+            panic(STATUS_UNKNOWN_ERROR, "I think there's no way to recover this");
         }
         memset(data->char_buffer, 0, width * height * sizeof(*data->char_buffer));
 
         data->diff_buffer = realloc(data->diff_buffer, width * height / 8);
         if (!data->diff_buffer) {
-            panic("I think there's no way to recover this");
+            panic(STATUS_UNKNOWN_ERROR, "I think there's no way to recover this");
         }
         memset(data->diff_buffer, 0, width * height / 8);
     }
@@ -381,7 +381,7 @@ static void vconsole_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"vconsole\"");
+        panic(status, "cannot register device driver \"vconsole\"");
     }
 
     drv->name = "vconsole";

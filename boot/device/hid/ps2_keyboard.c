@@ -473,7 +473,6 @@ static int translate_scancode(struct device *dev)
 static status_t read(struct device *dev, char *buf, size_t len, size_t *result)
 {
     struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
-    status_t status;
     size_t read_len = 0;
     int ch;
 
@@ -553,7 +552,7 @@ static void ps2_keyboard_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"ps2_keyboard\"");
+        panic(status, "cannot register device driver \"ps2_keyboard\"");
     }
 
     drv->name = "ps2_keyboard";
@@ -570,6 +569,7 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     const struct ps2_interface *ps2if = NULL;
     struct ps2_keyboard_data *data = NULL;
 
+    fprintf(stderr, "[ps2kbd] checking resources...\n");
     if (!rsrc || rsrc_cnt != 2 ||
         rsrc[0].type != RT_BUS || rsrc[0].base != rsrc[0].limit ||
         rsrc[1].type != RT_IRQ || rsrc[1].base != rsrc[1].limit) {
@@ -577,6 +577,7 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         goto has_error;
     }
 
+    fprintf(stderr, "[ps2kbd] verifying parent...\n");
     ps2dev = parent;
     if (!ps2dev) {
         status = STATUS_INVALID_VALUE;
@@ -586,12 +587,15 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     status = ps2dev->driver->get_interface(ps2dev, "ps2", (const void **)&ps2if);
     if (!CHECK_SUCCESS(status)) goto has_error;
     
+    fprintf(stderr, "[ps2kbd] creating device...\n");
     status = device_create(&dev, drv, parent);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    fprintf(stderr, "[ps2kbd] checking resources...\n");
     status = device_generate_name("kbd", dev->name, sizeof(dev->name));
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    fprintf(stderr, "[ps2kbd] creating device data...\n");
     data = malloc(sizeof(*data));
     data->ps2dev = ps2dev;
     data->ps2if = ps2if;
@@ -602,15 +606,19 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
 
     interrupt_disable();
     
+    fprintf(stderr, "[ps2kbd] registering interrupt service routine...\n");
     status = _pc_isr_set_interrupt_handler(rsrc[1].base, dev, keyboard_isr);
     if (!CHECK_SUCCESS(status)) goto has_error;
     
+    fprintf(stderr, "[ps2kbd] testing port...\n");
     status = ps2if->test_port(ps2dev, rsrc[0].base);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    fprintf(stderr, "[ps2kbd] enabling port...\n");
     status = ps2if->enable_port(ps2dev, rsrc[0].base);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    fprintf(stderr, "[ps2kbd] resetting keyboard...\n");
     /* reset device */
     uint8_t buf[2] = { 0xFF };
 
@@ -624,6 +632,7 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         goto has_error;
     }
 
+    fprintf(stderr, "[ps2kbd] trying scancode set 2...\n");
     /* try scan code set 2 */
     buf[0] = 0xF0;
     buf[1] = 0x02;

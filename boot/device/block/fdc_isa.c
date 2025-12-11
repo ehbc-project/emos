@@ -124,8 +124,6 @@ static status_t fdc_reset(struct device *dev)
 
 static status_t detect_device(struct device *dev, int slave, int *atapi)
 {
-    struct fdc_data *data = (struct fdc_data *)dev->data;
-
     return STATUS_SUCCESS;
 }
 
@@ -140,13 +138,12 @@ static status_t reset(struct device *dev, int drive)
     return STATUS_SUCCESS;
 }
 
-struct fdc_interface fdcif = {
+static const struct fdc_interface fdcif = {
     .reset = reset,
 };
 
 static void isr(struct device *dev, int num)
 {
-    struct fdc_data *data = (struct fdc_data *)dev->data;
 }
 
 static status_t probe(struct device **devout, struct device_driver *drv, struct device *parent, struct resource *rsrc, int rsrc_cnt);
@@ -160,7 +157,7 @@ static void fdc_isa_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"fdc_isa\"");
+        panic(status, "cannot register device driver \"fdc_isa\"");
     }
 
     drv->name = "fdc_isa";

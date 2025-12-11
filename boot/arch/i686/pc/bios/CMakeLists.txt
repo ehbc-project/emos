@@ -12,8 +12,6 @@ target_compile_options(fdboot PUBLIC
         -Werror
         -Wall
         -Wno-unused-function
-        -Wno-unused-variable
-        -Wno-unused-but-set-variable
         -pedantic
         -pedantic-errors
     >
@@ -39,8 +37,6 @@ target_compile_options(mbrboot PUBLIC
         -Werror
         -Wall
         -Wno-unused-function
-        -Wno-unused-variable
-        -Wno-unused-but-set-variable
         -pedantic
         -pedantic-errors
     >
@@ -66,8 +62,6 @@ target_compile_options(stage1 PUBLIC
         -Werror
         -Wall
         -Wno-unused-function
-        -Wno-unused-variable
-        -Wno-unused-but-set-variable
         -pedantic
         -pedantic-errors
     >
@@ -101,13 +95,14 @@ target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(bootloader PRIVATE "${CMAKE_BINARY_DIR}")
 
-target_sources(bootloader PRIVATE start.S power.c isr.c isr.S init.c)
+target_sources(bootloader PRIVATE init.c isr.c isr.S panic.c power.c start.S)
 target_link_options(bootloader PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds")
 set_target_properties(bootloader PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds")
 
 add_subdirectory(acpi)
 add_subdirectory(bios)
 add_subdirectory(pci)
+add_subdirectory(shell)
 add_subdirectory(vbe)
 
 add_custom_target(bootloader_execbin ALL

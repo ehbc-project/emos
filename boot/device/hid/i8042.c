@@ -165,7 +165,7 @@ static void i8042_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"i8042\"");
+        panic(status, "cannot register device driver \"i8042\"");
     }
 
     drv->name = "i8042";
@@ -182,7 +182,9 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     struct device *idev = NULL;
     struct device_driver *kbdrv = NULL;
     struct device_driver *msdrv = NULL;
+    int has_second_port = 0;
 
+    fprintf(stderr, "[i8042] checking resources...\n");
     if (!rsrc || rsrc_cnt != 4 ||
         rsrc[0].type != RT_IOPORT || rsrc[0].base != rsrc[0].limit ||
         rsrc[1].type != RT_IOPORT || rsrc[1].base != rsrc[1].limit ||
@@ -192,12 +194,15 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         goto has_error;
     }
 
+    fprintf(stderr, "[i8042] creating device...\n");
     status = device_create(&dev, drv, parent);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    fprintf(stderr, "[i8042] generating device name...\n");
     status = device_generate_name("ps2c", dev->name, sizeof(dev->name));
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    fprintf(stderr, "[i8042] creating device data...\n");
     data = malloc(sizeof(*data));
     data->io_data = rsrc[0].base;
     data->io_ctrl = rsrc[1].base;
@@ -205,30 +210,36 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     data->irq_port1 = rsrc[3].base;
     dev->data = data;
 
+    fprintf(stderr, "[i8042] disabling all connected peripherals...\n");
     /* disable all devices */
     io_out8(data->io_ctrl, 0xAD);
     io_out8(data->io_ctrl, 0xA7);
     
+    fprintf(stderr, "[i8042] flushing output buffer...\n");
     /* flush the output buffer*/
     io_in8(data->io_data);
 
+    fprintf(stderr, "[i8042] disabling translation & IRQ...\n");
     /* disable translation & IRQ */
     io_out8(data->io_ctrl, 0x60);
     io_out8(data->io_data, 0x00);
 
+    fprintf(stderr, "[i8042] running controller self-test...\n");
     /* perform controller self-test */
     io_out8(data->io_ctrl, 0xAA);
-    wait_output_buffer_full(dev, 5);
+    status = wait_output_buffer_full(dev, 5);
+    if (!CHECK_SUCCESS(status)) goto has_error;
     if (io_in8(data->io_data) != 0x55) {
-        return 1;
+        return STATUS_HARDWARE_FAILED;
     }
 
+    fprintf(stderr, "[i8042] disabling translation & IRQ again...\n");
     /* disable translation & IRQ (again) */
     io_out8(data->io_ctrl, 0x60);
     io_out8(data->io_data, 0x00);
 
+    fprintf(stderr, "[i8042] checking if the second port is available...\n");
     /* determine if the second port is available */
-    int has_second_port = 0;
     io_out8(data->io_ctrl, 0xA8);
     io_out8(data->io_ctrl, 0x20);
     if (!(io_in8(data->io_data) & 0x20)) {
@@ -236,6 +247,7 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         io_out8(data->io_ctrl, 0xA7);
     }
 
+    fprintf(stderr, "[i8042] initializing child devices...\n");
     /* initialize child devices */
     status = device_driver_find("ps2_keyboard", &kbdrv);
     if (!CHECK_SUCCESS(status)) {

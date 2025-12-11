@@ -35,7 +35,7 @@ static void floppy_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"floppy\"");
+        panic(status, "cannot register device driver \"floppy\"");
     }
 
     drv->name = "floppy";

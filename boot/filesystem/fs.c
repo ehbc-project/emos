@@ -32,14 +32,13 @@ status_t filesystem_create(struct filesystem **fsout, struct fs_driver *drv, str
         fs_list_head = fs;
     } else {
         struct filesystem *current = fs_list_head;
-        while (current->next) {
-            current = current->next;
-        }
+        for (; current->next; current = current->next) {}
+
         current->next = fs;
     }
 
     fs->next = NULL;
-    strncpy(fs->name, name, sizeof(fs->name));
+    strncpy(fs->name, name, sizeof(fs->name) - 1);
 
     if (fsout) *fsout = fs;
     
@@ -55,9 +54,8 @@ void filesystem_remove(struct filesystem *fs)
         if (current->next == fs) {
             prev_fs = current;
         }
-
-        current = current->next;
     }
+    if (!prev_fs) return;
 
     prev_fs->next = fs->next;
 

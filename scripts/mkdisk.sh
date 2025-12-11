@@ -69,7 +69,7 @@ OUTPUT=$1
 # Partition 0
 CURRENT_PART_IMAGE=$(mktemp)
 PART_IMAGES+=("$CURRENT_PART_IMAGE")
-dd if=/dev/zero of="$CURRENT_PART_IMAGE" bs=512 count=8190
+dd if=/dev/zero of="$CURRENT_PART_IMAGE" bs=512 count=16443
 case $BOOT_TYPE in
     uefi)
         mformat -i "$CURRENT_PART_IMAGE" -H 63
@@ -84,6 +84,9 @@ case $BOOT_TYPE in
         ;;
 esac
 mcopy -s -i "$CURRENT_PART_IMAGE" boot/config ::/CONFIG
+mmd -i "$CURRENT_PART_IMAGE" ::/MODULES
+mcopy -i "$CURRENT_PART_IMAGE" build/boot/modules/example/example.mod ::/MODULES/EXAMPLE.MOD
+mcopy -i "$CURRENT_PART_IMAGE" build/boot/modules/helloworld/helloworld.mod ::/MODULES/HELOWRLD.MOD
 mcopy -i "$CURRENT_PART_IMAGE" build/boot/bootloader.map ::/BOOTLDR.MAP
 mcopy -i "$CURRENT_PART_IMAGE" build/boot/unifont.bfn ::/UNIFONT.BFN
 mcopy -i "$CURRENT_PART_IMAGE" disk/plchldr.bmp ::/PLCHLDR.BMP
@@ -154,17 +157,17 @@ m
 n
 1
 63
-8252
+16505
 ef00
 n
 2
-8253
-73772
+16506
+82025
 cd7cdb25-ee47-55dc-9989-6dfd81ef7261
 n
 3
-73773
-204779
+82026
+213066
 bce7d2e7-c1d5-573f-a5d8-7a8b40081b81
 w
 y
@@ -180,17 +183,17 @@ e 1
 01
 n
 63
-8190
+16443
 f 1
 e 2
 78
 n
-8253
+16506
 65520
 edit 3
 79
 n
-73773
+82026
 131040
 q
 EOF

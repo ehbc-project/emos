@@ -1,5 +1,3 @@
-static int a = 0;
-
 // /* Find EHCI Controller */
 // int ehci_device_index = -1;
 // for (int i = 0; i < pci_count; i++) {

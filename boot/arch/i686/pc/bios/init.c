@@ -23,11 +23,14 @@
 
 #include <eboot/compiler.h>
 #include <eboot/status.h>
+#include <eboot/panic.h>
 #include <eboot/macros.h>
 #include <eboot/debug.h>
 #include <eboot/mm.h>
 #include <eboot/device.h>
+#include <eboot/filesystem.h>
 #include <eboot/interface/char.h>
+#include <eboot/interface/block.h>
 #include <eboot/interface/console.h>
 #include <eboot/interface/framebuffer.h>
 
@@ -59,7 +62,7 @@ static ssize_t early_stderr_write(void *cookie, const char *buf, size_t count)
     return count;
 }
 
-struct cookie_io_functions early_stderr_io = {
+static const struct cookie_io_functions early_stderr_io = {
     .write = early_stderr_write,
 };
 
@@ -72,7 +75,7 @@ static ssize_t early_stddbg_write(void *cookie, const char *buf, size_t count)
     return count;
 }
 
-struct cookie_io_functions early_stddbg_io = {
+static const struct cookie_io_functions early_stddbg_io = {
     .write = early_stddbg_write,
 };
 
@@ -80,11 +83,11 @@ static status_t init_nonpnp_devices(int has_acpi)
 {
     status_t status;
     int skip_legacy = 0, skip_8042 = 0, skip_rtc = 0;
+    struct acpi_fadt *fadt;
     
     if (has_acpi) {
-        struct acpi_fadt *fadt;
         if (uacpi_table_fadt(&fadt)) {
-            panic("Could not find FADT");
+            panic(STATUS_UNKNOWN_ERROR, "Could not find FADT");
         }
 
         if (fadt->hdr.revision >= 3) {
@@ -123,7 +126,6 @@ static status_t init_nonpnp_devices(int has_acpi)
         if (!CHECK_SUCCESS(status)) return status;
 
         if (freopendevice("dbg0", stddbg)) return STATUS_UNKNOWN_ERROR;
-        if (freopendevice("dbg0", stderr)) return STATUS_UNKNOWN_ERROR;
     }
 
 #endif
@@ -393,7 +395,6 @@ static uint8_t rtc_century_offset = 0x00;
 
 static status_t acpi_init(void)
 {
-    status_t status;
     uacpi_status uacpi_status;
     static uint8_t acpi_buf[4096];
 
@@ -405,12 +406,39 @@ static status_t acpi_init(void)
 
     struct acpi_fadt *fadt;
     if (uacpi_table_fadt(&fadt)) {
-        panic("Could not find FADT");
+        panic(STATUS_UNKNOWN_ERROR, "Could not find FADT");
     }
 
     rtc_century_offset = fadt->century;
 
-    return 0;
+    return STATUS_SUCCESS;
+}
+
+status_t mount_boot_disk(void)
+{
+    status_t status;
+    struct device *bootdisk;
+    const struct block_interface *blki;
+    uint8_t sect0[512];
+
+    bootdisk = device_get_first_dev();
+
+    for (; bootdisk; bootdisk = bootdisk->next) {
+        status = bootdisk->driver->get_interface(bootdisk, "block", (const void **)&blki);
+        if (!CHECK_SUCCESS(status)) continue;
+
+        status = blki->read(bootdisk, 0, sect0, 1, NULL);
+        if (!CHECK_SUCCESS(status)) continue;
+
+        if (memcmp(_pc_boot_sector, sect0, sizeof(sect0)) == 0) break;
+    }
+
+    if (!bootdisk) return STATUS_BOOT_DEVICE_INACCESSIBLE;
+
+    status = filesystem_auto_mount(bootdisk, "boot");
+    if (!CHECK_SUCCESS(status)) return status;
+
+    return STATUS_SUCCESS;
 }
 
 static volatile uint64_t global_tick = 0;
@@ -433,65 +461,63 @@ static void raw_print(struct console_char_cell *buf, const char *str, int len)
 
 static void rtc_isr(struct device *dev, int num)
 {
-    static uint8_t prev_sec = 0xFF;
-    static uint64_t prev_irq_count = 0;
-    uint8_t current_sec, min, hour, day, month, year, century;
-    
-    io_out8(0x70, 0x0C);
-    io_in8(0x71);
+    // static uint8_t prev_sec = 0xFF;
+    // static uint64_t prev_irq_count = 0;
+    // uint8_t current_sec, min, hour, day, month, year, century;
+    // 
+    // io_out8(0x70, 0x0C);
+    // io_in8(0x71);
 
-    io_out8(0x70, 0x00);
-    current_sec = io_in8(0x71);
-    if (prev_sec != current_sec) {
-        io_out8(0x70, 0x02);
-        min = io_in8(0x71);
-        io_out8(0x70, 0x04);
-        hour = io_in8(0x71);
-        io_out8(0x70, 0x07);
-        day = io_in8(0x71);
-        io_out8(0x70, 0x08);
-        month = io_in8(0x71);
-        io_out8(0x70, 0x09);
-        year = io_in8(0x71);
-        if (rtc_century_offset) {
-            io_out8(0x70, rtc_century_offset);
-            century = io_in8(0x71);
-        }
+    // io_out8(0x70, 0x00);
+    // current_sec = io_in8(0x71);
+    // if (prev_sec != current_sec) {
+    //     io_out8(0x70, 0x02);
+    //     min = io_in8(0x71);
+    //     io_out8(0x70, 0x04);
+    //     hour = io_in8(0x71);
+    //     io_out8(0x70, 0x07);
+    //     day = io_in8(0x71);
+    //     io_out8(0x70, 0x08);
+    //     month = io_in8(0x71);
+    //     io_out8(0x70, 0x09);
+    //     year = io_in8(0x71);
+    //     if (rtc_century_offset) {
+    //         io_out8(0x70, rtc_century_offset);
+    //         century = io_in8(0x71);
+    //     }
 
-        uint64_t irq_count = _pc_get_irq_count();
-        prev_sec = current_sec;
+    //     uint64_t irq_count = _pc_get_irq_count();
+    //     prev_sec = current_sec;
 
-        // struct device *condev = find_device("console0");
-        // if (!condev) {
-        //     return;
-        // }
-        // const struct console_interface *conif = condev->driver->get_interface(condev, "console");
+    //     struct device *condev = find_device("console0");
+    //     if (!condev) {
+    //         return;
+    //     }
+    //     const struct console_interface *conif = condev->driver->get_interface(condev, "console");
 
-        // struct console_char_cell *buf = conif->get_buffer(condev);
-        // int con_width;
-        // conif->get_dimension(condev, &con_width, NULL);
-        // char str[19];
-        // snprintf(str, sizeof(str), "%12llu IRQs/s", irq_count - prev_irq_count);
-        // raw_print(buf + con_width * 2 - 19, str, sizeof(str));
-        // 
-        // if (rtc_century_offset) {
-        //     snprintf(str, sizeof(str), "%02X%02X-%02X-%02X %02X:%02X:%02X", century, year, month, day, hour, min, current_sec);
-        // } else {
-        //     snprintf(str, sizeof(str), "  %02X-%02X-%02X %02X:%02X:%02X", year, month, day, hour, min, current_sec);
-        // }
-        // raw_print(buf + con_width * 3 - 19, str, sizeof(str));
-        // conif->invalidate(condev, con_width - 19, 1, con_width - 1, 2);
-        // conif->flush(condev);
-        // conif->present(condev);
+    //     struct console_char_cell *buf = conif->get_buffer(condev);
+    //     int con_width;
+    //     conif->get_dimension(condev, &con_width, NULL);
+    //     char str[19];
+    //     snprintf(str, sizeof(str), "%12llu IRQs/s", irq_count - prev_irq_count);
+    //     raw_print(buf + con_width * 2 - 19, str, sizeof(str));
+    //     
+    //     if (rtc_century_offset) {
+    //         snprintf(str, sizeof(str), "%02X%02X-%02X-%02X %02X:%02X:%02X", century, year, month, day, hour, min, current_sec);
+    //     } else {
+    //         snprintf(str, sizeof(str), "  %02X-%02X-%02X %02X:%02X:%02X", year, month, day, hour, min, current_sec);
+    //     }
+    //     raw_print(buf + con_width * 3 - 19, str, sizeof(str));
+    //     conif->invalidate(condev, con_width - 19, 1, con_width - 1, 2);
+    //     conif->flush(condev);
+    //     conif->present(condev);
 
-        prev_irq_count = irq_count;
-    }
+    //     prev_irq_count = irq_count;
+    // }
 }
 
 static void pit_isr(struct device *dev, int num)
 {
-    int ret;
-
     global_tick++;
 
     // struct device *condev = find_device("console0");
@@ -531,27 +557,24 @@ void _pc_init(void)
 {
     status_t status;
     int has_acpi;
+    struct chs bootdisk_geom;
 
     bios_print_str("Starting bootloader...\r\n");
-
-    _pc_remap_pic_int(0x20, 0x28);
-    _pc_init_idt();
-
-    struct chs geom;
-    _pc_bios_disk_get_params(_pc_boot_drive, NULL, NULL, &geom, NULL);
-
-    struct chs bootsector_chs = disk_lba_to_chs(_pc_boot_part_base, geom);
-
-    _pc_bios_disk_read(_pc_boot_drive, bootsector_chs, 1, _pc_boot_sector, NULL);
-
-    mm_init();
 
     freopencookie(NULL, "w", early_stderr_io, stderr);
     freopencookie(NULL, "w", early_stddbg_io, stddbg);
 
-    for (int i = 0; &(&__init_array_start)[i] != &__init_array_end; i++) {
-        (&__init_array_start)[i]();
-    }
+    _pc_bios_disk_get_params(_pc_boot_drive, NULL, NULL, &bootdisk_geom, NULL);
+    struct chs chs = disk_lba_to_chs(_pc_boot_part_base, bootdisk_geom);
+    status = _pc_bios_disk_read(_pc_boot_drive, chs, 1, _pc_boot_sector, NULL);
+    fprintf(stderr, "%d %d %d %08X\n", chs.cylinder, chs.head, chs.sector, status);
+
+    _pc_remap_pic_int(0x20, 0x28);
+    _pc_init_idt();
+
+    hexdump(stderr, _pc_boot_sector, 16, 0);
+
+    mm_init();
 
     io_out8(0x70, 0x8A);
     uint8_t prev = io_in8(0x71);
@@ -567,6 +590,10 @@ void _pc_init(void)
     _pc_isr_set_interrupt_handler(0x20, NULL, pit_isr);
     _pc_isr_set_interrupt_handler(0x28, NULL, rtc_isr);
 
+    for (int i = 0; &(&__init_array_start)[i] != &__init_array_end; i++) {
+        (&__init_array_start)[i]();
+    }
+
     static const uint16_t pit_value = 1193182 / 20;
     io_out8(0x43, 0x34);
     io_out8(0x40, pit_value & 0xFF);
@@ -580,7 +607,7 @@ void _pc_init(void)
     status = init_nonpnp_devices(has_acpi);
     if (!CHECK_SUCCESS(status)) {
         fprintf(stderr, "init_nonpnp_devices() failed: 0x%08X\n", status);
-        panic("failed to initialize essential non-PnP devices");
+        panic(status, "failed to initialize essential non-PnP devices");
     }
 
     // /* Disable BIOS USB emulation */
@@ -611,9 +638,16 @@ void _pc_init(void)
     //     while (global_tick - tick_start < 50) {}
     // }
 
+    status = mount_boot_disk();
+    if (!CHECK_SUCCESS(status)) {
+        panic(status, "failed to mount bootloader partition");
+    }
+
+    for (;;) {}
+
     main();
 
-    panic("Kernel returned");
+    panic(STATUS_UNKNOWN_ERROR, "Kernel returned");
 }
 
 __destructor

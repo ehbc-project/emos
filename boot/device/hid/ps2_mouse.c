@@ -152,7 +152,7 @@ static void ps2_mouse_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"ps2_keyboard\"");
+        panic(status, "cannot register device driver \"ps2_keyboard\"");
     }
 
     drv->name = "ps2_keyboard";

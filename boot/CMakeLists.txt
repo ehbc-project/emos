@@ -22,8 +22,6 @@ target_compile_options(bootloader PUBLIC
         -Wall
         -Wunused-result
         -Wno-unused-function
-        -Wno-unused-variable
-        -Wno-unused-but-set-variable
     >
 )
 target_link_libraries(bootloader gcc)
@@ -41,6 +39,20 @@ add_custom_target(bootloader_symbol_table ALL
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     COMMENT "Creating symbol table"
 )
+
+add_custom_command(
+    OUTPUT bootloader_exported_symbol_table.stamp
+    COMMAND ${CMAKE_COMMAND} -E touch bootloader_exported_symbol_table.stamp
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/mksymtab/mksymtab.py" "${CMAKE_CURRENT_SOURCE_DIR}/exported_symbols.txt" "exported_symbols.c"
+    DEPENDS exported_symbols.txt
+)
+add_custom_target(bootloader_exported_symbol_table ALL
+    DEPENDS bootloader_exported_symbol_table.stamp
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMENT "Creating exported symbol table"
+)
+add_dependencies(bootloader bootloader_exported_symbol_table)
+target_sources(bootloader PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/exported_symbols.c")
 
 add_custom_target(bootloader_font ALL
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/hex2bfn/hex2bfn.py" "${CMAKE_CURRENT_SOURCE_DIR}/unifont.hex" "unifont.bfn"
@@ -61,11 +73,14 @@ if (NOT "${TARGET_FIRMWARE}" STREQUAL "uefi")
     add_subdirectory(debug)
     add_subdirectory(device)
     add_subdirectory(elf)
+    add_subdirectory(encoding)
     add_subdirectory(filesystem)
     add_subdirectory(font)
     add_subdirectory(json)
     add_subdirectory(mm)
+    add_subdirectory(module)
     add_subdirectory(pci)
     add_subdirectory(stdc)
     add_subdirectory(shell)
+    add_subdirectory(modules)
 endif()

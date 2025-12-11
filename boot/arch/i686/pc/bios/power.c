@@ -4,7 +4,8 @@
 
 #include <eboot/asm/io.h>
 
-#include <eboot/debug.h>
+#include <eboot/panic.h>
+#include <eboot/panic.h>
 
 void _pc_reboot()
 {
@@ -14,7 +15,7 @@ void _pc_reboot()
     } while (status & 0x02);
     io_out8(0x0064, 0xFE);
 
-    panic("Reboot failed");
+    panic(STATUS_HARDWARE_FAILED, "Reboot failed");
 }
 
 void _pc_poweroff()
@@ -23,5 +24,5 @@ void _pc_poweroff()
     io_out16(0x0604, 0x2000);
     io_out16(0x4004, 0x3400);
 
-    panic("Poweroff failed");
+    panic(STATUS_HARDWARE_FAILED, "Poweroff failed");
 }

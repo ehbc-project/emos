@@ -120,7 +120,7 @@ _pc_bios_call:
     mov     %eax, (%edx)
     mov     .Lbx, %eax
     mov     %eax, 4(%edx)
-    mov     .Lcx, %eax
+    mov     .Lcx, %eax      
     mov     %eax, 8(%edx)
     mov     .Ldx, %eax
     mov     %eax, 12(%edx)

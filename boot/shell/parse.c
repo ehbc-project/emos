@@ -1,4 +1,4 @@
-#include "shell.h"
+#include <eboot/shell.h>
 
 #include <stdlib.h>
 

@@ -4,6 +4,8 @@
     .code32
     .globl  _start
 _start:
+    mov     $0xA0000, %esp
+
     xor     %eax, %eax
     mov     $__bss_start, %edi
     mov     $__bss_end, %ecx

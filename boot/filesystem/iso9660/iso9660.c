@@ -21,7 +21,7 @@ static void iso9660_init(void)
 
     status = filesystem_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register fs driver \"afs\"");
+        panic(status, "cannot register fs driver \"afs\"");
     }
 
     drv->name = "afs";

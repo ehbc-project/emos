@@ -6,7 +6,7 @@
 #include <eboot/asm/io.h>
 #include <eboot/asm/idt.h>
 
-#include <eboot/debug.h>
+#include <eboot/panic.h>
 #include <eboot/macros.h>
 
 #define DECLARE_ISRxy(x, y) extern void _pc_isr_##x##y(void);
@@ -261,12 +261,10 @@ void _pc_isr_common(struct interrupt_frame *frame, struct trap_regs *regs, int n
 
     if (is_fault) {
         if (has_error) {
-            fprintf(stderr, "\nFault/Abort #%02X (0x%08X) at 0x%04X:0x%08lX", num, error, frame->cs, frame->eip);
+            panic(STATUS_UNKNOWN_ERROR, "Unrecoverable fault #%02X (error 0x%08X) has occurred at 0x%04X:0x%08lX", num, error, frame->cs, frame->eip);
         } else {
-            fprintf(stderr, "\nFault/Abort #%02X at 0x%04X:0x%08lX", num, frame->cs, frame->eip);
+            panic(STATUS_UNKNOWN_ERROR, "Unrecoverable fault #%02X has occurred at 0x%04X:0x%08lX", num, frame->cs, frame->eip);
         }
-        panic("Unrecoverable fault");
-        return;
     }
 
     struct isr_table_entry *current_isr = _pc_isr_table[num];

@@ -16,8 +16,6 @@ static status_t read(struct device *dev, lba_t lba, void *buf, size_t count, siz
 {
     struct part_data *data = (struct part_data *)dev->data;
 
-    fprintf(stddbg, "tried to read %lu sectors from LBA %llu of partition %s (base: %llu, limit: %llu)\n", count, lba, dev->name, data->part_base, data->part_limit);
-
     if (lba > data->part_limit) {
         return STATUS_INVALID_VALUE;
     }
@@ -34,8 +32,6 @@ static status_t read(struct device *dev, lba_t lba, void *buf, size_t count, siz
 static status_t write(struct device *dev, lba_t lba, const void *buf, size_t count, size_t *result)
 {
     struct part_data *data = (struct part_data *)dev->data;
-
-    fprintf(stddbg, "tried to write %lu sectors from LBA %llu of partition %s (base: %llu, limit: %llu)\n", count, lba, dev->name, data->part_base, data->part_limit);
 
     if (lba > data->part_limit) {
         return STATUS_INVALID_VALUE;
@@ -66,7 +62,7 @@ static void part_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"part\"");
+        panic(status, "cannot register device driver \"part\"");
     }
 
     drv->name = "part";

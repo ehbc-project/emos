@@ -113,19 +113,6 @@ static const uint32_t palette[256] = {
     0xD0D0D0, 0xDADADA, 0xE4E4E4, 0xEEEEEE,
 };
 
-static const struct console_char_attributes default_attr = {
-    .fg_color = 0xffffff,
-    .bg_color = 0x000000,
-    .text_blink_level = 0,
-    .text_bold = 0,
-    .text_dim = 0,
-    .text_italic = 0,
-    .text_underline = 0,
-    .text_strike = 0,
-    .text_overlined = 0,
-    .text_reversed = 0,
-};
-
 static status_t console_backspace(struct device *dev, int *cursor_x_out)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
@@ -614,7 +601,6 @@ static status_t handle_sd(struct device *dev)
 static status_t handle_sgr(struct device *dev)
 {
     struct ansiterm_data *data = (struct ansiterm_data *)dev->data;
-    status_t status;
     int option;
 
     option = (data->escape_seq_arg_count < 1) ? 0 : data->escape_seq_args[0];
@@ -1166,7 +1152,7 @@ static void ansiterm_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"ansiterm\"");
+        panic(status, "cannot register device driver \"ansiterm\"");
     }
 
     drv->name = "ansiterm";

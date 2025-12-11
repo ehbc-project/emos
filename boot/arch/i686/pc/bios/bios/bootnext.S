@@ -11,7 +11,7 @@ _pc_bios_bootnext:
 
     cli
 
-    mov     $0x60, %al              # enable translation
+    mov     $0x60, %al              # enable keyboard translation
     outb    %al, $0x0064
     mov     $0x63, %al
     outb    %al, $0x0060

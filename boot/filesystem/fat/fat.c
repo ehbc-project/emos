@@ -244,6 +244,7 @@ get_sfn_filename(
     char *buf)
 {
     size_t char_count = 0;
+
     for (int i = 0; i < 8 && entry->name[i] != ' '; i++) {
         buf[char_count++] =
             (entry->attribute2 & FAT_ATTR2_LCASE_NAME) ? tolower(entry->name[i]) : entry->name[i];
@@ -263,6 +264,7 @@ get_sfn_filename(
 static uint8_t get_sfn_checksum(char buf[static FAT_SFN_BUFLEN])
 {
     uint8_t chksum = 0;
+
     for (int i = FAT_SFN_BUFLEN; i != 0; i--) {
         chksum = ((chksum & 1) ? 0x80 : 0) + (chksum >> 1) + *buf++;
     }
@@ -365,22 +367,22 @@ static status_t get_next_cluster12(struct filesystem *fs, fatcluster_t *cluster,
 {
     status_t status;
     struct fat_data *data = (struct fat_data *)fs->data;
+    uint16_t byte_idx;
+    uint16_t sector_idx;
+    uint8_t fatentry_buf[2];
 
     if (*cluster > FAT12_MAX_CLUSTER) return STATUS_INVALID_VALUE;
 
     while (count-- > 0) {
-        uint16_t byte_idx = *cluster + (*cluster >> 1);
-        uint16_t sector_idx = byte_idx / data->sector_size;
+        byte_idx = *cluster + (*cluster >> 1);
+        sector_idx = byte_idx / data->sector_size;
         byte_idx %= data->sector_size;
 
         status = read_fat(fs, sector_idx);
         if (!CHECK_SUCCESS(status)) return status;
 
-        uint8_t fatentry_buf[2];
-
         fatentry_buf[0] = data->fatbuf[byte_idx];
         if (byte_idx == data->sector_size - 1) {
-            unsigned int entry_idx;
             status = read_fat(fs, sector_idx + 1);
             if (!CHECK_SUCCESS(status)) return status;
             fatentry_buf[1] = data->fatbuf[0];
@@ -408,12 +410,14 @@ static status_t get_next_cluster16(struct filesystem *fs, fatcluster_t *cluster,
 {
     status_t status;
     struct fat_data *data = (struct fat_data *)fs->data;
+    uint32_t fatentry_idx;
+    uint32_t sector_idx;
 
     if (*cluster > FAT16_MAX_CLUSTER) return STATUS_INVALID_VALUE;
 
     while (count-- > 0) {
-        uint32_t fatentry_idx = *cluster;
-        uint32_t sector_idx = fatentry_idx / (data->sector_size >> 1);
+        fatentry_idx = *cluster;
+        sector_idx = fatentry_idx / (data->sector_size >> 1);
         fatentry_idx %= data->sector_size >> 1;
 
         status = read_fat(fs, sector_idx);
@@ -431,12 +435,14 @@ static status_t get_next_cluster32(struct filesystem *fs, fatcluster_t *cluster,
 {
     status_t status;
     struct fat_data *data = (struct fat_data *)fs->data;
+    uint32_t fatentry_idx;
+    uint32_t sector_idx;
 
     if (*cluster > FAT32_MAX_CLUSTER) return STATUS_INVALID_VALUE;
 
     while (count-- > 0) {
-        uint32_t fatentry_idx = *cluster;
-        uint32_t sector_idx = fatentry_idx / (data->sector_size >> 2);
+        fatentry_idx = *cluster;
+        sector_idx = fatentry_idx / (data->sector_size >> 2);
         fatentry_idx %= data->sector_size >> 2;
 
         status = read_fat(fs, sector_idx);
@@ -464,8 +470,6 @@ static status_t match_name(
 {
     status_t status;
     struct filesystem *fs = dir->fs;
-    struct fat_data *data = (struct fat_data *)fs->data;
-    struct fat_dir_data *dir_data = (struct fat_dir_data *)dir->data;
 
     status = fs->driver->rewind_directory(dir);
     if (!CHECK_SUCCESS(status)) return status;
@@ -502,7 +506,7 @@ static void fat_init(void)
 
     status = filesystem_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register fs driver \"fat\"");
+        panic(status, "cannot register fs driver \"fat\"");
     }
 
     drv->name = "fat";
@@ -528,7 +532,7 @@ static status_t probe(struct device *dev, struct fs_driver *drv)
     const struct block_interface *blkif = NULL;
     struct fat_bpb_sector bpb;
     struct fat_fsinfo fsinfo;
-    unsigned int sector_size, sectors_per_cluster, cluster_size, fsinfo_sector;
+    unsigned int sector_size, sectors_per_cluster, fsinfo_sector;
     unsigned int root_entry_count, reserved_sectors, root_sector_count;
     unsigned int fat_size, total_sector_count, data_area_begin, cluster_count;
     
@@ -552,7 +556,6 @@ static status_t probe(struct device *dev, struct fs_driver *drv)
 
     sector_size = le16toh(bpb.bytes_per_sector);
     sectors_per_cluster = bpb.sectors_per_cluster;
-    cluster_size = sector_size * sectors_per_cluster;
     root_entry_count = le16toh(bpb.root_entry_count);
     reserved_sectors = le16toh(bpb.reserved_sector_count);
     root_sector_count = ((root_entry_count * 32) + (sector_size - 1)) / sector_size;
@@ -705,7 +708,6 @@ static status_t unmount(struct filesystem *fs)
 static status_t open(struct fs_directory *dir, const char *name, struct fs_file **fileout)
 {
     struct filesystem *fs = dir->fs;
-    struct fat_data *data = (struct fat_data *)fs->data;
     struct fat_dir_data *dir_data = (struct fat_dir_data *)dir->data;
     status_t status;
     struct fs_directory_entry dirent;

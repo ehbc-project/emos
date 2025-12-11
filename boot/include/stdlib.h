@@ -12,6 +12,11 @@
 
 #define RAND_MAX        0x7FFF
 
+__noreturn
+static inline void exit(int i) {
+    for (;;) {}
+}
+
 double atof(const char *str);
 
 int atoi(const char *str);
@@ -69,13 +74,5 @@ lldiv_t lldiv(long long numer, long long denom);
 int rand(void);
 
 void srand(unsigned int seed);
-
-void *malloc(size_t size);
-
-void *calloc(size_t num, size_t size);
-
-void *realloc(void *ptr, size_t size);
-
-void free(void *ptr);
 
 #endif // __STDLIB_H__

@@ -81,7 +81,7 @@ static void ata_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"ata\"");
+        panic(status, "cannot register device driver \"ata\"");
     }
 
     drv->name = "ata";

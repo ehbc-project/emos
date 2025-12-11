@@ -45,7 +45,7 @@ static void mbr_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"mbr\"");
+        panic(status, "cannot register device driver \"mbr\"");
     }
 
     drv->name = "mbr";

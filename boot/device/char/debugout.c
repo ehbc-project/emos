@@ -38,7 +38,7 @@ static void debugout_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register device driver \"debugout\"");
+        panic(status, "cannot register device driver \"debugout\"");
     }
 
     drv->name = "debugout";

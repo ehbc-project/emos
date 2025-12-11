@@ -62,8 +62,8 @@ _s1start.1:
     jmp     .halt
 
 .code16
-.halt16:                                  # if the function returns,
-    hlt                                 # halt forever
+.halt16:
+    hlt
     jmp     .halt16
 
 print_string:

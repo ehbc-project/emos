@@ -1,6 +1,6 @@
 #include <string.h>
 
-#include <eboot/debug.h>
+#include <eboot/panic.h>
 
 #undef strcpy
 
@@ -9,7 +9,7 @@ void *__strcpy_chk(void *__restrict dest, const void *__restrict src, size_t des
     size_t len = strlen(src) + 1;
 
     if (destlen < len) {
-        panic("__strcpy_chk() failed");
+        panic(STATUS_SIZE_CHECK_FAILURE, "__strcpy_chk() failed");
     }
 
 #ifndef __HAVE_BUILTIN_STRCPY

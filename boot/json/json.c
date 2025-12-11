@@ -252,7 +252,6 @@ static status_t parse_string(struct json_state *state, struct json_value **value
         goto has_error;
     }
 
-    size_t string_len = count_escaped_string_len(state);
     struct json_value *value = malloc(sizeof(struct json_value));
     value->type = JVT_STRING;
 

@@ -84,7 +84,7 @@ static void afs_init(void)
 
     status = filesystem_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic("cannot register fs driver \"afs\"");
+        panic(status, "cannot register fs driver \"afs\"");
     }
 
     drv->name = "afs";
@@ -106,7 +106,6 @@ static void afs_init(void)
 static status_t probe(struct device *dev, struct fs_driver *drv)
 {
     status_t status;
-    struct filesystem *fs = NULL;
     struct device *blkdev = NULL;
     const struct block_interface *blkif = NULL;
     struct afs_first_sector lba0;
@@ -274,17 +273,7 @@ static status_t open_root_directory(struct filesystem *fs, struct fs_directory *
 
 static status_t open_directory(struct fs_directory *dir, const char *name, struct fs_directory **dirout)
 {
-    struct filesystem *fs = dir->fs;
-    struct afs_data *data = (struct afs_data *)fs->data;
-    struct afs_dir_data *dir_data = (struct afs_dir_data *)dir->data;
-
     return STATUS_UNIMPLEMENTED;
-
-    struct afs_dir_data *new_dir_data = malloc(sizeof(*new_dir_data));
-    
-    struct fs_directory *new_dir = malloc(sizeof(*dir));
-    new_dir->fs = fs;
-    new_dir->data = new_dir_data;
 }
 
 static status_t rewind_directory(struct fs_directory *dir)

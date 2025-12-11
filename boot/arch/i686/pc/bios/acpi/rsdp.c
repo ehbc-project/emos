@@ -2,6 +2,7 @@
 #include <uacpi/acpi.h>
 
 #include <stddef.h>
+#include <stdint.h>
 
 uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address) {
     static const void *rsdp_addr = NULL;
@@ -19,7 +20,7 @@ uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address) {
             }
         }
     
-        for (uint32_t addr = 0x000E0000; addr <= 0x000FFFFF; addr++) {
+        for (uintptr_t addr = 0x000E0000; addr <= 0x000FFFFF; addr++) {
             ptr = (const char *)addr;
             match = 1;
     

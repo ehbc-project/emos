@@ -22,6 +22,27 @@ static int memcmp(const void *p1, const void *p2, size_t len)
     return 0;
 }
 
+static void print_str(const char *str)
+{
+    while (*str) {
+        _pc_bios_video_write_tty(*str++);
+    }
+}
+
+static void print_hex(uint32_t val)
+{
+    char hex_str[9];
+
+    for (int i = 7; i >= 0; i--) {
+        hex_str[i] = (val & 0xF) >= 10 ? 'A' + (val & 0xF) - 10 : '0' + (val & 0xF);
+        val >>= 4;
+    }
+
+    hex_str[8] = 0;
+
+    print_str(hex_str);
+}
+
 static status_t read_disk(lba_t lba, uint8_t count, void *buf)
 {
     status_t status;
@@ -35,25 +56,16 @@ static status_t read_disk(lba_t lba, uint8_t count, void *buf)
     chs.sector = (lba % geom.sector) + 1;
 
     status = _pc_bios_disk_read(_pc_boot_drive, chs, count, buf, &result);
-
-    if (result != count) {
-        return STATUS_UNEXPECTED_RESULT;
-    }
+    if (!CHECK_SUCCESS(status)) return status;
 
     return STATUS_SUCCESS;
-}
-
-static void print_str(const char *str)
-{
-    while (*str) {
-        _pc_bios_video_write_tty(*str++);
-    }
 }
 
 void s1main(void)
 {
     status_t status;
 
+    print_str("getting disk parameters...\r\n");
     status = _pc_bios_disk_get_params(_pc_boot_drive, NULL, NULL, &geom, NULL);
     if (!CHECK_SUCCESS(status)) {
         print_str("failed to request disk geometry");
@@ -65,12 +77,14 @@ void s1main(void)
     uint32_t cluster_start_lba = rootdir_lba + (bpb->root_entry_count * 32 + 511) / 512;
     uint16_t bytes_per_cluster = bpb->bytes_per_sector * bpb->sectors_per_cluster;
 
-    union fat_dir_entry *entry;
+    union fat_dir_entry *entry = NULL;
+    print_str("searching root directory...\r\n");
     for (lba_t current_lba = rootdir_lba; current_lba < cluster_start_lba; current_lba++) {
         status = read_disk(current_lba, 1, sect_buf);
         if (!CHECK_SUCCESS(status)) {
-            print_str("failed to read disk");
-            for (;;) {}
+            print_str("failed to read disk: ");
+            print_hex(status);
+            return;
         }
     
         for (int i = 0; i < 32; i++) {
@@ -79,7 +93,7 @@ void s1main(void)
             if (memcmp(entry->file.name_ext, "BOOTLDR X86", sizeof(entry->file.name) + sizeof(entry->file.extension)) == 0) {
                 goto file_found;
             } else if (!entry->file.name[0]) {
-                print_str("BOOTLDR.X86 not found\r\n");
+                print_str("BOOTLDR.X86 not found");
                 return;
             }
         }
@@ -90,16 +104,20 @@ file_found: {}
 
     uint32_t *load_dest = (uint32_t *)0x00100000;
 
+    print_str("reading FAT area...\r\n");
     status = read_disk(fat_lba, 8, sect_buf);
     if (!CHECK_SUCCESS(status)) {
-        print_str("failed to read disk");
-        for (;;) {}
+        print_str("failed to read disk: ");
+        print_hex(status);
+        return;
     }
+    print_str("loading file...\r\n");
     while (current_cluster <= FAT12_MAX_CLUSTER) {
-        read_disk(cluster_start_lba + (current_cluster - 2) * bpb->sectors_per_cluster, bpb->sectors_per_cluster, clus_buf);
+        status = read_disk(cluster_start_lba + (current_cluster - 2) * bpb->sectors_per_cluster, bpb->sectors_per_cluster, clus_buf);
         if (!CHECK_SUCCESS(status)) {
-            print_str("failed to read disk");
-            for (;;) {}
+            print_str("failed to read disk: ");
+            print_hex(status);
+            return;
         }
 
         for (int i = 0; i < bytes_per_cluster / sizeof(uint32_t); i++) {

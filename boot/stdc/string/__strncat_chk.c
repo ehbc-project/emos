@@ -1,13 +1,13 @@
 #include <string.h>
 
-#include <eboot/debug.h>
+#include <eboot/panic.h>
 
 #undef strncat
 
 char *__strncat_chk(char *__restrict dest, const char *__restrict src, size_t len, size_t destlen)
 {
     if (destlen < len) {
-        panic("__strncat_chk() failed");
+        panic(STATUS_SIZE_CHECK_FAILURE, "__strncat_chk() failed");
     }
 
 #ifndef __HAVE_BUILTIN_STRNCAT

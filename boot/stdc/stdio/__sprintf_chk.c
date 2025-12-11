@@ -1,13 +1,13 @@
 #include <stdio.h>
 
-#include <eboot/debug.h>
+#include <eboot/panic.h>
 
 #undef sprintf
 
 int __sprintf_chk(char *str, int flag, size_t slen, const char *fmt, ...)
 {
     if (slen < 1) {
-        panic("__sprintf_chk() failed");
+        panic(STATUS_SIZE_CHECK_FAILURE, "__sprintf_chk() failed");
     }
 
     va_list args;

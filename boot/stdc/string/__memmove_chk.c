@@ -1,13 +1,13 @@
 #include <string.h>
 
-#include <eboot/debug.h>
+#include <eboot/panic.h>
 
 #undef memmove
 
 void *__memmove_chk(void *dest, const void *src, size_t len, size_t destlen)
 {
     if (destlen < len) {
-        panic("__memmove_chk() failed");
+        panic(STATUS_SIZE_CHECK_FAILURE, "__memmove_chk() failed");
     }
 
 #ifndef __HAVE_BUILTIN_MEMMOVE

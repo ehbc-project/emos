@@ -11,7 +11,6 @@ struct jmp_buf {
     uint32_t esi;
     uint32_t edi;
     uint32_t eax;
-    uint32_t eflags;
 };
 
 typedef struct jmp_buf jmp_buf[1];
