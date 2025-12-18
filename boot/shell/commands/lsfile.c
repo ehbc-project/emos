@@ -142,4 +142,4 @@ static void lsfile_command_init(void)
     shell_command_register(&lsfile_command);
 }
 
-SHELL_COMMAND(lsfile, lsfile_command_init)
+REGISTER_SHELL_COMMAND(lsfile, lsfile_command_init)

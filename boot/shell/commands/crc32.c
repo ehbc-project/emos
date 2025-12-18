@@ -57,4 +57,4 @@ static void crc32_command_init(void)
     shell_command_register(&crc32_command);
 }
 
-SHELL_COMMAND(crc32, crc32_command_init)
+REGISTER_SHELL_COMMAND(crc32, crc32_command_init)

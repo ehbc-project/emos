@@ -79,4 +79,4 @@ static void echo_command_init(void)
     shell_command_register(&echo_command);
 }
 
-SHELL_COMMAND(echo, echo_command_init)
+REGISTER_SHELL_COMMAND(echo, echo_command_init)

@@ -61,4 +61,4 @@ static void lsdev_command_init(void)
     shell_command_register(&lsdev_command);
 }
 
-SHELL_COMMAND(lsdev, lsdev_command_init)
+REGISTER_SHELL_COMMAND(lsdev, lsdev_command_init)

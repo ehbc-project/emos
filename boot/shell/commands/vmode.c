@@ -165,4 +165,4 @@ static void vmode_command_init(void)
     shell_command_register(&vmode_command);
 }
 
-SHELL_COMMAND(vmode, vmode_command_init)
+REGISTER_SHELL_COMMAND(vmode, vmode_command_init)

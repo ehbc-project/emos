@@ -26,6 +26,13 @@
             "script": [
                 "shell"
             ]
+        },
+        {   
+            "name": "Start bootloader GUI shell",
+            "script": [
+                "loadmodule boot:/modules/guishell.mod",
+                "guishell"
+            ]
         }
     ]
 }

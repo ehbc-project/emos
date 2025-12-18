@@ -1,10 +1,11 @@
 {
-    "title": "EMOS Bootloader",
+    "title": "EMOS Installer CD-ROM",
     "password": null,
     "theme": "default",
     "timeout": 5,
     "default_entry": 0,
     "start_script": [
+        "vmode 640x480x24",
         "usefont boot:/unifont.bfn"
     ],
     "options": [
@@ -16,9 +17,7 @@
             "name": "Boot from current device",
             "script": [
                 "loadmodule boot:/modules/bootemos.mod",
-                "mount fd0pt0p2 sys",
-                "vmode 640x480x24",
-                "bootemos sys:/system/kernel/kernel.elf -v"
+                "bootemos boot:/system/kernel/kernel.elf -v"
             ]
         },
         {   

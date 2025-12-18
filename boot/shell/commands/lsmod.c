@@ -28,4 +28,4 @@ static void lsmod_command_init(void)
     shell_command_register(&lsmod_command);
 }
 
-SHELL_COMMAND(lsmod, lsmod_command_init)
+REGISTER_SHELL_COMMAND(lsmod, lsmod_command_init)

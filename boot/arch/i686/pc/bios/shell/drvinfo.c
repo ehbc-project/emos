@@ -90,4 +90,4 @@ static void drvinfo_command_init(void)
     shell_command_register(&drvinfo_command);
 }
 
-SHELL_COMMAND(drvinfo, drvinfo_command_init)
+REGISTER_SHELL_COMMAND(drvinfo, drvinfo_command_init)

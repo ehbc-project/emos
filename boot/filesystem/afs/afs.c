@@ -301,4 +301,4 @@ static void close_directory(struct fs_directory *dir)
     
 }
 
-FILESYSTEM_DRIVER(afs, afs_init)
+REGISTER_FILESYSTEM_DRIVER(afs, afs_init)

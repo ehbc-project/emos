@@ -59,4 +59,4 @@ static void readblk_command_init(void)
     shell_command_register(&readblk_command);
 }
 
-SHELL_COMMAND(readblk, readblk_command_init)
+REGISTER_SHELL_COMMAND(readblk, readblk_command_init)

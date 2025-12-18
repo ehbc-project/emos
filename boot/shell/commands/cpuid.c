@@ -144,5 +144,5 @@ static void cpuid_command_init(void)
     shell_command_register(&cpuid_command);
 }
 
-SHELL_COMMAND(cpuid, cpuid_command_init)
+REGISTER_SHELL_COMMAND(cpuid, cpuid_command_init)
 

@@ -13,7 +13,7 @@ CURRENT_PART_IMAGE=
 declare -a PART_IMAGES
 
 print_usage() {
-    echo "usage: $0 [-a arch] [-hu] output"
+    echo "usage: $0 [-a arch] [-hSu] output"
 }
 
 while getopts "a:hSu" arg; do
@@ -83,9 +83,11 @@ case $BOOT_TYPE in
         python tools/injectbin/injectbin.py "build/boot/arch/$ARCH/pc/bios/stage1.bin" "$CURRENT_PART_IMAGE" 512
         ;;
 esac
-mcopy -s -i "$CURRENT_PART_IMAGE" boot/config ::/CONFIG
+mmd -i "$CURRENT_PART_IMAGE" ::/CONFIG
+mcopy -i "$CURRENT_PART_IMAGE" boot/config/boot.json ::/CONFIG/boot.json
 mmd -i "$CURRENT_PART_IMAGE" ::/MODULES
 mcopy -i "$CURRENT_PART_IMAGE" build/boot/modules/bootemos/bootemos.mod ::/MODULES/BOOTEMOS.MOD
+mcopy -i "$CURRENT_PART_IMAGE" build/boot/modules/guishell/guishell.mod ::/MODULES/guishell.MOD
 mcopy -i "$CURRENT_PART_IMAGE" build/boot/modules/helloworld/helloworld.mod ::/MODULES/HELOWRLD.MOD
 mcopy -i "$CURRENT_PART_IMAGE" build/boot/bootloader.map ::/BOOTLDR.MAP
 mcopy -i "$CURRENT_PART_IMAGE" build/boot/unifont.bfn ::/UNIFONT.BFN

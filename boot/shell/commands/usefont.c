@@ -59,4 +59,4 @@ static void usefont_command_init(void)
     shell_command_register(&usefont_command);
 }
 
-SHELL_COMMAND(usefont, usefont_command_init)
+REGISTER_SHELL_COMMAND(usefont, usefont_command_init)

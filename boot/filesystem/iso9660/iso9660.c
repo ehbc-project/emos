@@ -565,4 +565,4 @@ static void close_directory(struct fs_directory *dir)
     free(dir);
 }
 
-FILESYSTEM_DRIVER(iso9660, iso9660_init)
+REGISTER_FILESYSTEM_DRIVER(iso9660, iso9660_init)

@@ -54,4 +54,4 @@ static void readfile_command_init(void)
     shell_command_register(&readfile_command);
 }
 
-SHELL_COMMAND(readfile, readfile_command_init)
+REGISTER_SHELL_COMMAND(readfile, readfile_command_init)

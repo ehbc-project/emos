@@ -37,4 +37,4 @@ static void read_command_init(void)
     shell_command_register(&read_command);
 }
 
-SHELL_COMMAND(read, read_command_init)
+REGISTER_SHELL_COMMAND(read, read_command_init)

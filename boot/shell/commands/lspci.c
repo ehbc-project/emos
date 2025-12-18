@@ -61,4 +61,4 @@ static void lspci_command_init(void)
     shell_command_register(&lspci_command);
 }
 
-SHELL_COMMAND(lspci, lspci_command_init)
+REGISTER_SHELL_COMMAND(lspci, lspci_command_init)

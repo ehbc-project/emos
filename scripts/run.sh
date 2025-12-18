@@ -8,6 +8,7 @@ OVMF_PATH=
 CPU_TYPE=
 BOOT_TYPE=bios
 MEM_SIZE=128M
+CDBOOT=false
 declare -a ADDITIONAL_FLAGS
 declare -a DEVICES
 declare -a QEMU_DEVICE_FLAGS
@@ -15,7 +16,7 @@ declare -a DRIVES
 declare -a QEMU_DRIVE_FLAGS
 
 print_usage() {
-    echo "usage: $0 [-hu] machine"
+    echo "usage: $0 [-chu] machine"
 }
 
 print_machines() {
@@ -31,8 +32,11 @@ print_machines() {
     echo "  mac99-ppc64"
 }
 
-while getopts "hu" arg; do
+while getopts "chu" arg; do
     case $arg in
+        c)
+            CDBOOT=true
+            ;;
         h)
             print_usage
             exit 0
@@ -310,6 +314,10 @@ done
 for drive in "${DRIVES[@]}"; do
     QEMU_DRIVE_FLAGS+=(-drive "$drive")
 done
+
+if [ "${CDBOOT}" = true ]; then
+    ADDITIONAL_FLAGS+=(-boot d)
+fi
 
 # shellcheck disable=2086
 shift

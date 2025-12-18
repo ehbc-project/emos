@@ -27,4 +27,4 @@ static void jump_command_init(void)
     shell_command_register(&jump_command);
 }
 
-SHELL_COMMAND(jump, jump_command_init)
+REGISTER_SHELL_COMMAND(jump, jump_command_init)

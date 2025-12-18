@@ -32,4 +32,4 @@ static void mem_command_init(void)
     shell_command_register(&mem_command);
 }
 
-SHELL_COMMAND(mem, mem_command_init)
+REGISTER_SHELL_COMMAND(mem, mem_command_init)

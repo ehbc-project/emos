@@ -52,4 +52,4 @@ static void dispinfo_command_init(void)
     shell_command_register(&dispinfo_command);
 }
 
-SHELL_COMMAND(dispinfo, dispinfo_command_init)
+REGISTER_SHELL_COMMAND(dispinfo, dispinfo_command_init)

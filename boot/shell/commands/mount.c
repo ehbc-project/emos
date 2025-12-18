@@ -37,4 +37,4 @@ static void mount_command_init(void)
     shell_command_register(&mount_command);
 }
 
-SHELL_COMMAND(mount, mount_command_init)
+REGISTER_SHELL_COMMAND(mount, mount_command_init)

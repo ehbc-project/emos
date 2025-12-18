@@ -116,6 +116,8 @@ static status_t test_port(struct device *dev, int port)
     status = wait_for_status_register(dev, 0x01, 0x01, 2);
     if (!CHECK_SUCCESS(status)) return status;
 
+    LOG_DEBUG("testing port #%d\n", port);
+
     return io_in8(data->io_data) ? STATUS_HARDWARE_NOT_FOUND : STATUS_SUCCESS;
 }
 
@@ -124,11 +126,11 @@ static status_t send_data(struct device *dev, int port, const uint8_t *buf, int 
     struct i8042_data *data = (struct i8042_data *)dev->data;
     status_t status;
 
-    if (port) {
-        io_out8(data->io_ctrl, 0xD4);
-    }
-
     for (int i = 0; i < len; i++) {
+        if (port) {
+            io_out8(data->io_ctrl, 0xD4);
+        }
+
         status = wait_for_status_register(dev, 0x00, 0x02, 2);
         if (!CHECK_SUCCESS(status)) return status;
 
@@ -290,6 +292,28 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         msdrv = NULL;
     }
 
+    if (has_second_port && msdrv) {
+        LOG_DEBUG("initializing second port...\n");
+
+        struct resource res[] = {
+            {
+                .type = RT_BUS,
+                .base = 1,
+                .limit = 1,
+                .flags = 0,
+            },
+            {
+                .type = RT_IRQ,
+                .base = data->irq_port1,
+                .limit = data->irq_port1,
+                .flags = 0,
+            },
+        };
+
+        status = msdrv->probe(&idev, msdrv, dev, res, ARRAY_SIZE(res));
+        // ignore status
+    }
+
     if (kbdrv) {
         LOG_DEBUG("initializing first port...\n");
 
@@ -309,28 +333,6 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         };
 
         status = kbdrv->probe(&idev, kbdrv, dev, res, ARRAY_SIZE(res));
-        // ignore status
-    }
-
-    if (has_second_port && msdrv) {
-        LOG_DEBUG("initializing second port...\n");
-
-        struct resource res[] = {
-            {
-                .type = RT_BUS,
-                .base = 0,
-                .limit = 0,
-                .flags = 0,
-            },
-            {
-                .type = RT_IRQ,
-                .base = data->irq_port1,
-                .limit = data->irq_port1,
-                .flags = 0,
-            },
-        };
-
-        status = msdrv->probe(&idev, msdrv, dev, res, ARRAY_SIZE(res));
         // ignore status
     }
 
@@ -387,4 +389,4 @@ static status_t get_interface(struct device *dev, const char *name, const void *
     return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(i8042, i8042_init)
+REGISTER_DEVICE_DRIVER(i8042, i8042_init)

@@ -242,6 +242,10 @@ void show_menu(void)
         panic(STATUS_INVALID_FORMAT, "element \"script\" has invalid value type");
     }
 
+    for (;;) {
+        shell_execute(NULL, "shell");
+    }
+
     json_destruct(json);
 }
 
@@ -250,7 +254,7 @@ void main(void)
     setup_tty();
     show_menu();
 
-    printf("Kernel returned. Press any key to reboot.");
+    printf("Kernel returned. Press any key to reboot. (btw, how did you get here?)");
     fgetc(stdin);
 
     reboot();

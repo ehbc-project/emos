@@ -45,4 +45,4 @@ static void in_command_init(void)
     shell_command_register(&in_command);
 }
 
-SHELL_COMMAND(in, in_command_init)
+REGISTER_SHELL_COMMAND(in, in_command_init)

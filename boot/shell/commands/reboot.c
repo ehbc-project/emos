@@ -19,4 +19,4 @@ static void reboot_command_init(void)
     shell_command_register(&reboot_command);
 }
 
-SHELL_COMMAND(reboot, reboot_command_init)
+REGISTER_SHELL_COMMAND(reboot, reboot_command_init)

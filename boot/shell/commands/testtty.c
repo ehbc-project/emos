@@ -120,4 +120,4 @@ static void testtty_command_init(void)
     shell_command_register(&testtty_command);
 }
 
-SHELL_COMMAND(testtty, testtty_command_init)
+REGISTER_SHELL_COMMAND(testtty, testtty_command_init)

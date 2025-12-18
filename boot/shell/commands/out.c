@@ -46,4 +46,4 @@ static void out_command_init(void)
     shell_command_register(&out_command);
 }
 
-SHELL_COMMAND(out, out_command_init)
+REGISTER_SHELL_COMMAND(out, out_command_init)

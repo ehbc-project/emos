@@ -20,4 +20,4 @@ static void clear_command_init(void)
     shell_command_register(&clear_command);
 }
 
-SHELL_COMMAND(clear, clear_command_init)
+REGISTER_SHELL_COMMAND(clear, clear_command_init)

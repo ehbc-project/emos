@@ -19,4 +19,4 @@ static void poweroff_command_init(void)
     shell_command_register(&poweroff_command);
 }
 
-SHELL_COMMAND(poweroff, poweroff_command_init)
+REGISTER_SHELL_COMMAND(poweroff, poweroff_command_init)

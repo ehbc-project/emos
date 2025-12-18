@@ -1059,4 +1059,4 @@ static void close_directory(struct fs_directory *dir)
     free(dir);
 }
 
-FILESYSTEM_DRIVER(fat, fat_init)
+REGISTER_FILESYSTEM_DRIVER(fat, fat_init)

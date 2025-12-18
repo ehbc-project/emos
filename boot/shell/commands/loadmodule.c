@@ -54,4 +54,4 @@ static void loadmodule_command_init(void)
     shell_command_register(&loadmodule_command);
 }
 
-SHELL_COMMAND(loadmodule, loadmodule_command_init)
+REGISTER_SHELL_COMMAND(loadmodule, loadmodule_command_init)

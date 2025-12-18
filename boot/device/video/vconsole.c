@@ -492,4 +492,4 @@ static status_t get_interface(struct device *dev, const char *name, const void *
     return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(vconsole, vconsole_init)
+REGISTER_DEVICE_DRIVER(vconsole, vconsole_init)

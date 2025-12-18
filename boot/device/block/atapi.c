@@ -174,4 +174,4 @@ static status_t get_interface(struct device *dev, const char *name, const void *
     return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(atapi, atapi_init)
+REGISTER_DEVICE_DRIVER(atapi, atapi_init)

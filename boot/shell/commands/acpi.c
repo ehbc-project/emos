@@ -170,4 +170,4 @@ static void acpi_command_init(void)
     shell_command_register(&acpi_command);
 }
 
-SHELL_COMMAND(acpi, acpi_command_init)
+REGISTER_SHELL_COMMAND(acpi, acpi_command_init)

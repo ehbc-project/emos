@@ -26,7 +26,7 @@ int shell_execute(struct shell_instance *inst, const char *line);
 status_t shell_command_register(struct command *cmd);
 void shell_command_unregister(struct command *cmd);
 
-#define SHELL_COMMAND(name, init_func) \
+#define REGISTER_SHELL_COMMAND(name, init_func) \
     __constructor \
     static void _register_driver_##name(void) \
     { \

@@ -74,7 +74,7 @@ status_t filesystem_driver_find(const char *name, struct fs_driver **drv);
 status_t filesystem_auto_mount(struct device *__restrict dev, const char *__restrict name);
 status_t filesystem_mount(struct device *__restrict dev, const char *__restrict fsname, const char *__restrict name);
 
-#define FILESYSTEM_DRIVER(name, init_func) \
+#define REGISTER_FILESYSTEM_DRIVER(name, init_func) \
     __constructor \
     static void _register_driver_##name(void) \
     { \

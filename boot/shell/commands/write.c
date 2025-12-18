@@ -31,4 +31,4 @@ static void write_command_init(void)
     shell_command_register(&write_command);
 }
 
-SHELL_COMMAND(write, write_command_init)
+REGISTER_SHELL_COMMAND(write, write_command_init)

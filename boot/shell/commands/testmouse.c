@@ -21,6 +21,7 @@ static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
 
     const struct hid_interface *hidif;
     status = msdev->driver->get_interface(msdev, "hid", (const void **)&hidif);
+    if (!CHECK_SUCCESS(status)) return 1;
 
     struct device *fbdev;
     status = device_find("video0", &fbdev);
@@ -122,4 +123,4 @@ static void testmouse_command_init(void)
     shell_command_register(&testmouse_command);
 }
 
-SHELL_COMMAND(testmouse, testmouse_command_init)
+REGISTER_SHELL_COMMAND(testmouse, testmouse_command_init)

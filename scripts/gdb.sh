@@ -29,6 +29,7 @@ GDB_ARCH=$1
 case $GDB_ARCH in
     i386)
         OBJECTS=(
+            "build/boot/arch/i686/pc/bios/fdboot.elf"
             "build/boot/arch/i686/pc/bios/stage1.elf"
         )
         ;;

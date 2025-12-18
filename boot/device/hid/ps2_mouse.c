@@ -57,6 +57,8 @@ static status_t poll_event(struct device *dev, uint16_t *key, uint16_t *flags)
     int advance = 0;
     uint16_t ret_key = 0, ret_flags = 0;
     uint8_t byte;
+
+    if (data->seqbuf_start == data->seqbuf_end) return STATUS_NO_EVENT;
     
     status = _pc_isr_mask_interrupt(data->irq_num);
     if (!CHECK_SUCCESS(status)) goto has_error;
@@ -185,7 +187,7 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     struct device *ps2dev = NULL;
     const struct ps2_interface *ps2if = NULL;
     struct ps2_mouse_data *data = NULL;
-    uint8_t buf[2];
+    uint8_t buf[3];
 
     if (!rsrc || rsrc_cnt != 2 ||
         rsrc[0].type != RT_BUS || rsrc[0].base != rsrc[0].limit ||
@@ -209,7 +211,6 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     status = device_generate_name("mouse", dev->name, sizeof(dev->name));
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    LOG_DEBUG("creating device data...\n");
     data = malloc(sizeof(*data));
     data->ps2dev = ps2dev;
     data->ps2if = ps2if;
@@ -234,17 +235,21 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     status = ps2if->enable_port(ps2dev, rsrc[0].base);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    LOG_DEBUG("resetting keyboard...\n");
+    LOG_DEBUG("resetting mouse...\n");
     /* reset device */
     buf[0] = 0xFF;
 
     status = ps2if->send_data(ps2dev, rsrc[0].base, buf, 1);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 1);
+    status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 3);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    data->device_type = buf[0];
+    if (buf[0] != 0xFA || buf[1] != 0xAA) {
+        status = STATUS_HARDWARE_FAILED;
+        goto has_error;
+    }
+    data->device_type = buf[2];
 
     LOG_DEBUG("setting scale 2:1 mode...\n");
     /* set scaling 2:1 */
@@ -255,7 +260,10 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
 
     status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 1);
     if (!CHECK_SUCCESS(status)) goto has_error;
-    if (buf[0] != 0xFA) goto has_error;
+    if (buf[0] != 0xFA) {
+        status = STATUS_HARDWARE_FAILED;
+        goto has_error;
+    }
 
     LOG_DEBUG("setting sample rate...\n");
     /* set sample rate */
@@ -267,7 +275,10 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
 
     status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 1);
     if (!CHECK_SUCCESS(status)) goto has_error;
-    if (buf[0] != 0xFA) goto has_error;
+    if (buf[0] != 0xFA) {
+        status = STATUS_HARDWARE_FAILED;
+        goto has_error;
+    }
 
     LOG_DEBUG("enabling data reporting...\n");
     /* enable data reporting */
@@ -278,7 +289,10 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
 
     status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 1);
     if (!CHECK_SUCCESS(status)) goto has_error;
-    if (buf[0] != 0xFA) goto has_error;
+    if (buf[0] != 0xFA) {
+        status = STATUS_HARDWARE_FAILED;
+        goto has_error;
+    }
 
     status = _pc_isr_unmask_interrupt(data->irq_num);
     if (!CHECK_SUCCESS(status)) goto has_error;
@@ -330,4 +344,4 @@ static status_t get_interface(struct device *dev, const char *name, const void *
     return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(ps2_mouse, ps2_mouse_init)
+REGISTER_DEVICE_DRIVER(ps2_mouse, ps2_mouse_init)

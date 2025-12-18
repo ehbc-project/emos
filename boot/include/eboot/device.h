@@ -65,7 +65,7 @@ status_t device_driver_create(struct device_driver **drv);
 
 status_t device_driver_find(const char *name, struct device_driver **drv);
 
-#define DEVICE_DRIVER(name, init_func) \
+#define REGISTER_DEVICE_DRIVER(name, init_func) \
     __constructor \
     static void _register_driver_##name(void) \
     { \

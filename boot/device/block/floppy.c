@@ -122,4 +122,4 @@ static status_t get_interface(struct device *dev, const char *name, const void *
     return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(floppy, floppy_init)
+REGISTER_DEVICE_DRIVER(floppy, floppy_init)

@@ -25,4 +25,4 @@ static void bootnext_command_init(void)
     shell_command_register(&bootnext_command);
 }
 
-SHELL_COMMAND(bootnext, bootnext_command_init)
+REGISTER_SHELL_COMMAND(bootnext, bootnext_command_init)

@@ -130,4 +130,4 @@ static void dispimg_command_init(void)
     shell_command_register(&dispimg_command);
 }
 
-SHELL_COMMAND(dispimg, dispimg_command_init)
+REGISTER_SHELL_COMMAND(dispimg, dispimg_command_init)

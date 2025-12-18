@@ -144,4 +144,4 @@ static void chdir_command_init(void)
     shell_command_register(&chdir_command);
 }
 
-SHELL_COMMAND(chdir, chdir_command_init)
+REGISTER_SHELL_COMMAND(chdir, chdir_command_init)

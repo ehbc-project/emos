@@ -150,7 +150,7 @@ static void help_init(void)
     shell_command_register(&help);
 }
 
-SHELL_COMMAND(help, help_init)
+REGISTER_SHELL_COMMAND(help, help_init)
 
 static struct command shell_command = {
     .name = "shell",
@@ -163,5 +163,5 @@ static void shell_command_init(void)
     shell_command_register(&shell_command);
 }
 
-SHELL_COMMAND(shell, shell_command_init)
+REGISTER_SHELL_COMMAND(shell, shell_command_init)
 

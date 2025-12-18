@@ -28,4 +28,4 @@ static void lsfs_command_init(void)
     shell_command_register(&lsfs_command);
 }
 
-SHELL_COMMAND(lsfs, lsfs_command_init)
+REGISTER_SHELL_COMMAND(lsfs, lsfs_command_init)

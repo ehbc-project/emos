@@ -518,6 +518,8 @@ static status_t poll_event(struct device *dev, uint16_t *key, uint16_t *flags)
     struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
     status_t status;
 
+    if (data->seqbuf_start == data->seqbuf_end) return STATUS_NO_EVENT;
+
     status = _pc_isr_mask_interrupt(data->irq_num);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
@@ -722,4 +724,4 @@ static status_t get_interface(struct device *dev, const char *name, const void *
     return STATUS_ENTRY_NOT_FOUND;
 }
 
-DEVICE_DRIVER(ps2_keyboard, ps2_keyboard_init)
+REGISTER_DEVICE_DRIVER(ps2_keyboard, ps2_keyboard_init)
