@@ -19,6 +19,9 @@ struct ide_interface {
     status_t (*send_command)(struct device *, struct ata_command *);
     status_t (*send_command_pio_input)(struct device *, struct ata_command *, void *, size_t, size_t, size_t *);
     status_t (*send_command_pio_output)(struct device *, struct ata_command *, const void *, size_t, size_t, size_t *);
+    status_t (*send_command_packet)(struct device *, int, const uint8_t *, size_t, size_t);
+    status_t (*send_command_packet_input)(struct device *, int, const uint8_t *, size_t, void *, size_t, size_t, size_t *);
+    status_t (*send_command_packet_output)(struct device *, int, const uint8_t *, size_t, const void *, size_t, size_t, size_t *);
 };
 
 #endif // __EBOOT_INTERFACE_IDE_H__

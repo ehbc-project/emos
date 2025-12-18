@@ -1,6 +1,15 @@
 #ifndef __LIBALLOC_INTERNAL_H__
 #define __LIBALLOC_INTERNAL_H__
 
+#include <stdint.h>
+
+// If we are told to not define our own size_t, then we skip the define.
+//#define _HAVE_UINTPTR_T
+//typedef	unsigned long	uintptr_t;
+
+//This lets you prefix malloc and friends
+#define PREFIX(func)		func
+
 /** This is a boundary tag which is prepended to the
  * page or section of a page which we have allocated. It is
  * used to identify valid memory blocks that the

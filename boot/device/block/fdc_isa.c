@@ -7,10 +7,13 @@
 #include <eboot/asm/time.h>
 #include <eboot/asm/intrinsics/misc.h>
 
+#include <eboot/log.h>
 #include <eboot/macros.h>
 #include <eboot/status.h>
 #include <eboot/device.h>
 #include <eboot/interface/fdc.h>
+
+#define MODULE_NAME "fdc_isa"
 
 #define FDCREG_SRA             0x0
 #define FDCREG_SRB             0x1
@@ -25,6 +28,7 @@
 struct fdc_data {
     uint16_t io_base;
     int irq_ch, dma_ch;
+    struct isr_handler *isr;
 
     uint8_t dor;
     volatile uint8_t irq_received;
@@ -142,7 +146,7 @@ static const struct fdc_interface fdcif = {
     .reset = reset,
 };
 
-static void isr(struct device *dev, int num)
+static void isr(void *data, int num)
 {
 }
 
@@ -194,6 +198,7 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     data->dma_ch = rsrc[2].base;
     data->dor = 0;
     data->irq_received = 0;
+    data->isr = NULL;
     for (int i = 0; i < 4; i++) {
         data->drive_state[i].recalib = 0;
         data->drive_state[i].state = 0;
@@ -201,7 +206,10 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     }
     dev->data = data;
 
-    status = _pc_isr_set_interrupt_handler(data->irq_ch, dev, isr);
+    status = _pc_isr_mask_interrupt(rsrc[1].base);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = _pc_isr_add_interrupt_handler(data->irq_ch, dev, isr, &data->isr);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     status = fdc_reset(dev);
@@ -223,15 +231,26 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         status = fpdrv->probe(&fpdev, fpdrv, dev, res, ARRAY_SIZE(res));
         if (!CHECK_SUCCESS(status)) goto has_error;
     }
+
+    status = _pc_isr_unmask_interrupt(rsrc[1].base);
+    if (!CHECK_SUCCESS(status)) goto has_error;
     
     if (devout) *devout = dev;
+
+    LOG_DEBUG("initialization success\n");
 
     return STATUS_SUCCESS;
 
 has_error:
+    _pc_isr_unmask_interrupt(rsrc[1].base);
+
+    if (data && data->isr) {
+        _pc_isr_remove_handler(data->isr);
+    }
+
     if (dev) {
-        for (struct device *partdev = dev->first_child; partdev; partdev = partdev->sibling) {
-            partdev->driver->remove(partdev);
+        for (struct device *fddev = dev->first_child; fddev; fddev = fddev->sibling) {
+            fddev->driver->remove(fddev);
         }
     }
 
@@ -250,9 +269,13 @@ static status_t remove(struct device *dev)
 {
     struct fdc_data *data = (struct fdc_data *)dev->data;
 
+    _pc_isr_unmask_interrupt(data->irq_ch);
+
+    _pc_isr_remove_handler(data->isr);
+
     if (dev) {
-        for (struct device *partdev = dev->first_child; partdev; partdev = partdev->sibling) {
-            partdev->driver->remove(partdev);
+        for (struct device *fddev = dev->first_child; fddev; fddev = fddev->sibling) {
+            fddev->driver->remove(fddev);
         }
     }
 

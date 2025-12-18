@@ -9,7 +9,7 @@ typedef wchar_t wint_t;
 
 wint_t fgetwc(FILE *stream);
 wint_t getwc(FILE *stream);
-wint_t getwhar(void);
+wint_t getwchar(void);
 int fgetws(wchar_t *__restrict wbuf, int count, FILE *__restrict stream);
 
 wint_t fputwc(wchar_t wch, FILE *stream);

@@ -1,9 +1,3 @@
-/*
-    From now on, What should we do is initialize the devices needed to load the
-    kernel then load and jump to it. There's no need to detect and initialize
-    all devices, since the kernel will do the rest.
-*/
-
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -15,17 +9,21 @@
 #include <eboot/asm/bios/video.h>
 #include <eboot/asm/bios/keyboard.h>
 #include <eboot/asm/bios/mem.h>
+#include <eboot/asm/bios/misc.h>
 #include <eboot/asm/pci/cfgspace.h>
 #include <eboot/asm/io.h>
 #include <eboot/asm/idt.h>
 #include <eboot/asm/isr.h>
 #include <eboot/asm/pic.h>
+#include <eboot/asm/pc_gdt.h>
+#include <eboot/asm/apm.h>
 
 #include <eboot/compiler.h>
 #include <eboot/status.h>
 #include <eboot/panic.h>
 #include <eboot/macros.h>
 #include <eboot/debug.h>
+#include <eboot/log.h>
 #include <eboot/mm.h>
 #include <eboot/device.h>
 #include <eboot/filesystem.h>
@@ -37,6 +35,8 @@
 #include <uacpi/uacpi.h>
 #include <uacpi/event.h>
 #include <uacpi/tables.h>
+
+#define MODULE_NAME "init"
 
 extern void main(void);
 
@@ -82,12 +82,14 @@ static const struct cookie_io_functions early_stddbg_io = {
 static status_t init_nonpnp_devices(int has_acpi)
 {
     status_t status;
+    uacpi_status uacpi_status;
     int skip_legacy = 0, skip_8042 = 0, skip_rtc = 0;
     struct acpi_fadt *fadt;
     
     if (has_acpi) {
-        if (uacpi_table_fadt(&fadt)) {
-            panic(STATUS_UNKNOWN_ERROR, "Could not find FADT");
+        uacpi_status = uacpi_table_fadt(&fadt);
+        if (uacpi_unlikely_error(uacpi_status)) {
+            panic(uacpi_status, "Could not find FADT (has_acpi=%d)", has_acpi);
         }
 
         if (fadt->hdr.revision >= 3) {
@@ -196,21 +198,26 @@ static status_t init_nonpnp_devices(int has_acpi)
     }
 
     if (!skip_legacy) {
-        if (0) {
+        for (int i = 0; i < 4; i++) {
+            uint16_t io_base = ((uint16_t *)0x400)[i];
+            uint8_t irq_num = (i & 1) ? 0x23 : 0x24;
+
+            if (!io_base) continue;
+
             struct device *dev;
             struct device_driver *drv;
-
+    
             struct resource res[] = {
                 {
                     .type = RT_IOPORT,
-                    .base = 0x03F8,
-                    .limit = 0x03FF,
+                    .base = io_base,
+                    .limit = io_base + 8,
                     .flags = 0,
                 },
                 {
                     .type = RT_IRQ,
-                    .base = 0x24,
-                    .limit = 0x24,
+                    .base = irq_num,
+                    .limit = irq_num,
                     .flags = 0,
                 },
             };
@@ -221,48 +228,27 @@ static status_t init_nonpnp_devices(int has_acpi)
             status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
             if (!CHECK_SUCCESS(status)) return status;
         }
-        
-        if (0) {
+
+        for (int i = 0; i < 3; i++) {
+            uint16_t io_base = ((uint16_t *)0x408)[i];
+            uint8_t irq_num = 0x27 - i;
+
+            if (!io_base) continue;
+
             struct device *dev;
             struct device_driver *drv;
     
             struct resource res[] = {
                 {
                     .type = RT_IOPORT,
-                    .base = 0x02F8,
-                    .limit = 0x02FF,
+                    .base = io_base,
+                    .limit = io_base + 2,
                     .flags = 0,
                 },
                 {
                     .type = RT_IRQ,
-                    .base = 0x23,
-                    .limit = 0x23,
-                    .flags = 0,
-                },
-            };
-
-            status = device_driver_find("i8042", &drv);
-            if (!CHECK_SUCCESS(status)) return status;
-    
-            status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
-            if (!CHECK_SUCCESS(status)) return status;
-        }
-
-        if (0) {
-            struct device *dev;
-            struct device_driver *drv;
-    
-            struct resource res[] = {
-                {
-                    .type = RT_IOPORT,
-                    .base = 0x0278,
-                    .limit = 0x027A,
-                    .flags = 0,
-                },
-                {
-                    .type = RT_IRQ,
-                    .base = 0x27,
-                    .limit = 0x27,
+                    .base = irq_num,
+                    .limit = irq_num,
                     .flags = 0, 
                 },
             };
@@ -335,7 +321,7 @@ static status_t init_nonpnp_devices(int has_acpi)
             if (!CHECK_SUCCESS(status)) return status;
     
             status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
-            if (!CHECK_SUCCESS(status)) return status;
+            // if (!CHECK_SUCCESS(status)) return status;
         }
 
         {
@@ -366,8 +352,7 @@ static status_t init_nonpnp_devices(int has_acpi)
             status = device_driver_find("ide_isa", &drv);
             if (!CHECK_SUCCESS(status)) return status;
     
-            status = drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
-            if (!CHECK_SUCCESS(status)) return status;
+            drv->probe(&dev, drv, NULL, res, ARRAY_SIZE(res));
         }
     }
     
@@ -375,17 +360,11 @@ static status_t init_nonpnp_devices(int has_acpi)
         struct device *dev;
         struct device_driver *drv;
 
-        status = device_driver_find("vbe", &drv);
+        status = device_driver_find("vga", &drv);
         if (!CHECK_SUCCESS(status)) return status;
 
         status = drv->probe(&dev, drv, NULL, NULL, 0);
-        if (!CHECK_SUCCESS(status)) {
-            status = device_driver_find("vga", &drv);
-            if (!CHECK_SUCCESS(status)) return status;
-    
-            status = drv->probe(&dev, drv, NULL, NULL, 0);
-            if (!CHECK_SUCCESS(status)) return status;
-        }
+        if (!CHECK_SUCCESS(status)) return status;
     }
 
     return 0;
@@ -393,20 +372,23 @@ static status_t init_nonpnp_devices(int has_acpi)
 
 static uint8_t rtc_century_offset = 0x00;
 
-static status_t acpi_init(void)
+#define MAKE_ACPI_STATUS(uacpi_status) (0x80010000 | (uacpi_status))
+
+static status_t acpi_early_init(void)
 {
     uacpi_status uacpi_status;
     static uint8_t acpi_buf[4096];
 
     uacpi_status = uacpi_setup_early_table_access(acpi_buf, sizeof(acpi_buf));
     if (uacpi_unlikely_error(uacpi_status)) {
-        fprintf(stderr, "uacpi_initialize error: %s", uacpi_status_to_string(uacpi_status));
-        return 0x80010000 | uacpi_status;
+        LOG_DEBUG("uACPI initialization failed: %s\n", uacpi_status_to_string(uacpi_status));
+        return MAKE_ACPI_STATUS(uacpi_status);
     }
 
     struct acpi_fadt *fadt;
-    if (uacpi_table_fadt(&fadt)) {
-        panic(STATUS_UNKNOWN_ERROR, "Could not find FADT");
+    uacpi_status = uacpi_table_fadt(&fadt);
+    if (uacpi_unlikely_error(uacpi_status)) {
+        return MAKE_ACPI_STATUS(uacpi_status);
     }
 
     rtc_century_offset = fadt->century;
@@ -414,7 +396,38 @@ static status_t acpi_init(void)
     return STATUS_SUCCESS;
 }
 
-status_t mount_boot_disk(void)
+static status_t acpi_init(void)
+{
+    uacpi_status uacpi_status;
+
+    uacpi_status = uacpi_initialize(0);
+    if (uacpi_unlikely_error(uacpi_status)) {
+        LOG_DEBUG("uacpi_initialize() failed: %s\n", uacpi_status_to_string(uacpi_status));
+        return MAKE_ACPI_STATUS(uacpi_status);
+    }
+
+    uacpi_status = uacpi_namespace_load();
+    if (uacpi_unlikely_error(uacpi_status)) {
+        LOG_DEBUG("uacpi_namespace_load() failed: %s\n", uacpi_status_to_string(uacpi_status));
+        return MAKE_ACPI_STATUS(uacpi_status);
+    }
+
+    uacpi_status = uacpi_namespace_initialize();
+    if (uacpi_unlikely_error(uacpi_status)) {
+        LOG_DEBUG("uacpi_namespace_initialize() failed: %s\n", uacpi_status_to_string(uacpi_status));
+        return MAKE_ACPI_STATUS(uacpi_status);
+    }
+
+    uacpi_status = uacpi_finalize_gpe_initialization();
+    if (uacpi_unlikely_error(uacpi_status)) {
+        LOG_DEBUG("uacpi_finalize_gpe_initialization() failed: %s\n", uacpi_status_to_string(uacpi_status));
+        return MAKE_ACPI_STATUS(uacpi_status);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+status_t mount_boot_filesystem(void)
 {
     status_t status;
     struct device *bootdisk;
@@ -434,6 +447,8 @@ status_t mount_boot_disk(void)
     }
 
     if (!bootdisk) return STATUS_BOOT_DEVICE_INACCESSIBLE;
+
+    LOG_DEBUG("boot filesystem found from device \"%s\"\n", bootdisk->name);
 
     status = filesystem_auto_mount(bootdisk, "boot");
     if (!CHECK_SUCCESS(status)) return status;
@@ -459,7 +474,7 @@ static void raw_print(struct console_char_cell *buf, const char *str, int len)
     }
 }
 
-static void rtc_isr(struct device *dev, int num)
+static void rtc_isr(void *data, int num)
 {
     // static uint8_t prev_sec = 0xFF;
     // static uint64_t prev_irq_count = 0;
@@ -516,10 +531,10 @@ static void rtc_isr(struct device *dev, int num)
     // }
 }
 
-static void pit_isr(struct device *dev, int num)
+static void pit_isr(void *data, int num)
 {
     global_tick++;
-
+    
     // struct device *condev = find_device("console0");
     // if (!condev) return;
     // const struct console_interface *conif = condev->driver->get_interface(condev, "console");
@@ -552,60 +567,113 @@ static void bkpt_handler(struct interrupt_frame *frame, struct trap_regs *regs, 
     }
 }
 
+static void init_rtc(void)
+{
+    uint8_t temp;
+
+    io_out8(0x0070, 0x8A);
+    temp = io_in8(0x0071);
+    io_out8(0x0070, 0x8A); 
+    io_out8(0x0071, (temp & 0xF0) | 0x0C);
+
+    io_out8(0x0070, 0x8B);
+    temp = io_in8(0x0071);
+    io_out8(0x0070, 0x8B);
+    io_out8(0x0071, temp | 0x40);
+}
+
+static void init_pit(void)
+{
+    static const uint16_t pit_value = 1193182 / 20;
+    
+    io_out8(0x43, 0x34);
+    io_out8(0x40, pit_value & 0xFF);
+    io_out8(0x40, (pit_value >> 8) & 0xFF);
+}
+
 __noreturn
 void _pc_init(void)
 {
     status_t status;
-    int has_acpi;
+    int has_acpi = 0, has_apm = 0;
     struct chs bootdisk_geom;
-
-    bios_print_str("Starting bootloader...\r\n");
 
     freopencookie(NULL, "w", early_stderr_io, stderr);
     freopencookie(NULL, "w", early_stddbg_io, stddbg);
 
-    _pc_bios_disk_get_params(_pc_boot_drive, NULL, NULL, &bootdisk_geom, NULL);
-    status = _pc_bios_disk_read(_pc_boot_drive, disk_lba_to_chs(_pc_boot_part_base, bootdisk_geom), 1, _pc_boot_sector, NULL);
+    LOG_DEBUG("Starting bootloader...\n");
 
-    _pc_remap_pic_int(0x20, 0x28);
-    _pc_init_idt();
+    LOG_DEBUG("initializing ISRs...\n");
+    _pc_isr_init();
 
-    hexdump(stderr, _pc_boot_sector, 16, 0);
+    LOG_DEBUG("initializing GDT...\n");
+    _pc_gdt_init();
 
+    uint32_t cursor = 0;
+    struct smap_entry entry;
+
+    do {
+        _pc_bios_mem_query_map(&cursor, &entry, sizeof(entry));
+        LOG_DEBUG("memory map entry %08lX%08lX %08lX%08lX %08lX\n", entry.base_addr_high, entry.base_addr_low, entry.length_high, entry.length_low, entry.type);
+    } while (cursor);
+
+    LOG_DEBUG("initializing memory management...\n");
     mm_init();
 
-    io_out8(0x70, 0x8A);
-    uint8_t prev = io_in8(0x71);
-    io_out8(0x70, 0x8A);
-    io_out8(0x71, (prev & 0xF0) | 0x0C);
+    LOG_DEBUG("reloading VBR sector...\n");
+    _pc_bios_disk_get_params(_pc_boot_drive, NULL, NULL, &bootdisk_geom, NULL);
+    status = _pc_bios_disk_read(_pc_boot_drive, disk_lba_to_chs(_pc_boot_part_base, bootdisk_geom), 1, _pc_boot_sector, NULL);
+    if (!CHECK_SUCCESS(status)) {
+        panic(status, "could not reload VBR sector");
+    }
+    
+    _pc_pic_remap_int(0x20, 0x28);
 
-    io_out8(0x70, 0x8B);
-    prev = io_in8(0x71);
-    io_out8(0x70, 0x8B);
-    io_out8(0x71, prev | 0x40);
+    _pc_isr_add_trap_handler(0x03, bkpt_handler, NULL);
+    _pc_isr_add_interrupt_handler(0x20, NULL, pit_isr, NULL);
+    _pc_isr_add_interrupt_handler(0x28, NULL, rtc_isr, NULL);
 
-    _pc_isr_set_trap_handler(0x03, bkpt_handler);
-    _pc_isr_set_interrupt_handler(0x20, NULL, pit_isr);
-    _pc_isr_set_interrupt_handler(0x28, NULL, rtc_isr);
+    LOG_DEBUG("initializing RTC...\n");
+    init_rtc();
 
+    LOG_DEBUG("initializing PIT...\n");
+    init_pit();
+
+    LOG_DEBUG("early-initializing ACPI...\n");
+    status = acpi_early_init();
+    has_acpi = CHECK_SUCCESS(status);
+    if (!has_acpi) {
+        LOG_DEBUG("ACPI is not available\n");
+    }
+
+    LOG_DEBUG("running constructors...\n");
     for (int i = 0; &(&__init_array_start)[i] != &__init_array_end; i++) {
         (&__init_array_start)[i]();
     }
 
-    static const uint16_t pit_value = 1193182 / 20;
-    io_out8(0x43, 0x34);
-    io_out8(0x40, pit_value & 0xFF);
-    io_out8(0x40, (pit_value >> 8) & 0xFF);
-    
-    status = acpi_init();
-    has_acpi = !CHECK_SUCCESS(status);
-
     interrupt_enable();
 
+    LOG_DEBUG("initializing non-PnP devices...\n");
     status = init_nonpnp_devices(has_acpi);
     if (!CHECK_SUCCESS(status)) {
         fprintf(stderr, "init_nonpnp_devices() failed: 0x%08X\n", status);
         panic(status, "failed to initialize essential non-PnP devices");
+    }
+
+    if (has_acpi) {
+        LOG_DEBUG("initializing ACPI...\n");
+        status = acpi_init();
+        if (!CHECK_SUCCESS(status)) {
+            fprintf(stderr, "acpi_init() failed: 0x%08X\n", status);
+            panic(status, "failed to initialize ACPI");
+        }
+    } else {
+        LOG_DEBUG("initializing APM...\n");
+        status = _pc_apm_init();
+        has_apm = CHECK_SUCCESS(status);
+        if (!has_apm) {
+            LOG_DEBUG("system power management disabled\n");
+        }
     }
 
     // /* Disable BIOS USB emulation */
@@ -636,18 +704,19 @@ void _pc_init(void)
     //     while (global_tick - tick_start < 50) {}
     // }
 
-    status = mount_boot_disk();
+    LOG_DEBUG("mounting boot filesystem...\n");
+    status = mount_boot_filesystem();
     if (!CHECK_SUCCESS(status)) {
         panic(status, "failed to mount bootloader partition");
     }
 
+    LOG_DEBUG("starting main...\n");
     main();
 
     panic(STATUS_UNKNOWN_ERROR, "Kernel returned");
 }
 
-__destructor
-static void _pc_fini(void)
+void _pc_cleanup(void)
 {
-    _pc_remap_pic_int(0x08, 0x70);
+    _pc_pic_remap_int(0x08, 0x70);
 }

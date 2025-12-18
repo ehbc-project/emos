@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.13)
 include(FetchContent)
 
 add_subdirectory(liballoc)
+add_subdirectory(libatomic)
 
 if ("${TARGET_FIRMWARE}" STREQUAL "uefi")
     ExternalProject_Add(gnu-efi
@@ -15,6 +16,26 @@ if ("${TARGET_FIRMWARE}" STREQUAL "uefi")
         INSTALL_COMMAND ""
     )
 endif()
+
+
+FetchContent_Declare(openlibm
+    URL "https://github.com/JuliaMath/openlibm/archive/refs/tags/v0.8.7.tar.gz"
+    URL_HASH MD5=46c5a80dc8a4375a98430d74ea13d412
+    DOWNLOAD_EXTRACT_TIMESTAMP false
+)
+set(CMAKE_PROJECT_VERSION "0.8.0")
+include_directories(openlibm PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+include_directories(openlibm PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/liballoc/include")
+FetchContent_MakeAvailable(openlibm)
+
+target_include_directories(bootloader PRIVATE
+    "${CMAKE_BINARY_DIR}/_deps/openlibm-src/include"
+)
+
+add_library(openlibm.lib STATIC IMPORTED GLOBAL)
+add_dependencies(openlibm.lib PRIVATE openlibm)
+set_target_properties(openlibm.lib PROPERTIES IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/_deps/openlibm-build/libopenlibm.a")
+
 
 FetchContent_Declare(zlib
     URL "https://zlib.net/zlib-1.3.1.tar.gz"
@@ -51,9 +72,9 @@ add_library(uacpi.lib STATIC)
 target_compile_features(uacpi.lib PUBLIC c_std_11)
 target_compile_features(uacpi.lib PUBLIC cxx_std_14)
 target_link_libraries(uacpi.lib gcc)
-target_compile_definitions(uacpi.lib PRIVATE UACPI_BAREBONES_MODE=1 UACPI_PHYS_ADDR_IS_32BITS=1 UACPI_REDUCED_HARDWARE=1 UACPI_FORMATTED_LOGGING=1)
+target_compile_definitions(uacpi.lib PRIVATE UACPI_PHYS_ADDR_IS_32BITS=1 UACPI_FORMATTED_LOGGING=1)
 
 target_include_directories(uacpi.lib PRIVATE ${UACPI_INCLUDES})
 target_sources(uacpi.lib PRIVATE ${UACPI_SOURCES})
 
-target_compile_definitions(bootloader PRIVATE UACPI_BAREBONES_MODE=1 UACPI_PHYS_ADDR_IS_32BITS=1 UACPI_REDUCED_HARDWARE=1 UACPI_FORMATTED_LOGGING=1)
+target_compile_definitions(bootloader PRIVATE UACPI_PHYS_ADDR_IS_32BITS=1 UACPI_FORMATTED_LOGGING=1)

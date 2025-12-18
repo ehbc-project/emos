@@ -54,8 +54,9 @@ _pc_bios_video_set_cursor_shape
 _pc_bios_video_set_mode
 _pc_bios_video_set_pixel
 _pc_bios_video_write_tty
-_pc_isr_set_interrupt_handler
-_pc_isr_set_trap_handler
+_pc_isr_add_interrupt_handler
+_pc_isr_add_trap_handler
+_pc_isr_remove_handler
 _pc_panic
 _pc_poweroff
 _pc_reboot
@@ -145,6 +146,8 @@ liballoc_free
 liballoc_lock
 liballoc_unlock
 localtime
+log_printf
+log_set_level
 longjmp
 main
 malloc
@@ -181,7 +184,6 @@ puts
 qsort
 rand
 realloc
-s1main
 setjmp
 shell_command_register
 shell_command_unregister

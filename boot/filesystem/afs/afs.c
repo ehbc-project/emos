@@ -108,6 +108,7 @@ static status_t probe(struct device *dev, struct fs_driver *drv)
     status_t status;
     struct device *blkdev = NULL;
     const struct block_interface *blkif = NULL;
+    size_t block_size;
     struct afs_first_sector lba0;
 
     blkdev = dev;
@@ -115,6 +116,10 @@ static status_t probe(struct device *dev, struct fs_driver *drv)
 
     status = blkdev->driver->get_interface(blkdev, "block", (const void **)&blkif);
     if (!CHECK_SUCCESS(status)) return status;
+
+    status = blkif->get_block_size(blkdev, &block_size);
+    if (!CHECK_SUCCESS(status)) return status;
+    if (block_size != 512) return STATUS_SIZE_CHECK_FAILURE;
 
     /* read sector 0 */
     status = blkif->read(blkdev, 0, &lba0, 1, NULL);
@@ -138,6 +143,7 @@ static status_t mount(struct filesystem **fsout, struct fs_driver *drv, struct d
     struct filesystem *fs = NULL;
     struct device *blkdev = NULL;
     const struct block_interface *blkif = NULL;
+    size_t block_size;
     struct afs_data *data = NULL;
     struct afs_first_sector lba0;
     struct afs_rdb rdb;
@@ -151,6 +157,10 @@ static status_t mount(struct filesystem **fsout, struct fs_driver *drv, struct d
 
     status = blkdev->driver->get_interface(blkdev, "block", (const void **)&blkif);
     if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = blkif->get_block_size(blkdev, &block_size);
+    if (!CHECK_SUCCESS(status)) return status;
+    if (block_size != 512) return STATUS_SIZE_CHECK_FAILURE;
 
     status = filesystem_create(&fs, drv, dev, name);
     if (!CHECK_SUCCESS(status)) goto has_error;

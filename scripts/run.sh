@@ -79,7 +79,7 @@ case $QEMU_MACHINE in
         MACHINE_TYPE=q35
         DEVICES=(
             "nvme,drive=fd0,serial=1234"
-            "ide-cd,drive=rd0"
+            # "ide-cd,drive=rd0"
             intel-hda
             qemu-xhci
             ich9-usb-uhci6
@@ -95,7 +95,7 @@ case $QEMU_MACHINE in
         )
         DRIVES=(
             "file=disk.img,id=fd0,if=none,format=raw"
-            "file=build/boot/cdrom.iso,id=rd0,if=none,format=raw"
+            # "file=build/boot/cdrom.iso,id=rd0,if=none,format=raw"
         )
         ADDITIONAL_FLAGS=(-debugcon stdio)
         ;;
@@ -104,8 +104,8 @@ case $QEMU_MACHINE in
         MACHINE_TYPE=pc
         DEVICES=(
             # "floppy,drive=rd0"
-            "ide-hd,drive=fd0"
-            # "ide-cd,drive=rd1"
+            "ide-hd,bus=ide.0,drive=fd0"
+            "ide-cd,bus=ide.0,drive=rd1"
             intel-hda
             qemu-xhci
             ich9-usb-uhci6
@@ -119,8 +119,8 @@ case $QEMU_MACHINE in
         )
         DRIVES=(
             # "file=build/boot/floppy.img,id=rd0,if=none,format=raw"
-            "file=disk.img,id=fd0,if=none,format=raw"
-            # "file=build/boot/cdrom.iso,id=rd1,if=none,format=raw"
+            "file=disk.img,id=fd0,index=0,if=none,format=raw"
+            "file=cdrom.iso,id=rd1,index=1,if=none,format=raw"
         )
         ADDITIONAL_FLAGS=(-debugcon stdio)
         ;;

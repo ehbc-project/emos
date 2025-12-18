@@ -28,12 +28,10 @@ struct console_char_cell {
 };
 
 struct console_interface {
-    status_t (*set_dimension)(struct device *, int, int);
     status_t (*get_dimension)(struct device *, int *, int *);
     status_t (*get_buffer)(struct device *, struct console_char_cell **);
     status_t (*invalidate)(struct device *, int, int, int, int);
     status_t (*flush)(struct device *);
-    status_t (*present)(struct device *);
     status_t (*set_cursor_pos)(struct device *, int, int);
     status_t (*get_cursor_pos)(struct device *, int *, int *);
     status_t (*set_cursor_visibility)(struct device *, int);

@@ -85,7 +85,7 @@ case $BOOT_TYPE in
 esac
 mcopy -s -i "$CURRENT_PART_IMAGE" boot/config ::/CONFIG
 mmd -i "$CURRENT_PART_IMAGE" ::/MODULES
-mcopy -i "$CURRENT_PART_IMAGE" build/boot/modules/example/example.mod ::/MODULES/EXAMPLE.MOD
+mcopy -i "$CURRENT_PART_IMAGE" build/boot/modules/bootemos/bootemos.mod ::/MODULES/BOOTEMOS.MOD
 mcopy -i "$CURRENT_PART_IMAGE" build/boot/modules/helloworld/helloworld.mod ::/MODULES/HELOWRLD.MOD
 mcopy -i "$CURRENT_PART_IMAGE" build/boot/bootloader.map ::/BOOTLDR.MAP
 mcopy -i "$CURRENT_PART_IMAGE" build/boot/unifont.bfn ::/UNIFONT.BFN

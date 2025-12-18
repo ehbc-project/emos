@@ -1,6 +1,8 @@
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
+#include <eboot/log.h>
 #include <eboot/status.h>
 #include <eboot/device.h>
 #include <eboot/interface/block.h>
@@ -9,13 +11,47 @@
 #include "ata.h"
 #include "atapi.h"
 
+#define MODULE_NAME "atapi"
+
 struct atapi_data {
+    struct device *idedev;
+    const struct ide_interface *ideif;
     int slave;
 };
 
+static status_t get_block_size(struct device *dev, size_t *size)
+{
+    if (size) *size = 2048;
+
+    return STATUS_SUCCESS;
+}
+
 static status_t read(struct device *dev, lba_t lba, void *buf, size_t count, size_t *result)
 {
-    return STATUS_UNIMPLEMENTED;
+    status_t status;
+    uint8_t command[12];
+    struct atapi_data *data = (struct atapi_data *)dev->data;
+    size_t xfer_count;
+
+    command[0] = 0xA8;
+    command[1] = 0x00;
+    command[2] = (lba >> 24) & 0xFF;
+    command[3] = (lba >> 16) & 0xFF;
+    command[4] = (lba >> 8) & 0xFF;
+    command[5] = lba & 0xFF;
+    command[6] = (count >> 24) & 0xFF;
+    command[7] = (count >> 16) & 0xFF;
+    command[8] = (count >> 8) & 0xFF;
+    command[9] = count & 0xFF;
+    command[10] = 0;
+    command[11] = 0;
+
+    status = data->ideif->send_command_packet_input(data->idedev, data->slave, command, sizeof(command), buf, 2048, count, &xfer_count);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    if (result) *result = xfer_count;
+
+    return STATUS_SUCCESS;
 }
 
 static status_t write(struct device *dev, lba_t lba, const void *buf, size_t count, size_t *result)
@@ -24,6 +60,7 @@ static status_t write(struct device *dev, lba_t lba, const void *buf, size_t cou
 }
 
 static const struct block_interface blkif = {
+    .get_block_size = get_block_size,
     .read = read,
     .write = write,
 };
@@ -55,6 +92,7 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     struct device *idedev = NULL;
     const struct ide_interface *ideif = NULL;
     struct atapi_data *data = NULL;
+    struct atapi_device_ident atapi_ident;
 
     if (!rsrc || rsrc_cnt != 1 || rsrc[0].type != RT_BUS || rsrc[0].base != rsrc[0].limit || rsrc[0].base > 1) {
         status = STATUS_INVALID_RESOURCE;
@@ -77,10 +115,29 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     data = malloc(sizeof(*data));
-    data->slave = 0;
+    data->idedev = idedev;
+    data->ideif = ideif;
+    data->slave = rsrc[0].base;
     dev->data = data;
+
+    LOG_DEBUG("identifying device...\n");
+    struct ata_command cmd = {
+        .extended = 0,
+        .command = 0xA1,  /* IDENTIFY PACKET DEVICE */
+        .features = 0,
+        .count = 0,
+        .sector = 0,
+        .cylinder_low = 0,
+        .cylinder_high = 0,
+        .drive_head = 0xA0 | (data->slave ? 0x10 : 0x00),
+    };
+
+    status = ideif->send_command_pio_input(idedev, &cmd, &atapi_ident, sizeof(atapi_ident), 1, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
     
     if (devout) *devout = dev;
+
+    LOG_DEBUG("initialization success\n");
 
     return STATUS_SUCCESS;
 

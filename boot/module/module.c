@@ -6,6 +6,7 @@
 #include <limits.h>
 
 #include <eboot/macros.h>
+#include <eboot/log.h>
 #include <eboot/status.h>
 #include <eboot/panic.h>
 #include <eboot/elf.h>
@@ -15,38 +16,32 @@
 
 #include "symbol.h"
 
-static status_t resolve_symbol_addr(struct elf_file *elf, unsigned int index, uintptr_t load_vaddr, uintptr_t P, void **addr)
+#define MODULE_NAME "module"
+
+static status_t resolve_symbol_addr(struct elf_file *elf, struct elf32_sym *sym, uintptr_t load_vaddr, uintptr_t *addr)
 {
-    struct elf32_sym sym;
     status_t status;
     char *sym_name = NULL;
-    
-    status = elf_get_symbol(elf, index, &sym, sizeof(sym));
-    if (!CHECK_SUCCESS(status)) goto has_error;
 
-    sym_name = elf->strtab + sym.name;
-    fprintf(stderr, "finding symbol %s: ", sym_name);
+    sym_name = elf->strtab + sym->name;
+    LOG_DEBUG("finding symbol %s...\n", sym->name ? sym_name : "(no name)");
 
-    if (sym.shndx != 0) {
-        if (addr) *addr = (void *)(load_vaddr + sym.value);
-        fprintf(stderr, "%p", *addr);
+    if (sym->shndx != SHN_UNDEF) {
+        if (addr) *addr = load_vaddr + sym->value;
+        LOG_DEBUG("symbol found at %08lX\n", *addr);
         return STATUS_SUCCESS;
     }
 
     void *sym_addr;
     status = _module_find_eboot_symbol(sym_name, &sym_addr);
-    if (!CHECK_SUCCESS(status)) goto has_error;
-
-    if (addr) *addr = sym_addr;
-    fprintf(stderr, "%p", *addr);
-    return STATUS_SUCCESS;
-
-has_error:
-    if (sym_name) {
-        fprintf(stderr, "not found");
+    if (!CHECK_SUCCESS(status)) {
+        LOG_DEBUG("symbol not found\n");
+        return status;
     }
 
-    return status;
+    if (addr) *addr = (uintptr_t)sym_addr;
+    LOG_DEBUG("symbol found at %08lX\n", *addr);
+    return STATUS_SUCCESS;
 }
 
 static uint32_t resolve_symbol_value(struct elf_file *elf, unsigned int index)
@@ -60,20 +55,20 @@ static uint32_t resolve_symbol_value(struct elf_file *elf, unsigned int index)
     return sym.value;
 }
 
-static status_t relocate_section(struct elf_file *elf, unsigned int section_idx, unsigned int rel_section_idx, uintptr_t load_vaddr)
+static status_t relocate_section(struct elf_file *elf, unsigned int rel_section_idx, uintptr_t got_symbol_offset, uintptr_t load_vaddr)
 {
     status_t status;
     struct elf32_shdr shdr;
-    // uintptr_t section_offset;
     struct elf32_rel *rel_section = NULL;
+    struct elf32_sym sym;
     size_t rel_section_size;
-    uint32_t P, A, S, L, B;
+    unsigned int target_section_idx;
+    int rel_type;
+    unsigned int rel_sym_idx;
+    uintptr_t P, A, S, B, GOT;
 
-    /* get section offset */
-    status = elf_get_section_header(elf, section_idx, &shdr, sizeof(shdr));
-    if (!CHECK_SUCCESS(status)) goto has_error;
-
-    // section_offset = shdr.offset;
+    B = load_vaddr;
+    GOT = B + got_symbol_offset;
 
     /* load relocation section */
     status = elf_get_section_header(elf, rel_section_idx, &shdr, sizeof(shdr));
@@ -81,66 +76,83 @@ static status_t relocate_section(struct elf_file *elf, unsigned int section_idx,
 
     rel_section = malloc(shdr.size);
     rel_section_size = shdr.size;
+    target_section_idx = shdr.info;
 
     status = elf_load_section(elf, rel_section_idx, rel_section, rel_section_size);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    /* get section offset */
+    status = elf_get_section_header(elf, target_section_idx, &shdr, sizeof(shdr));
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
     /* relocate */
-    // fprintf(stddbg, "#,  P,        B,        S,        L,        A,        NEW\n");
     for (int i = 0; (i + 1) * sizeof(struct elf32_rel) <= rel_section_size; i++) {
-        B = load_vaddr;
+        rel_type = ELF32_R_TYPE(rel_section[i].info);
+        rel_sym_idx = ELF32_R_SYM(rel_section[i].info);
+
         P = load_vaddr + rel_section[i].offset;
         A = *(uint32_t *)P;
 
-        status = resolve_symbol_addr(elf, rel_section[i].info >> 8, load_vaddr, rel_section[i].offset, (void **)&S);
-        if (!CHECK_SUCCESS(status)) return status;
+        if (rel_type != R_386_RELATIVE && rel_type != R_386_32) {
+            status = elf_get_symbol(elf, rel_sym_idx, &sym, sizeof(sym));
+            if (!CHECK_SUCCESS(status)) goto has_error;
+        
+            status = resolve_symbol_addr(elf, &sym, load_vaddr, &S);
+            if (!CHECK_SUCCESS(status)) return status;
+        }
 
-        L = S;
+        switch (rel_type) {
+            case R_386_NONE:
+                LOG_DEBUG("type=%02d\n", rel_type);
+                break;
+            case R_386_32:
+                if (sym.shndx == SHN_UNDEF) {
+                    LOG_DEBUG("type=%02d, (P:%08lX) = B:%08lX + A:%08lX\n", rel_type, P, B, A);
+                    *(uint32_t *)P = B + A;
+                } else {
+                    LOG_DEBUG("type=%02d, (P:%08lX) = S:%08lX + A:%08lX\n", rel_type, P, S, A);
+                    *(uint32_t *)P = S + A;
+                }
+                break;
+            case R_386_PC32:
+                if (sym.shndx == SHN_UNDEF) {
+                    LOG_DEBUG("type=%02d, (P:%08lX) = S:%08lX + A:%08lX - P\n", rel_type, P, S, A);
+                    *(uint32_t *)P = S + A - P;
+                }
+                break;
+            case R_386_GOT32:
+            case R_386_GOT32X:
+                LOG_DEBUG("type=%02d, (A:%08lX + GOT:%08lX) = (%08lX) = S:%08lX\n", rel_type, A, GOT, A + GOT, S);
+                *(elf32_addr_t *)(A + GOT) = S;
 
-        // fprintf(stddbg, "%02d, %08lX, %08lX, %08lX, %08lX, %08lX, ", (int)(rel_section[i].info & 0xFF), P, S, L, B, A);
-
-        switch (rel_section[i].info & 0xFF) {
-            case 0:
                 break;
-            case 1:
-                *(uint32_t *)P = S + A;
-                break;
-            case 2:
-                *(uint32_t *)P = S + A - P;
-                break;
-            case 3:
-                // *(uint32_t *)P = G + A;
-                break;
-            case 4:
-                *(uint32_t *)P = L + A - P;
-                break;
-            case 5:
-                break;
-            case 6:
+            case R_386_GLOB_DAT:
+            case R_386_JMP_SLOT:
+                LOG_DEBUG("type=%02d, (P:%08lX) = S:%08lX\n", rel_type, P, S);
                 *(uint32_t *)P = S;
                 break;
-            case 7:
-                *(uint32_t *)P = S;
-                break;
-            case 8:
+            case R_386_RELATIVE:
+                LOG_DEBUG("type=%02d, (P:%08lX) = B:%08lX + A:%08lX\n", rel_type, P, B, A);
                 *(uint32_t *)P = B + A;
                 break;
-            case 9:
-                // *(uint32_t *)P = S + A - GOT;
+            case R_386_GOTOFF:
+                if (sym.shndx == SHN_UNDEF) {
+                    LOG_DEBUG("type=%02d, (P:%08lX) = S:%08lX + A:%08lX - GOT:%08lX\n", rel_type, P, S, A, GOT);
+                    *(uint32_t *)P = S + A - GOT;
+                }
                 break;
-            case 10:
-                // *(uint32_t *)P = GOT + A - P;
-                break;
-            case 11:
-                *(uint32_t *)P = L + A;
+            case R_386_GOTPC:
+                if (sym.shndx == SHN_UNDEF) {
+                    LOG_DEBUG("type=%02d, (P:%08lX) = GOT:%08lX + A:%08lX - P\n", rel_type, P, GOT, A);
+                    *(uint32_t *)P = GOT + A - P;
+                }
                 break;
             default:
+                panic(STATUS_UNSUPPORTED, "relocation type %02d not supported", rel_type);
                 break;
         }
 
-        // fprintf(stddbg, "%08lX\n", *(uint32_t *)P);
-
-        fprintf(stderr, " (%p) %08lX -> %08lX\n", (void *)P, A, *(uint32_t *)P);
+        LOG_DEBUG("relocated to %08lX\n", *(uint32_t *)P);
     }
 
     free(rel_section);
@@ -170,6 +182,7 @@ static status_t run_func_array(struct elf_file *elf, const char *section_name, u
     unsigned int section_idx;
     struct elf32_shdr shdr;
     size_t data_len;
+    void (**func_arr)(void);
 
     status = elf_find_section(elf, section_name, &section_idx);
     if (!CHECK_SUCCESS(status)) return status;
@@ -178,11 +191,9 @@ static status_t run_func_array(struct elf_file *elf, const char *section_name, u
     if (!CHECK_SUCCESS(status)) return status;
 
     data_len = shdr.size;
-
-    for (uintptr_t offset = 0; offset < data_len; offset += sizeof(void (*)(void))) {
-        void (**func)(void) = (void *)(load_vaddr + shdr.address + offset);
-
-        (*func)();
+    func_arr = (void *)(load_vaddr + shdr.address);
+    for (int i = 0; i < data_len / sizeof(void (*)(void)); i++) {
+        func_arr[i]();
     }
 
     return STATUS_SUCCESS;
@@ -194,14 +205,17 @@ status_t module_load(const char *path, struct module **modout)
     struct elf_file *elf = NULL;
     struct elf32_ehdr ehdr;
     struct elf32_shdr shdr;
+    struct elf32_phdr phdr;
+    struct elf32_sym sym;
+    size_t program_size = 0;
+    void *load_vaddr = NULL;
+    unsigned int got_symbol_idx;
+    uintptr_t got_symbol_offset;
+    unsigned int rel_section_idx;
     unsigned int note_eboot_section_idx;
     void *note_eboot_section = NULL;
     uintptr_t note_eboot_offset;
     size_t note_eboot_section_len;
-    unsigned int section_idx, rel_section_idx;
-    char rel_section_name[128];
-    uintptr_t load_vaddr = 0xB0000000;
-    struct elf32_phdr phdr;
     struct module *mod = NULL;
     char *mod_name = NULL;
     status_t (*entry)(void) = NULL;
@@ -212,6 +226,65 @@ status_t module_load(const char *path, struct module **modout)
     status = elf_get_header(elf, &ehdr, sizeof(ehdr));
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    if (ehdr.type != ET_DYN) {
+        status = STATUS_UNSUPPORTED;
+        goto has_error;
+    }
+
+    LOG_DEBUG("calculating program size...\n");
+    for (int i = 0; i < ehdr.phnum; i++) {
+        status = elf_get_program_header(elf, i, &phdr, sizeof(phdr));
+        if (!CHECK_SUCCESS(status)) goto has_error;
+
+        if (phdr.type != PT_LOAD && phdr.type != PT_DYNAMIC) continue;
+
+        if (program_size < phdr.vaddr + phdr.memsz) {
+            program_size = phdr.vaddr + phdr.memsz;
+        }
+    }
+
+    LOG_DEBUG("allocating program memory...\n");
+    status = mm_allocate_pages(ALIGN(program_size, 4096) >> 12, &load_vaddr);
+    if (!CHECK_SUCCESS(status)) return status;
+    LOG_DEBUG("program memory allocated to 0x%p\n", load_vaddr);
+
+    LOG_DEBUG("loading program...\n");
+    for (int i = 0; i < ehdr.phnum; i++) {
+        status = elf_get_program_header(elf, i, &phdr, sizeof(phdr));
+        if (!CHECK_SUCCESS(status)) goto has_error;
+
+        if (phdr.type != PT_LOAD && phdr.type != PT_DYNAMIC) continue;
+
+        status = elf_load_program(elf, i, (void *)((uintptr_t)load_vaddr + phdr.vaddr));
+        if (!CHECK_SUCCESS(status)) goto has_error;
+    }
+
+    LOG_DEBUG("getting offset of GOT...\n");
+    status = elf_find_symbol(elf, "_GLOBAL_OFFSET_TABLE_", &got_symbol_idx);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = elf_get_symbol(elf, got_symbol_idx, &sym, sizeof(sym));
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    got_symbol_offset = sym.value;
+
+    static const char *rel_sections[] = {
+        ".rel.dyn",
+        ".rel.got",
+        ".rel.text",
+    };
+
+    for (int i = 0; i < ARRAY_SIZE(rel_sections); i++) {
+        LOG_DEBUG("relocating section %s...\n", rel_sections[i]);
+        status = elf_find_section(elf, rel_sections[i], &rel_section_idx);
+        if (status == STATUS_ENTRY_NOT_FOUND) continue;
+        if (!CHECK_SUCCESS(status)) goto has_error;
+
+        status = relocate_section(elf, rel_section_idx, got_symbol_offset, (uintptr_t)load_vaddr);
+        if (!CHECK_SUCCESS(status)) goto has_error;
+    }
+    
+    LOG_DEBUG("loading section .note.eboot...\n");
     status = elf_find_section(elf, ".note.eboot", &note_eboot_section_idx);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
@@ -228,45 +301,13 @@ status_t module_load(const char *path, struct module **modout)
     status = elf_load_section(elf, note_eboot_section_idx, note_eboot_section, note_eboot_section_len);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    for (int i = 0; i < ehdr.phnum; i++) {
-        status = elf_get_program_header(elf, i, &phdr, sizeof(phdr));
-        if (!CHECK_SUCCESS(status)) goto has_error;
-
-        if (phdr.type != PT_LOAD) continue;
-
-        status = elf_load_program(elf, i, (void *)(load_vaddr + phdr.vaddr));
-        if (!CHECK_SUCCESS(status)) goto has_error;
-    }
-
-    static const char *section_names[] = {
-        ".init_array",
-        ".text",
-        ".fini_array",
-        ".data",
-        ".rodata",
-    };
-
-    for (int i = 0; i < ARRAY_SIZE(section_names); i++) {
-        status = elf_find_section(elf, section_names[i], &section_idx);
-        if (status == STATUS_ENTRY_NOT_FOUND) continue;
-        if (!CHECK_SUCCESS(status)) goto has_error;
-
-        snprintf(rel_section_name, sizeof(rel_section_name), ".rel%s", section_names[i]);
-
-        status = elf_find_section(elf, rel_section_name, &rel_section_idx);
-        if (status == STATUS_ENTRY_NOT_FOUND) continue;
-        if (!CHECK_SUCCESS(status)) goto has_error;
-
-        status = relocate_section(elf, section_idx, rel_section_idx, load_vaddr);
-        if (!CHECK_SUCCESS(status)) goto has_error;
-    }
-
     mod = malloc(sizeof(*mod));
     if (!mod) {
         status = STATUS_UNKNOWN_ERROR;
         goto has_error;
     }
 
+    LOG_DEBUG("reading metadata...\n");
     note_eboot_offset = 0;
     while (note_eboot_offset < note_eboot_section_len) {
         struct note_eboot_entry *entry = (void *)((uintptr_t)note_eboot_section + note_eboot_offset);
@@ -289,23 +330,25 @@ status_t module_load(const char *path, struct module **modout)
         status = STATUS_INVALID_VALUE;
         goto has_error;
     }
-
+    
     mod->elf = elf;
     mod->name = mod_name;
-    mod->load_vaddr = (void *)load_vaddr;
+    mod->load_vaddr = load_vaddr;
+    mod->program_size = program_size;
 
     free(note_eboot_section);
     note_eboot_section = NULL;
 
-    status = run_func_array(elf, ".init_array", load_vaddr);
+    LOG_DEBUG("executing constructor functions...\n");
+    status = run_func_array(elf, ".init_array", (uintptr_t)load_vaddr);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    entry = (void *)(load_vaddr + ehdr.entry);
-    if (entry) {
+    LOG_DEBUG("executing entry point...\n");
+    entry = (void *)((uintptr_t)load_vaddr + ehdr.entry);
+    if (ehdr.entry) {
         status = entry();
         if (!CHECK_SUCCESS(status)) goto has_error;
     }
-
 
     if (!mod_list_head) {
         mod_list_head = mod;
@@ -324,7 +367,7 @@ status_t module_load(const char *path, struct module **modout)
 
 has_error:
     if (entry) {
-        run_func_array(elf, ".fini_array", load_vaddr);
+        run_func_array(elf, ".fini_array", (uintptr_t)load_vaddr);
     }
 
     if (mod_name) {
@@ -339,6 +382,10 @@ has_error:
         free(mod);
     }
 
+    if (load_vaddr) {
+        mm_free_pages(load_vaddr, ALIGN(program_size, 4096) >> 12, NULL);
+    }
+
     if (elf) {
         elf_close(elf);
     }
@@ -348,6 +395,10 @@ has_error:
 
 void module_unload(struct module *mod)
 {
+    struct elf_file *elf;
+    void *load_vaddr;
+    size_t program_size;
+
     if (!mod_list_head) return;
 
     struct module *prev_mod = NULL;
@@ -362,8 +413,16 @@ void module_unload(struct module *mod)
 
     run_func_array(mod->elf, ".fini_array", (uintptr_t)mod->load_vaddr);
 
+    elf = mod->elf;
+    load_vaddr = mod->load_vaddr;
+    program_size = mod->program_size;
+
     free(mod->name);
     free(mod);
+
+    mm_free_pages(load_vaddr, ALIGN(program_size, 4096) >> 12, NULL);
+
+    elf_close(elf);
 }
 
 struct module *module_get_first_mod(void)

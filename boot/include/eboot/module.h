@@ -11,6 +11,7 @@ struct module {
 
     char *name;
     void *load_vaddr;
+    size_t program_size;
 };
 
 status_t module_load(const char *path, struct module **mod);

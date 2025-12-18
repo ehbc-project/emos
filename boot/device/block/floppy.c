@@ -1,13 +1,22 @@
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
+#include <eboot/log.h>
 #include <eboot/device.h>
 #include <eboot/interface/fdc.h>
 #include <eboot/interface/block.h>
 
+#define MODULE_NAME "floppy"
+
 struct floppy_data {
     int a;
 };
+
+static status_t get_block_size(struct device *dev, size_t *size)
+{
+    return STATUS_UNIMPLEMENTED;
+}
 
 static status_t read(struct device *dev, lba_t lba, void *buf, size_t count, size_t *result)
 {
@@ -20,6 +29,7 @@ static status_t write(struct device *dev, lba_t lba, const void *buf, size_t cou
 }
 
 static const struct block_interface blkif = {
+    .get_block_size = get_block_size,
     .read = read,
     .write = write,
 };
@@ -74,6 +84,8 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
 
     data = malloc(sizeof(*data));
     dev->data = data;
+
+    LOG_DEBUG("initialization success\n");
 
     return STATUS_SUCCESS;
 

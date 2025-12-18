@@ -5,9 +5,15 @@
 
 #include <eboot/asm/io.h>
 #include <eboot/asm/idt.h>
+#include <eboot/asm/pic.h>
+#include <eboot/asm/intrinsics/idt.h>
 
+#include <eboot/debug.h>
 #include <eboot/panic.h>
+#include <eboot/log.h>
 #include <eboot/macros.h>
+
+#define MODULE_NAME "isr"
 
 #define DECLARE_ISRxy(x, y) extern void _pc_isr_##x##y(void);
 #define DECLARE_ISRx(x) \
@@ -41,60 +47,53 @@ DECLARE_ISRx(c) DECLARE_ISRx(d) DECLARE_ISRx(e) DECLARE_ISRx(f)
         .offset_high = ((uint32_t)_pc_isr_##num >> 16) & 0xFFFF, \
     }
 
-extern struct idt_entry *_i686_idt_ptr;
 
 struct idt_entry _pc_idt[256];
-struct isr_table_entry *_pc_isr_table[256];
+struct isr_handler *_pc_isr_table[256];
 
-void _pc_init_idt(void)
+void _pc_isr_init(void)
 {
-    _i686_idt_ptr = _pc_idt;
-    asm(
-        "pushl  $%0 \n"
-        "pushw  $2047\n"
-        "lidt   (%%esp)\n"
-        "add    $6, %%esp\n"
-        :
-        : "m"(_pc_idt)
-        :
-    );
+    _i686_idtr.size = sizeof(_pc_idt) - 1;
+    _i686_idtr.idt_ptr = (uint32_t)&_pc_idt;
+    
+    _i686_lidt(&_i686_idtr);
 
     for (int i = 0; i < ARRAY_SIZE(_pc_isr_table); i++) {
         _pc_isr_table[i] = NULL;
     }
 
-    SET_INT_ENTRY(00);  /* #DE */
+    SET_TRAP_ENTRY(00);  /* #DE */
     SET_TRAP_ENTRY(01);  /* #DB */
-    SET_INT_ENTRY(02);  /* NMI */
+    SET_TRAP_ENTRY(02);  /* NMI */
     SET_TRAP_ENTRY(03);  /* #BP */
     SET_TRAP_ENTRY(04);  /* #OF */
-    SET_INT_ENTRY(05);  /* #BR */
-    SET_INT_ENTRY(06);  /* #UD */
-    SET_INT_ENTRY(07);  /* #NM */
-    SET_INT_ENTRY(08);  /* #DF */
-    SET_INT_ENTRY(09);
-    SET_INT_ENTRY(0a);  /* #TS */
-    SET_INT_ENTRY(0b);  /* #NP */
-    SET_INT_ENTRY(0c);  /* #SS */
-    SET_INT_ENTRY(0d);  /* #GP */
-    SET_INT_ENTRY(0e);  /* #PF */
-    SET_INT_ENTRY(0f);
-    SET_INT_ENTRY(10);  /* #MF */
-    SET_INT_ENTRY(11);  /* #AC */
-    SET_INT_ENTRY(12);  /* #MC */
-    SET_INT_ENTRY(13);  /* #XM */
-    SET_INT_ENTRY(14);  /* #VE */
-    SET_INT_ENTRY(15);  /* #CP */
-    SET_INT_ENTRY(16);
-    SET_INT_ENTRY(17);
-    SET_INT_ENTRY(18);
-    SET_INT_ENTRY(19);
-    SET_INT_ENTRY(1a);
-    SET_INT_ENTRY(1b);
-    SET_INT_ENTRY(1c);  /* #HV */
-    SET_INT_ENTRY(1d);  /* #VC */
-    SET_INT_ENTRY(1e);  /* #SX */
-    SET_INT_ENTRY(1f);
+    SET_TRAP_ENTRY(05);  /* #BR */
+    SET_TRAP_ENTRY(06);  /* #UD */
+    SET_TRAP_ENTRY(07);  /* #NM */
+    SET_TRAP_ENTRY(08);  /* #DF */
+    SET_TRAP_ENTRY(09);
+    SET_TRAP_ENTRY(0a);  /* #TS */
+    SET_TRAP_ENTRY(0b);  /* #NP */
+    SET_TRAP_ENTRY(0c);  /* #SS */
+    SET_TRAP_ENTRY(0d);  /* #GP */
+    SET_TRAP_ENTRY(0e);  /* #PF */
+    SET_TRAP_ENTRY(0f);
+    SET_TRAP_ENTRY(10);  /* #MF */
+    SET_TRAP_ENTRY(11);  /* #AC */
+    SET_TRAP_ENTRY(12);  /* #MC */
+    SET_TRAP_ENTRY(13);  /* #XM */
+    SET_TRAP_ENTRY(14);  /* #VE */
+    SET_TRAP_ENTRY(15);  /* #CP */
+    SET_TRAP_ENTRY(16);
+    SET_TRAP_ENTRY(17);
+    SET_TRAP_ENTRY(18);
+    SET_TRAP_ENTRY(19);
+    SET_TRAP_ENTRY(1a);
+    SET_TRAP_ENTRY(1b);
+    SET_TRAP_ENTRY(1c);  /* #HV */
+    SET_TRAP_ENTRY(1d);  /* #VC */
+    SET_TRAP_ENTRY(1e);  /* #SX */
+    SET_TRAP_ENTRY(1f);
     
     /* hardware interrupts (PIC) */
     SET_INT_ENTRY(20); SET_INT_ENTRY(21); SET_INT_ENTRY(22); SET_INT_ENTRY(23);
@@ -159,59 +158,111 @@ void _pc_init_idt(void)
     SET_TRAP_ENTRY(fc); SET_TRAP_ENTRY(fd); SET_TRAP_ENTRY(fe); SET_TRAP_ENTRY(ff);
 }
 
-status_t _pc_isr_set_interrupt_handler(int num, struct device *dev, interrupt_handler_t func)
+status_t _pc_isr_add_interrupt_handler(int num, void *data, interrupt_handler_t func, struct isr_handler **handler)
 {
-    struct isr_table_entry *newentry = malloc(sizeof(**_pc_isr_table));
-    if (!newentry) {
-        return STATUS_UNKNOWN_ERROR;
-    }
+    if (num > 0xFF) return STATUS_INVALID_VALUE;
+
+    LOG_DEBUG("adding intrrupt handler to #%02X...\n", num);
+
+    struct isr_handler *newentry = malloc(sizeof(**_pc_isr_table));
+    if (!newentry) return STATUS_UNKNOWN_ERROR;
     newentry->next = NULL;
-    newentry->dev = dev;
+    newentry->data = data;
     newentry->interrupt_handler = func;
     newentry->is_interrupt = 1;
+    newentry->irq_num = num;
 
     if (!_pc_isr_table[num]) {
         _pc_isr_table[num] = newentry;
     } else {
-        struct isr_table_entry *entry = _pc_isr_table[num];
-        while (entry->next) {
-            entry = entry->next;
-        }
+        struct isr_handler *entry = _pc_isr_table[num];
+        for (; entry->next; entry = entry->next) {}
 
         entry->next = newentry;
     }
 
+    if (handler) *handler = newentry;
+
     return STATUS_SUCCESS;
 }
 
-status_t _pc_isr_set_trap_handler(int num, trap_handler_t func)
+status_t _pc_isr_add_trap_handler(int num, trap_handler_t func, struct isr_handler **handler)
 {
-    struct isr_table_entry *newentry = malloc(sizeof(**_pc_isr_table));
-    if (!newentry) {
-        return STATUS_UNKNOWN_ERROR;
-    }
+    if (num > 0xFF) return STATUS_INVALID_VALUE;
+
+    LOG_DEBUG("adding trap handler to #%02X...\n", num);
+
+    struct isr_handler *newentry = malloc(sizeof(**_pc_isr_table));
+    if (!newentry) return STATUS_UNKNOWN_ERROR;
     newentry->next = NULL;
-    newentry->dev = NULL;
+    newentry->data = NULL;
     newentry->trap_handler = func;
     newentry->is_interrupt = 0;
+    newentry->irq_num = num;
 
     if (!_pc_isr_table[num]) {
         _pc_isr_table[num] = newentry;
     } else {
-        struct isr_table_entry *entry = _pc_isr_table[num];
-        while (entry->next) {
-            entry = entry->next;
-        }
+        struct isr_handler *entry = _pc_isr_table[num];
+        for (; entry->next; entry = entry->next) {}
 
         entry->next = newentry;
+    }
+
+    if (handler) *handler = newentry;
+
+    return STATUS_SUCCESS;
+}
+
+void _pc_isr_remove_handler(struct isr_handler *handler)
+{
+    struct isr_handler *prev_entry = NULL;
+    
+    LOG_DEBUG("removing intrrupt handler from #%02X...\n", handler->irq_num);
+
+    if (!_pc_isr_table[handler->irq_num]) return;
+    for (struct isr_handler *current = _pc_isr_table[handler->irq_num]; current->next; current = current->next) {
+        if (current->next == handler) {
+            prev_entry = current;
+        }
+    }
+    if (!prev_entry) return;
+
+    prev_entry->next = handler->next;
+    
+    free(prev_entry);
+}
+
+status_t _pc_isr_mask_interrupt(int num)
+{
+    if (num > 0xFF) return STATUS_INVALID_VALUE;
+
+    // LOG_DEBUG("masking interrupt #%02X...\n", num);
+
+    _pc_idt[num].attributes &= ~0x80000000;
+
+    if (0x20 <= num && num < 0x30) {
+        /* mask PIC too */
+        _pc_pic_mask_int(num - 0x20);
     }
 
     return STATUS_SUCCESS;
 }
 
-struct isr_table_entry *_pc_get_isr_table_entry(int num)
+status_t _pc_isr_unmask_interrupt(int num)
 {
-    return _pc_isr_table[num];
+    if (num > 0xFF) return STATUS_INVALID_VALUE;
+
+    // LOG_DEBUG("unmasking interrupt #%02X...\n", num);
+
+    _pc_idt[num].attributes |= 0x80000000;
+
+    if (0x20 <= num && num < 0x30) {
+        /* unmask PIC too */
+        _pc_pic_unmask_int(num - 0x20);
+    }
+
+    return STATUS_SUCCESS;
 }
 
 static uint64_t irq_count = 0;
@@ -228,13 +279,11 @@ void _pc_isr_common(struct interrupt_frame *frame, struct trap_regs *regs, int n
 
     if (num < 0x20) {
         switch (num) {
-            case 0x08:
             case 0x0A:
             case 0x0B:
             case 0x0C:
             case 0x0D:
             case 0x0E:
-            case 0x11:
             case 0x15:
             case 0x1D:
             case 0x1E:
@@ -243,8 +292,10 @@ void _pc_isr_common(struct interrupt_frame *frame, struct trap_regs *regs, int n
             case 0x05:
             case 0x06:
             case 0x07:
+            case 0x08:
             case 0x09:
             case 0x10:
+            case 0x11:
             case 0x13:
             case 0x14:
                 is_fault = 1;
@@ -253,13 +304,15 @@ void _pc_isr_common(struct interrupt_frame *frame, struct trap_regs *regs, int n
     } else {
         if (num < 0x30) {
             if (num >= 0x28) {
-                io_out8(0xA0, 0x20);
+                io_out8(0x00A0, 0x20);
             }
-            io_out8(0x20, 0x20);
+            io_out8(0x0020, 0x20);
         }
     }
 
-    if (is_fault) {
+    struct isr_handler *current_isr = _pc_isr_table[num];
+
+    if (is_fault && !current_isr) {
         if (has_error) {
             panic(STATUS_UNKNOWN_ERROR, "Unrecoverable fault #%02X (error 0x%08X) has occurred at 0x%04X:0x%08lX", num, error, frame->cs, frame->eip);
         } else {
@@ -267,18 +320,17 @@ void _pc_isr_common(struct interrupt_frame *frame, struct trap_regs *regs, int n
         }
     }
 
-    struct isr_table_entry *current_isr = _pc_isr_table[num];
     if (!current_isr) {
         if (has_error) {
-            fprintf(stderr, "Unhandled interrupt #%02X (error 0x%08X) at 0x%04X:0x%08lX\n", num, error, frame->cs, frame->eip);
+            ILOG_WARN("unhandled interrupt #%02X (error 0x%08X) at 0x%04X:0x%08lX\n", num, error, frame->cs, frame->eip);
         } else if (num != 0x20 && num != 0x21 && num != 0x28 && num != 0x2C) {
-            fprintf(stderr, "Unhandled interrupt #%02X at 0x%04X:0x%08lX\n", num, frame->cs, frame->eip);
+            ILOG_WARN("unhandled interrupt #%02X at 0x%04X:0x%08lX\n", num, frame->cs, frame->eip);
         }
     }
 
     while (current_isr) {
         if (current_isr->is_interrupt && current_isr->interrupt_handler) {
-            current_isr->interrupt_handler(current_isr->dev, num);
+            current_isr->interrupt_handler(current_isr->data, num);
         } else if (current_isr->trap_handler) {
             current_isr->trap_handler(frame, regs, num, error);
         }

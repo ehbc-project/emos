@@ -3,8 +3,6 @@
 
 #include <eboot/shell.h>
 
-extern int helloworld_shell(void);
-
 static int helloworld_handler(struct shell_instance *inst, int argc, char **argv)
 {
     printf("Hello, World!\n");

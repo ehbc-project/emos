@@ -14,7 +14,7 @@ static status_t write(struct device *dev, const char *buf, size_t len, size_t *r
 {
     struct debugout_data *data = (struct debugout_data *)dev->data;
 
-    for (int i = 0; i < len; i++) {
+    for (int i = 0; buf[i] && i < len; i++) {
         io_out8(data->ioport, buf[i]);
     }
 

@@ -149,9 +149,7 @@ status_t elf_load_program(struct elf_file *elf, unsigned int index, void *vaddr)
     status = elf_get_program_header(elf, index, &phdr32, sizeof(phdr32));
     if (!CHECK_SUCCESS(status)) return status;
 
-    if (phdr32.type != PT_LOAD) return STATUS_CONFLICTING_STATE;
-
-    status = mm_allocate_pages_to(vaddr, ALIGN(phdr32.memsz, 4096) >> 12);
+    status = mm_allocate_pages_to(vaddr, (ALIGN((uintptr_t)vaddr + phdr32.memsz, 4096) >> 12) - ((uintptr_t)vaddr >> 12));
     if (!CHECK_SUCCESS(status)) return status;
 
     fseek(elf->fp, phdr32.offset, SEEK_SET);
@@ -251,5 +249,14 @@ status_t elf_get_symbol(struct elf_file *elf, unsigned int index, void *buf, siz
 
     memcpy(buf, &elf->symtab32[index], MIN(len, sizeof(struct elf32_sym)));
 
+    return STATUS_SUCCESS;
+}
+
+status_t elf_get_symbol_count(struct elf_file *elf, unsigned int *count)
+{
+    if (elf->ident.class != ELFCLASS32) return STATUS_UNSUPPORTED;
+
+    if (count) *count = elf->symtab_size / sizeof(struct elf32_sym);
+    
     return STATUS_SUCCESS;
 }

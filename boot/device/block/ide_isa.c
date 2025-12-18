@@ -6,10 +6,13 @@
 #include <eboot/asm/isr.h>
 #include <eboot/asm/intrinsics/misc.h>
 
+#include <eboot/log.h>
 #include <eboot/macros.h>
 #include <eboot/status.h>
 #include <eboot/device.h>
 #include <eboot/interface/ide.h>
+
+#define MODULE_NAME "ide_isa"
 
 #define IDEREG_DATA     0
 #define IDEREG_ERROR    1
@@ -30,6 +33,7 @@ struct ide_data {
     struct bus *ide_bus;
     uint16_t io_base0, io_base1;
     int irq_ch;
+    struct isr_handler *isr;
 };
 
 
@@ -51,7 +55,33 @@ static status_t bus_soft_reset(struct device *dev)
     do {
         _i686_pause();
         sr = io_in8(data->io_base1 + IDEREG_ALTSTAT);
+        if (sr & 0x01) return STATUS_HARDWARE_FAILED;
     } while (sr & 0x80);
+
+    return STATUS_SUCCESS;
+}
+
+static status_t switch_device(struct device *dev, int slave)
+{
+    struct ide_data *data = (struct ide_data *)dev->data;
+    uint8_t sr;
+
+    if ((io_in8(data->io_base0 + IDEREG_DRVHEAD) & 0x10) != (slave ? 0x10 : 0x00)) {
+        LOG_DEBUG("switching device...\n");
+        io_out8(data->io_base0 + IDEREG_DRVHEAD, 0xA0 | (slave ? 0x10 : 0x00));
+
+    } else {
+        sr = io_in8(data->io_base1 + IDEREG_ALTSTAT);
+    }
+    for (int i = 0; i < 15; i++) {
+        sr = io_in8(data->io_base1 + IDEREG_ALTSTAT);
+    }
+
+    while (sr & 0x80) {
+        _i686_pause();
+        sr = io_in8(data->io_base0 + IDEREG_STATUS);
+        if (sr & 0x01) return STATUS_HARDWARE_FAILED;
+    }
 
     return STATUS_SUCCESS;
 }
@@ -59,21 +89,14 @@ static status_t bus_soft_reset(struct device *dev)
 static status_t send_command(struct device *dev, struct ata_command *cmd)
 {
     struct ide_data *data = (struct ide_data *)dev->data;
+    status_t status;
     uint8_t sr;
 
-    do {
-        _i686_pause();
-        sr = io_in8(data->io_base0 + IDEREG_STATUS);
-    } while (sr & 0x80);
+    /* switch master/slave device */
+    status = switch_device(dev, cmd->drive_head & 0x10);
+    if (!CHECK_SUCCESS(status)) return status;
 
-    if ((io_in8(data->io_base0 + IDEREG_DRVHEAD) & 0x10) != (cmd->drive_head & 0x10)) {
-        io_out8(data->io_base0 + IDEREG_DRVHEAD, cmd->drive_head);
-        io_in8(data->io_base1 + IDEREG_ALTSTAT);
-        io_in8(data->io_base1 + IDEREG_ALTSTAT);
-        io_in8(data->io_base1 + IDEREG_ALTSTAT);
-        io_in8(data->io_base1 + IDEREG_ALTSTAT);
-    }
-
+    /* fill up register block */
     io_out8(data->io_base0 + IDEREG_DRVHEAD, cmd->drive_head);
 
     if (cmd->extended) {
@@ -90,19 +113,24 @@ static status_t send_command(struct device *dev, struct ata_command *cmd)
     io_out8(data->io_base0 + IDEREG_CYLLOW, cmd->cylinder_low & 0xFF);
     io_out8(data->io_base0 + IDEREG_CYLHIGH, cmd->cylinder_high & 0xFF);
     
+    /* send command */
     io_out8(data->io_base0 + IDEREG_COMMAND, cmd->command);
 
+    /* wait until the command is finished */
     do {
         _i686_pause();
         sr = io_in8(data->io_base0 + IDEREG_STATUS);
+        if (sr & 0x01) return STATUS_HARDWARE_FAILED;
     } while (sr & 0x80);
 
+    /* read result back */
     cmd->features = io_in8(data->io_base0 + IDEREG_ERROR);
     cmd->count = io_in8(data->io_base0 + IDEREG_COUNT);
     cmd->sector = io_in8(data->io_base0 + IDEREG_SECTOR);
     cmd->cylinder_low = io_in8(data->io_base0 + IDEREG_CYLLOW);
     cmd->cylinder_high = io_in8(data->io_base0 + IDEREG_CYLHIGH);
 
+    /* check if the command had failed */
     if (sr & 0x21) return STATUS_HARDWARE_FAILED;
 
     return STATUS_SUCCESS;
@@ -115,9 +143,11 @@ static status_t send_command_pio_input(struct device *dev, struct ata_command *c
     uint8_t sr;
     size_t xfer_count = 0;
 
+    /* send command */
     status = send_command(dev, cmd);
     if (!CHECK_SUCCESS(status)) return status;
 
+    /* read out data */
     do {
         do {
             _i686_pause();
@@ -131,6 +161,7 @@ static status_t send_command_pio_input(struct device *dev, struct ata_command *c
 end:
     if (result) *result = xfer_count;
 
+    /* check error again */
     sr = io_in8(data->io_base0 + IDEREG_STATUS);
 
     return (sr & 0x21) ? STATUS_HARDWARE_FAILED : STATUS_SUCCESS;
@@ -143,9 +174,11 @@ static status_t send_command_pio_output(struct device *dev, struct ata_command *
     uint8_t sr;
     size_t xfer_count = 0;
 
+    /* send command */
     status = send_command(dev, cmd);
     if (!CHECK_SUCCESS(status)) return status;
 
+    /* write out data */
     do {
         do {
             _i686_pause();
@@ -159,15 +192,106 @@ static status_t send_command_pio_output(struct device *dev, struct ata_command *
 end:
     if (result) *result = xfer_count;
 
+    /* check error again */
     sr = io_in8(data->io_base0 + IDEREG_STATUS);
 
     return (sr & 0x01) ? STATUS_HARDWARE_FAILED : STATUS_SUCCESS;
+}
+
+static status_t send_command_packet(struct device *dev, int slave, const uint8_t *packet, size_t packet_size, size_t data_block_size)
+{
+    struct ide_data *data = (struct ide_data *)dev->data;
+    status_t status;
+    uint8_t sr;
+
+    /* switch master/slave device */
+    status = switch_device(dev, slave);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    /* send PACKET command */
+    LOG_DEBUG("sending PACKET command...\n");
+    io_out8(data->io_base0 + IDEREG_FEATURES, 0x00);
+    io_out8(data->io_base0 + IDEREG_CYLLOW, data_block_size & 0xFF);
+    io_out8(data->io_base0 + IDEREG_CYLHIGH, (data_block_size >> 8) & 0xFF);
+    io_out8(data->io_base0 + IDEREG_COMMAND, 0xA0);
+
+    /* wait */
+    for (int i = 0; i < 4; i++) {
+        sr = io_in8(data->io_base1 + IDEREG_ALTSTAT);
+    }
+    
+    /* wait until the drive is ready to receive the packet */
+    LOG_DEBUG("waiting for device to ready...\n");
+    do {
+        _i686_pause();
+        sr = io_in8(data->io_base0 + IDEREG_STATUS);
+        if (sr & 0x01) return STATUS_HARDWARE_FAILED;
+    } while ((sr & 0x80) || !(sr & 0x08));
+
+    LOG_DEBUG("sending command...\n");
+    io_outs16(data->io_base0 + IDEREG_DATA, (const uint16_t *)packet, packet_size);
+
+    /* wait until the command is finished */
+    LOG_DEBUG("waiting until the command is finished...\n");
+    do {
+        _i686_pause();
+        sr = io_in8(data->io_base0 + IDEREG_STATUS);
+        if (sr & 0x01) return STATUS_HARDWARE_FAILED;
+    } while (sr & 0x80);
+
+    return STATUS_SUCCESS;
+}
+
+static status_t send_command_packet_input(struct device *dev, int slave, const uint8_t *packet, size_t packet_size, void *buf, size_t size, size_t count, size_t *result)
+{
+    struct ide_data *data = (struct ide_data *)dev->data;
+    status_t status;
+    uint8_t sr;
+    size_t xfer_count = 0;
+    size_t xfer_size;
+
+    /* send command */
+    status = send_command_packet(dev, slave, packet, packet_size, size);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    /* read out data */
+    do {
+        LOG_DEBUG("waiting for DRQ...\n");
+        do {
+            _i686_pause();
+            sr = io_in8(data->io_base0 + IDEREG_STATUS);
+            if (sr & 0x01) goto end;
+        } while ((sr & 0x80) || !(sr & 0x08));
+
+        xfer_size = ((size_t)io_in8(data->io_base0 + IDEREG_CYLHIGH) << 8) | io_in8(data->io_base0 + IDEREG_CYLLOW);
+        LOG_DEBUG("transfer size=%lu\n", xfer_size);
+    
+        io_ins16(data->io_base0 + IDEREG_DATA, buf + xfer_count * size, xfer_size / sizeof(uint16_t));
+
+        if (xfer_size < size) goto end;
+    } while (++xfer_count < count);
+
+end:
+    if (result) *result = xfer_count;
+
+    /* check error again */
+    sr = io_in8(data->io_base0 + IDEREG_STATUS);
+
+    return (sr & 0x01) ? STATUS_HARDWARE_FAILED : STATUS_SUCCESS;
+}
+
+static status_t send_command_packet_output(struct device *dev, int slave, const uint8_t *packet, size_t packet_size, const void *buf, size_t size, size_t count, size_t *result)
+{
+    return STATUS_UNSUPPORTED;
 }
 
 const struct ide_interface ideif = {
     .send_command = send_command,
     .send_command_pio_input = send_command_pio_input,
     .send_command_pio_output = send_command_pio_output,
+    .send_command_packet = send_command_packet,
+    .send_command_packet_input = send_command_packet_input,
+    .send_command_packet_output = send_command_packet_output,
 };
 
 static status_t detect_device(struct device *dev, int slave, int *atapi)
@@ -175,56 +299,67 @@ static status_t detect_device(struct device *dev, int slave, int *atapi)
     struct ide_data *data = (struct ide_data *)dev->data;
     status_t status;
     uint16_t idbuf[256];
+    struct ata_command cmd;
+    uint8_t sr, cyl_low, cyl_high;
     
+    LOG_DEBUG("soft-resetting bus...\n");
+    status = bus_soft_reset(dev);
+    if (!CHECK_SUCCESS(status)) return status;
+    
+    LOG_DEBUG("switching device...\n");
     io_out8(data->io_base0 + IDEREG_DRVHEAD, 0xA0 | (slave ? 0x10 : 0x00));
     io_in8(data->io_base1 + IDEREG_ALTSTAT);
     io_in8(data->io_base1 + IDEREG_ALTSTAT);
     io_in8(data->io_base1 + IDEREG_ALTSTAT);
-    io_in8(data->io_base1 + IDEREG_ALTSTAT);
-    if (io_in8(data->io_base1 + IDEREG_ALTSTAT) == 0x00) return STATUS_HARDWARE_FAILED;
+    sr = io_in8(data->io_base1 + IDEREG_ALTSTAT);
 
-    struct ata_command cmd = {
-        .extended = 0,
-        .command = 0xEC,  /* IDENTIFY DEVICE */
-        .features = 0,
-        .count = 0,
-        .sector = 0,
-        .cylinder_low = 0,
-        .cylinder_high = 0,
-        .drive_head = 0xA0 | (slave ? 0x10 : 0x00),
-    };
+    cyl_low = io_in8(data->io_base0 + IDEREG_CYLLOW);
+    cyl_high = io_in8(data->io_base0 + IDEREG_CYLHIGH);
     
-    status = send_command_pio_input(dev, &cmd, idbuf, sizeof(idbuf), 1, NULL);
-    if (!CHECK_SUCCESS(status)) return status;
+    if (!sr && cyl_low != 0x14 && cyl_high != 0xEB) return STATUS_HARDWARE_NOT_FOUND;
 
-    // if (cmd.count != 0x01 || cmd.sector != 0x01) return STATUS_HARDWARE_FAILED;
+    if (cyl_low == 0x00 && cyl_high == 0x00) {
+        LOG_DEBUG("sending IDENTIFY DEVICE command...\n");
+        cmd = (struct ata_command){
+            .extended = 0,
+            .command = 0xEC,  /* IDENTIFY DEVICE */
+            .features = 0,
+            .count = 0,
+            .sector = 0,
+            .cylinder_low = 0,
+            .cylinder_high = 0,
+            .drive_head = 0xA0 | (slave ? 0x10 : 0x00),
+        };
+        
+        status = send_command_pio_input(dev, &cmd, idbuf, sizeof(idbuf), 1, NULL);
+        if (!CHECK_SUCCESS(status)) return status;
 
-    if (cmd.cylinder_low == 0x00 && cmd.cylinder_high == 0x00) {
         if (atapi) *atapi = 0;
         return STATUS_SUCCESS;
-    } else if (cmd.cylinder_low != 0x14 || cmd.cylinder_high != 0xEB) {
+    } else if (cyl_low == 0x14 && cyl_high == 0xEB) {
+        LOG_DEBUG("sending IDENTIFY PACKET DEVICE command...\n");
+        cmd = (struct ata_command){
+            .extended = 0,
+            .command = 0xA1,  /* IDENTIFY PACKET DEVICE */
+            .features = 0,
+            .count = 0,
+            .sector = 0,
+            .cylinder_low = 0,
+            .cylinder_high = 0,
+            .drive_head = 0xA0 | (slave ? 0x10 : 0x00),
+        };
+    
+        status = send_command_pio_input(dev, &cmd, idbuf, sizeof(idbuf), 1, NULL);
+        if (!CHECK_SUCCESS(status)) return status;
+    
+        if (atapi) *atapi = 1;
+        return STATUS_SUCCESS;
+    } else {
         return STATUS_UNSUPPORTED;
     }
-
-    cmd = (struct ata_command){
-        .extended = 0,
-        .command = 0xA1,  /* IDENTIFY PACKET DEVICE */
-        .features = 0,
-        .count = 0,
-        .sector = 0,
-        .cylinder_low = 0,
-        .cylinder_high = 0,
-        .drive_head = 0xA0 | (slave ? 0x10 : 0x00),
-    };
-
-    status = send_command_pio_input(dev, &cmd, idbuf, sizeof(idbuf), 1, NULL);
-    if (!CHECK_SUCCESS(status)) return status;
-
-    if (atapi) *atapi = 1;
-    return STATUS_SUCCESS;
 }
 
-static void isr(struct device *dev, int num)
+static void isr(void *data, int num)
 {
 }
 
@@ -276,19 +411,33 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     data->io_base0 = rsrc[0].base;
     data->io_base1 = rsrc[1].base;
     data->irq_ch = rsrc[2].base;
+    data->isr = NULL;
     dev->data = data;
 
-    status = bus_soft_reset(dev);
-    if (!CHECK_SUCCESS(status)) goto has_error;
-    
-    status = isr_set_interrupt_handler(rsrc[2].base, dev, isr);
+    status = _pc_isr_mask_interrupt(data->irq_ch);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    LOG_DEBUG("registering interrupt service routine...\n");
+    status = isr_add_interrupt_handler(rsrc[2].base, dev, isr, &data->isr);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    LOG_DEBUG("detecting master device...\n");
     status = detect_device(dev, 0, &master_atapi);
     master_present = CHECK_SUCCESS(status);
+    if (master_present) {
+        LOG_DEBUG("master device detected as %s\n", master_atapi ? "atapi" : "ata");
+    } else {
+        LOG_DEBUG("master device not detected\n");
+    }
 
+    LOG_DEBUG("detecting slave device...\n");
     status = detect_device(dev, 1, &slave_atapi);
     slave_present = CHECK_SUCCESS(status);
+    if (slave_present) {
+        LOG_DEBUG("slave device detected as %s\n", slave_atapi ? "atapi" : "ata");
+    } else {
+        LOG_DEBUG("slave device not detected\n");
+    }
 
     if ((master_present && !master_atapi) || (slave_present && !slave_atapi)) {
         status = device_driver_find("ata", &atadrv);
@@ -301,6 +450,8 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     }
 
     if (master_present) {
+        LOG_DEBUG("initializing master device...\n");
+        
         struct resource res[] = {
             {
                 .type = RT_BUS,
@@ -318,6 +469,8 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     }
 
     if (slave_present) {
+        LOG_DEBUG("initializing slave device...\n");
+
         struct resource res[] = {
             {
                 .type = RT_BUS,
@@ -333,12 +486,37 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
             atadrv->probe(&drvdev, atadrv, dev, res, ARRAY_SIZE(res));
         }
     }
+
+    status = _pc_isr_unmask_interrupt(data->irq_ch);
+    if (!CHECK_SUCCESS(status)) goto has_error;
     
     if (devout) *devout = dev;
+
+    LOG_DEBUG("initialization success\n");
 
     return STATUS_SUCCESS;
 
 has_error:
+    _pc_isr_unmask_interrupt(rsrc[2].base);
+
+    if (data && data->isr) {
+        _pc_isr_remove_handler(data->isr);
+    }
+
+    if (dev) {
+        for (struct device *diskdev = dev->first_child; diskdev; diskdev = diskdev->sibling) {
+            diskdev->driver->remove(diskdev);
+        }
+    }
+
+    if (data) {
+        free(data);
+    }
+
+    if (dev) {
+        device_remove(dev);
+    }
+
     return status;
 }
 
@@ -346,9 +524,13 @@ static status_t remove(struct device *dev)
 {
     struct ide_data *data = (struct ide_data *)dev->data;
 
+    _pc_isr_unmask_interrupt(data->irq_ch);
+
+    _pc_isr_remove_handler(data->isr);
+
     if (dev) {
-        for (struct device *partdev = dev->first_child; partdev; partdev = partdev->sibling) {
-            partdev->driver->remove(partdev);
+        for (struct device *diskdev = dev->first_child; diskdev; diskdev = diskdev->sibling) {
+            diskdev->driver->remove(diskdev);
         }
     }
 

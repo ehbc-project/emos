@@ -59,7 +59,7 @@ _pc_isr_\num:
     DEFINE_ISR      05, 0
     DEFINE_ISR      06, 0
     DEFINE_ISR      07, 0
-    DEFINE_ISR      08, 1
+    DEFINE_ISR      08, 0
     DEFINE_ISR      09, 0
     DEFINE_ISR      0a, 1
     DEFINE_ISR      0b, 1
@@ -68,7 +68,7 @@ _pc_isr_\num:
     DEFINE_ISR      0e, 1
     DEFINE_ISR      0f, 0
     DEFINE_ISR      10, 0
-    DEFINE_ISR      11, 1
+    DEFINE_ISR      11, 0
     DEFINE_ISR      12, 0
     DEFINE_ISR      13, 0
     DEFINE_ISR      14, 0

@@ -14,7 +14,8 @@ static int readblk_handler(struct shell_instance *inst, int argc, char **argv)
     lba_t lba;
     struct device *blkdev;
     const struct block_interface *blkif;
-    uint8_t buf[512];
+    size_t blksize;
+    uint8_t buf[2048];
 
     if (argc < 3) {
         fprintf(stderr, "usage: %s device lba\n", argv[0]);
@@ -31,9 +32,18 @@ static int readblk_handler(struct shell_instance *inst, int argc, char **argv)
     status = blkdev->driver->get_interface(blkdev, "block", (const void **)&blkif);
     if (!CHECK_SUCCESS(status)) return 1;
 
-    blkif->read(blkdev, lba, buf, 1, NULL);
+    status = blkif->get_block_size(blkdev, &blksize);
+    if (!CHECK_SUCCESS(status)) return 1;
 
-    hexdump(stdout, buf, sizeof(buf), 0);
+    if (blksize > sizeof(buf)) {
+        fprintf(stderr, "%s: block size too big\n", argv[0]);
+        return 1;
+    }
+
+    status = blkif->read(blkdev, lba, buf, 1, NULL);
+    if (!CHECK_SUCCESS(status)) return 1;
+
+    hexdump(stdout, buf, blksize, 0);
 
     return 0;
 }

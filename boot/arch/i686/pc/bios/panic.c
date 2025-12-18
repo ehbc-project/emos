@@ -34,7 +34,7 @@ void _pc_panic(status_t status, const char *fmt, ...)
     io_out8(0x0064, 0x60);
     io_out8(0x0060, 0x63);
 
-    _pc_remap_pic_int(0x08, 0x70);
+    _pc_pic_remap_int(0x08, 0x70);
 
     _pc_bios_video_set_mode(0x03);
 

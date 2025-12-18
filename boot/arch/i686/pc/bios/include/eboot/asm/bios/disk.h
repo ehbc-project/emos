@@ -38,7 +38,7 @@ struct bios_extended_drive_params {
     uint64_t total_sectors;
     uint16_t bytes_per_sector;
 
-    farptr_t edd_config_params;
+    farptr16_t edd_config_params;
 
     uint16_t device_path_signature;
     uint8_t device_path_size;

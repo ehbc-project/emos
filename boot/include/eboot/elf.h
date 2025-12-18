@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <eboot/asm/elf.h>
+
 #include <eboot/status.h>
 #include <eboot/compiler.h>
 
@@ -65,7 +67,6 @@ struct elf_ident {
 #define EM_NONE           0x00
 #define EM_M32            0x01
 #define EM_SPARC          0x02
-#define EM_386            0x03
 #define EM_68K            0x04
 #define EM_88K            0x05
 #define EM_IAMCU          0x06
@@ -342,23 +343,28 @@ struct elf64_phdr {
 } __packed;
 
 /* sh_type */
-#define SHT_NULL        0
-#define SHT_PROGBITS    1
-#define SHT_SYMTAB      2
-#define SHT_STRTAB      3
-#define SHT_RELA        4
-#define SHT_HASH        5
-#define SHT_DYNAMIC     6
-#define SHT_NOTE        7
-#define SHT_NOBITS      8
-#define SHT_REL	        9
-#define SHT_SHLIB       10
-#define SHT_DYNSYM      11
-#define SHT_NUM	        12
-#define SHT_LOPROC      0x70000000
-#define SHT_HIPROC      0x7fffffff
-#define SHT_LOUSER      0x80000000
-#define SHT_HIUSER      0xffffffff
+#define SHT_NULL            0
+#define SHT_PROGBITS        1
+#define SHT_SYMTAB          2
+#define SHT_STRTAB          3
+#define SHT_RELA            4
+#define SHT_HASH            5
+#define SHT_DYNAMIC         6
+#define SHT_NOTE            7
+#define SHT_NOBITS          8
+#define SHT_REL	            9
+#define SHT_SHLIB           10
+#define SHT_DYNSYM          11
+#define SHT_NUM	            12
+#define SHT_INIT_ARRAY      14
+#define SHT_FINI_ARRAY      15
+#define SHT_PREINIT_ARRAY   16
+#define SHT_GROUP           17
+#define SHT_SYMTAB_SHNDX    18
+#define SHT_LOPROC          0x70000000
+#define SHT_HIPROC          0x7fffffff
+#define SHT_LOUSER          0x80000000
+#define SHT_HIUSER          0xffffffff
 
 /* sh_flags */
 #define SHF_WRITE               0x1
@@ -413,6 +419,33 @@ struct elf64_shdr {
     elf64_xword_t addralign;
     elf64_xword_t entry_size;
 } __packed;
+
+#define ELF32_ST_BIND(info)          ((info) >> 4)
+#define ELF32_ST_TYPE(info)          ((info) & 0xf)
+#define ELF32_ST_INFO(bind, type)    (((bind) << 4) + ((type) & 0xf))
+
+#define ELF64_ST_BIND(info)          ((info) >> 4)
+#define ELF64_ST_TYPE(info)          ((info) & 0xf)
+#define ELF64_ST_INFO(bind, type)    (((bind) << 4) + ((type) & 0xf))
+
+#define STB_LOCAL   0
+#define STB_GLOBAL  1
+#define STB_WEAK    2
+#define STB_LOOS    10
+#define STB_HIOS    12
+#define STB_LOPROC  13
+#define STB_HIPROC  15
+
+#define STT_NOTYPE          0
+#define STT_OBJECT          1
+#define STT_FUNC            2
+#define STT_SECTION         3
+#define STT_FILE            4
+#define STT_COMMON          5
+#define STT_LOOS            10
+#define STT_HIOS            12
+#define STT_LOPROC          13
+#define STT_HIPROC          15
 
 struct elf32_sym {
     elf32_word_t name;
@@ -504,5 +537,6 @@ status_t elf_load_section(struct elf_file *elf, unsigned int index, void *buf, s
 
 status_t elf_find_symbol(struct elf_file *elf, const char *name, unsigned int *index);
 status_t elf_get_symbol(struct elf_file *elf, unsigned int index, void *buf, size_t len);
+status_t elf_get_symbol_count(struct elf_file *elf, unsigned int *count);
 
 #endif // __EBOOT_ELF_H__

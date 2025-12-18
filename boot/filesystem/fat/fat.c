@@ -336,7 +336,7 @@ static status_t read_sector(struct filesystem* fs, lba_t lba)
     struct fat_data *data = (struct fat_data *)fs->data;
     status_t status;
 
-    if (data->databuf_lba_start == lba) return 0;
+    if (data->databuf_lba_start == lba) return STATUS_SUCCESS;
     
     status = data->blkif->read(data->blkdev, lba, data->databuf, 1, NULL);
     if (!CHECK_SUCCESS(status)) return status;
@@ -530,6 +530,7 @@ static status_t probe(struct device *dev, struct fs_driver *drv)
     status_t status;
     struct device *blkdev = NULL;
     const struct block_interface *blkif = NULL;
+    size_t block_size;
     struct fat_bpb_sector bpb;
     struct fat_fsinfo fsinfo;
     unsigned int sector_size, sectors_per_cluster, fsinfo_sector;
@@ -541,6 +542,10 @@ static status_t probe(struct device *dev, struct fs_driver *drv)
 
     status = blkdev->driver->get_interface(blkdev, "block", (const void **)&blkif);
     if (!CHECK_SUCCESS(status)) return status;
+
+    status = blkif->get_block_size(blkdev, &block_size);
+    if (!CHECK_SUCCESS(status)) return status;
+    if (block_size != 512) return STATUS_SIZE_CHECK_FAILURE;
 
     /* read sector 0 (BPB) */
     status = blkif->read(blkdev, 0, &bpb, 1, NULL);
@@ -586,6 +591,7 @@ static status_t mount(struct filesystem **fsout, struct fs_driver *drv, struct d
     struct filesystem *fs = NULL;
     struct device *blkdev = NULL;
     const struct block_interface *blkif = NULL;
+    size_t block_size;
     struct fat_data *data = NULL;
     struct fat_bpb_sector bpb;
     struct fat_fsinfo fsinfo;
@@ -598,6 +604,10 @@ static status_t mount(struct filesystem **fsout, struct fs_driver *drv, struct d
 
     status = blkdev->driver->get_interface(blkdev, "block", (const void **)&blkif);
     if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = blkif->get_block_size(blkdev, &block_size);
+    if (!CHECK_SUCCESS(status)) return status;
+    if (block_size != 512) return STATUS_SIZE_CHECK_FAILURE;
 
     status = filesystem_create(&fs, drv, dev, name);
     if (!CHECK_SUCCESS(status)) goto has_error;
@@ -985,7 +995,7 @@ static status_t iter_directory(struct fs_directory *dir, struct fs_directory_ent
         if (is_rootdir) {
             /* root directory */
             if (dir_data->current_entry_index / entries_per_block >= data->root_sector_count) {
-                return STATUS_ENTRY_NOT_FOUND;
+                return STATUS_END_OF_LIST;
             }
             status = read_sector(fs, data->data_area_begin + dir_data->current_entry_index / entries_per_block);
             if (!CHECK_SUCCESS(status)) return status;
@@ -1006,7 +1016,7 @@ static status_t iter_directory(struct fs_directory *dir, struct fs_directory_ent
             union fat_dir_entry* current_entry =
                 &entries[dir_data->current_entry_index % entries_per_block];
             if ((uint8_t)current_entry->file.name[0] == 0) {  /* End of entry list */
-                return STATUS_ENTRY_NOT_FOUND;
+                return STATUS_END_OF_LIST;
             } else if ((uint8_t)current_entry->file.name[0] == 0xE5) {
                 /* skip if file entry is deleted */
             } else if ((current_entry->file.attribute & FAT_ATTR_LFNENTRY) == FAT_ATTR_LFNENTRY) {

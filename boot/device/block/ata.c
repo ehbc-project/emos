@@ -1,6 +1,8 @@
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
+#include <eboot/log.h>
 #include <eboot/status.h>
 #include <eboot/device.h>
 #include <eboot/interface/block.h>
@@ -8,11 +10,20 @@
 
 #include "ata.h"
 
+#define MODULE_NAME "ata"
+
 struct ata_data {
     struct device *idedev;
     const struct ide_interface *ideif;
     int slave;
 };
+
+static status_t get_block_size(struct device *dev, size_t *size)
+{
+    if (size) *size = 512;
+
+    return STATUS_SUCCESS;
+}
 
 static status_t read(struct device *dev, lba_t lba, void *buf, size_t count, size_t *result)
 {
@@ -48,16 +59,11 @@ static status_t read(struct device *dev, lba_t lba, void *buf, size_t count, siz
     }
 
     status = data->ideif->send_command_pio_input(data->idedev, &cmd, buf, 512, count, &xfer_count);
-    if (!CHECK_SUCCESS(status)) {
-        goto has_error;
-    }
+    if (!CHECK_SUCCESS(status)) return status;
 
     if (result) *result = xfer_count;
 
     return STATUS_SUCCESS;
-
-has_error:
-    return status;
 }
 
 static status_t write(struct device *dev, lba_t lba, const void *buf, size_t count, size_t *result)
@@ -66,6 +72,7 @@ static status_t write(struct device *dev, lba_t lba, const void *buf, size_t cou
 }
 
 static const struct block_interface blkif = {
+    .get_block_size = get_block_size,
     .read = read,
     .write = write,
 };
@@ -127,6 +134,7 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     data->slave = rsrc[0].base;
     dev->data = data;
 
+    LOG_DEBUG("identifying device...\n");
     struct ata_command cmd = {
         .extended = 0,
         .command = 0xEC,  /* IDENTIFY DEVICE */
@@ -143,6 +151,7 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         goto has_error;
     }
 
+    LOG_DEBUG("detecting partition table...\n");
     status = device_driver_find("mbr", &ptdrv);
     if (CHECK_SUCCESS(status)) {
         status = ptdrv->probe(&ptdev, ptdrv, dev, NULL, 0);
@@ -156,6 +165,8 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     }
     
     if (devout) *devout = dev;
+
+    LOG_DEBUG("initialization success\n");
 
     return STATUS_SUCCESS;
 

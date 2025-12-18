@@ -13,6 +13,8 @@
 
 status_t mm_init(void);
 
+status_t mm_get_memory_usage(size_t *total, size_t *used);
+
 status_t mm_map(uintptr_t paddr, void *vaddr, size_t page_count, uint32_t flags);
 status_t mm_unmap(void *vaddr, size_t page_count);
 

@@ -23,7 +23,7 @@ status_t _pc_bios_disk_reset(uint8_t drive)
         .d.b.l = drive
     };
 
-    if (_pc_bios_call(0x13, &regs)) {
+    if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {
         return MAKE_STATUS(regs.a.b.h);
     }
 
@@ -43,7 +43,7 @@ status_t _pc_bios_disk_read(uint8_t drive, struct chs chs, uint8_t count, void *
         .b.w = (uint32_t)buf & 0x000F,
     };
 
-    if (_pc_bios_call(0x13, &regs)) {
+    if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {
         return MAKE_STATUS(regs.a.b.h);
     }
 
@@ -67,7 +67,7 @@ status_t _pc_bios_disk_write(uint8_t drive, struct chs chs, uint8_t count, const
         .b.w = (uint32_t)buf & 0x000F,
     };
 
-    if (_pc_bios_call(0x13, &regs)) {
+    if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {
         return MAKE_STATUS(regs.a.b.h);
     }
 
@@ -87,7 +87,7 @@ status_t _pc_bios_disk_get_params(uint8_t drive, uint8_t *hdd_count, uint8_t *ty
         .di.w = 0,
     };
 
-    if (_pc_bios_call(0x13, &regs)) {
+    if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {
         return MAKE_STATUS(regs.a.b.h);
     }
 
@@ -153,7 +153,7 @@ status_t _pc_bios_disk_read_ext(uint8_t drive, lba_t lba, uint16_t count, void *
         .si.w = (uint32_t)&dap & 0x000F,
     };
 
-    if (_pc_bios_call(0x13, &regs)) {
+    if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {
         return MAKE_STATUS(regs.a.b.h);
     }
 
@@ -178,7 +178,7 @@ status_t _pc_bios_disk_write_ext(uint8_t drive, lba_t lba, uint16_t count, const
         .si.w = (uint32_t)&dap & 0x000F,
     };
     
-    if (_pc_bios_call(0x13, &regs)) {
+    if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {
         return MAKE_STATUS(regs.a.b.h);
     }
 
@@ -194,7 +194,7 @@ status_t _pc_bios_disk_get_params_ext(uint8_t drive, struct bios_extended_drive_
         .si.w = (uint32_t)params & 0x000F,
     };
 
-    if (_pc_bios_call(0x13, &regs)) {
+    if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {
         return MAKE_STATUS(regs.a.b.h);
     }
 

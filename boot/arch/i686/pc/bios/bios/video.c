@@ -224,7 +224,7 @@ status_t _pc_bios_vbe_schedule_display_start_at_retrace(uint32_t fboffset)
     return regs.a.b.h ? STATUS_UNKNOWN_ERROR : STATUS_SUCCESS;
 }
 
-status_t _pc_bios_vbe_get_pm_interface(farptr_t *pmi_table, uint16_t *size)
+status_t _pc_bios_vbe_get_pm_interface(farptr16_t *pmi_table, uint16_t *size)
 {
     struct bioscall_regs regs = {
         .a.w = 0x4F0A,

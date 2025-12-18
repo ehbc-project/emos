@@ -1099,9 +1099,6 @@ static status_t write(struct device *dev, const char *buf, size_t len, size_t *r
     status = data->conif->flush(data->condev);
     if (!CHECK_SUCCESS(status)) return status;
 
-    status = data->conif->present(data->condev);
-    if (!CHECK_SUCCESS(status)) return status;
-
     if (result) *result = written_len;
 
     return STATUS_SUCCESS;
@@ -1127,9 +1124,6 @@ static status_t wwrite(struct device *dev, const wchar_t *buf, size_t len, size_
     }
 
     status = data->conif->flush(data->condev);
-    if (!CHECK_SUCCESS(status)) return status;
-
-    status = data->conif->present(data->condev);
     if (!CHECK_SUCCESS(status)) return status;
 
     if (result) *result = written_len;

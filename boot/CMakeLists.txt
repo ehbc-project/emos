@@ -62,7 +62,7 @@ add_custom_target(bootloader_font ALL
 
 # libraries
 add_subdirectory(lib)
-target_link_libraries(bootloader uacpi.lib zlib.lib)
+target_link_libraries(bootloader uacpi.lib zlib.lib openlibm.lib)
 
 # Subdirectories
 add_subdirectory(arch)

@@ -1,6 +1,6 @@
     .org    0
 
-    .globl  _pc_remap_pic_int
+    .globl  _pc_pic_remap_int
     
     .section .text
     .code32
@@ -18,7 +18,7 @@ _pc_bios_bootnext:
 
     pushl   $0x70                   # remap PIC
     pushl   $0x08
-    call    _pc_remap_pic_int
+    call    _pc_pic_remap_int
     add     $8, %esp
 
     mov     8(%ebp), %dl            # get drive number

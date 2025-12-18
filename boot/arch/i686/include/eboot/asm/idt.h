@@ -5,6 +5,11 @@
 
 #include <eboot/compiler.h>
 
+struct idtr {
+    uint16_t size;
+    uint32_t idt_ptr;
+} __packed;
+
 struct idt_entry {
     uint16_t offset_low;
     uint16_t segment_selector;
@@ -12,5 +17,7 @@ struct idt_entry {
     uint8_t attributes;
     uint16_t offset_high;
 } __packed;
+
+extern struct idtr _i686_idtr;
 
 #endif // __EBOOT_ASM_IDT_H__

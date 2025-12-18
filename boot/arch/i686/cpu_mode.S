@@ -3,14 +3,6 @@
     .set    REAL_STACK_INIT, 0x00007BFC  # right below the inital code area
     .set    PROT_STACK_INIT, 0x00007000
 
-    .set    PROT_CODE_SEG, 0x08
-    .set    PROT_DATA_SEG, 0x10
-    .set    PROT16_CODE_SEG, 0x18
-    .set    PROT16_DATA_SEG, 0x20
-
-    .globl  _i686_idt_ptr
-    .lcomm  _i686_idt_ptr, 4
-
     .lcomm  cr0_initialized, 2
     .lcomm  cr3_initialized, 2
     .lcomm  cr0, 4
@@ -25,7 +17,7 @@ switch_real_to_prot:
     xor     %ax, %ax
     mov     %ax, %ds                    # clear ds
 
-    lgdt    gdtr                        # load gdt
+    lgdt    _i686_gdtr                  # load gdt
 
     mov     cr3_initialized, %ax
     test    %ax, %ax
@@ -46,23 +38,23 @@ switch_real_to_prot:
     mov     cr0, %eax                   # get cr0
     mov     %eax, %cr0                  # set cr0
 
-    jmp     $PROT_CODE_SEG, $.pmode     # switch code segment
+    pushw   _i686_pm32_code_seg
+    pushw   $.pmode
+    retf                                # switch code segment
                                         # the .code32 directive should be placed
                                         # after this line of code
 
     .code32
 .pmode:
-    mov     $PROT_DATA_SEG, %ax
+
+    mov     _i686_pm32_data_seg, %ax
     mov     %ax, %ds
     mov     %ax, %es
     mov     %ax, %fs
     mov     %ax, %gs
     mov     %ax, %ss                    # set segments
 
-    pushl   _i686_idt_ptr
-    pushw   $2047
-    lidt    (%esp)
-    add     $6, %esp                    # load idt
+    lidt    _i686_idtr                  # load idt
 
     xor     %eax, %eax
     mov     (%esp), %ax
@@ -83,7 +75,7 @@ switch_real_to_prot:
     .globl  switch_prot_to_real
 switch_prot_to_real:
     cli                                 # clear interrupt
-    lgdt    gdtr                        # load gdt
+    lgdt    _i686_gdtr                  # load gdt
 
     mov     %cr0, %eax                  # save cr0
     mov     %eax, cr0
@@ -107,13 +99,17 @@ switch_prot_to_real:
     mov     %eax, %esp
     mov     %eax, %ebp                  # set up stack pointer, base pointer
 
-    ljmp    $PROT16_CODE_SEG, $.pmode16 # switch to 16-bit protected mode
+    pushw   _i686_pm16_code_seg
+    pushl   $.pmode16
+    ljmp    *(%esp)                     # switch code segment
                                         # the .code16 directive should be placed
                                         # after this line of code
 
     .code16
 .pmode16:
-    mov     $PROT16_DATA_SEG, %ax
+    add     $6, %esp
+
+    mov     _i686_pm16_data_seg, %ax
     mov     %ax, %ds
     mov     %ax, %es
     mov     %ax, %fs
@@ -140,17 +136,44 @@ switch_prot_to_real:
 
     ret
 
+
     .section .data
 prot_stack:                             # protected mode stack
     .long   PROT_STACK_INIT
 
-    .section .rodata
     .align  8
     .word   0
-gdtr:
+    .globl  _i686_idtr
+_i686_idtr:
+    .word   1023
+    .long   0
+
+    .align  8
+    .word   0
+    .globl _i686_gdtr
+_i686_gdtr:
     .word   8 * 5 - 1                   # 5 entries
-    .long   gdt                         # gdt pointer
-gdt:
+    .long   _i686_default_gdt           # gdt pointer
+    
+    .globl _i686_pm32_code_seg
+_i686_pm32_code_seg:
+    .word   0x0008
+
+    .globl _i686_pm32_data_seg
+_i686_pm32_data_seg:
+    .word   0x0010
+
+    .globl _i686_pm16_code_seg
+_i686_pm16_code_seg:
+    .word   0x0018
+
+    .globl _i686_pm16_data_seg
+_i686_pm16_data_seg:
+    .word   0x0020
+
+    .section .rodata
+    .globl _i686_default_gdt
+_i686_default_gdt:
     .word   0x0000                      # null descriptor
     .word   0x0000
     .byte   0x00

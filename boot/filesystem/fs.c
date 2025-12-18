@@ -47,9 +47,10 @@ status_t filesystem_create(struct filesystem **fsout, struct fs_driver *drv, str
 
 void filesystem_remove(struct filesystem *fs)
 {
+    struct filesystem *prev_fs = NULL;
+    
     if (!fs_list_head) return;
 
-    struct filesystem *prev_fs = NULL;
     for (struct filesystem *current = fs_list_head; current->next; current = current->next) {
         if (current->next == fs) {
             prev_fs = current;

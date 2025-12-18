@@ -44,7 +44,6 @@ static int usefont_handler(struct shell_instance *inst, int argc, char **argv)
 
     conif->invalidate(condev, 0, 0, width - 1, height - 1);
     conif->flush(condev);
-    conif->present(condev);
 
     return 0;
 }

@@ -7,6 +7,7 @@
 #include <eboot/asm/time.h>
 #include <eboot/asm/intrinsics/misc.h>
 
+#include <eboot/log.h>
 #include <eboot/macros.h>
 #include <eboot/status.h>
 #include <eboot/device.h>
@@ -15,6 +16,8 @@
 #include <eboot/interface/hid.h>
 #include <eboot/interface/ps2.h>
 
+#define MODULE_NAME "ps2mse"
+
 enum sequence_state {
     SS_DEFAULT = 0,
     SS_XMOVEMENT,
@@ -22,9 +25,13 @@ enum sequence_state {
     SS_ZMOVEMENT,
 };
 
-struct ps2_keyboard_data {
+struct ps2_mouse_data {
     struct device *ps2dev;
     const struct ps2_interface *ps2if;
+
+    int irq_num;
+    struct isr_handler *isr;
+    uint8_t device_type;
 
     volatile int seqbuf_start, seqbuf_end;
     volatile uint8_t seqbuf[64];
@@ -34,24 +41,28 @@ struct ps2_keyboard_data {
 
 static status_t wait_event(struct device *dev)
 {
-    struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
+    struct ps2_mouse_data *data = (struct ps2_mouse_data *)dev->data;
 
     while (data->seqbuf_start == data->seqbuf_end) {
         _i686_pause();
     }
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
 static status_t poll_event(struct device *dev, uint16_t *key, uint16_t *flags)
 {
-    struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
-    status_t status = STATUS_BUFFER_UNDERFLOW;
+    struct ps2_mouse_data *data = (struct ps2_mouse_data *)dev->data;
+    status_t status;
     int advance = 0;
     uint16_t ret_key = 0, ret_flags = 0;
+    uint8_t byte;
+    
+    status = _pc_isr_mask_interrupt(data->irq_num);
+    if (!CHECK_SUCCESS(status)) goto has_error;
 
-    interrupt_disable();
-    uint8_t byte = data->seqbuf[data->seqbuf_start];
+    byte = data->seqbuf[data->seqbuf_start];
+    status = STATUS_SUCCESS;
     switch (data->seq_state) {
         case SS_DEFAULT:
             if ((byte & 0x08) && !(byte & 0xC0)) {
@@ -59,24 +70,23 @@ static status_t poll_event(struct device *dev, uint16_t *key, uint16_t *flags)
                     ret_key = KEY_MOUSEBTNM;
                     ret_flags = (byte & 0x04) ? 0 : KEY_FLAG_BREAK;
                     data->prev_button_state = (data->prev_button_state & ~0x04) | (byte & 0x04);
-                    status = STATUS_SUCCESS;
                 } else if ((byte & 0x02) != (data->prev_button_state & 0x02)) {
                     ret_key = KEY_MOUSEBTNR;
                     ret_flags = (byte & 0x02) ? 0 : KEY_FLAG_BREAK;
                     data->prev_button_state = (data->prev_button_state & ~0x02) | (byte & 0x02);
-                    status = STATUS_SUCCESS;
                 } else if ((byte & 0x01) != (data->prev_button_state & 0x01)) {
                     ret_key = KEY_MOUSEBTNL;
                     ret_flags = (byte & 0x01) ? 0 : KEY_FLAG_BREAK;
                     data->prev_button_state = (data->prev_button_state & ~0x01) | (byte & 0x01);
-                    status = STATUS_SUCCESS;
                 } else {
                     data->byte0 = byte;
                     data->seq_state = SS_XMOVEMENT;
                     advance = 1;
+                    status = STATUS_BUFFER_UNDERFLOW;
                 }
             } else {
                 advance = 1;
+                status = STATUS_BUFFER_UNDERFLOW;
             }
             break;
         case SS_XMOVEMENT:
@@ -90,7 +100,6 @@ static status_t poll_event(struct device *dev, uint16_t *key, uint16_t *flags)
             }
             data->seq_state = SS_YMOVEMENT;
             advance = 1;
-            status = STATUS_SUCCESS;
             break;
         case SS_YMOVEMENT:
             if (data->byte0 & 0x80) break;
@@ -104,19 +113,25 @@ static status_t poll_event(struct device *dev, uint16_t *key, uint16_t *flags)
             }
             data->seq_state = SS_DEFAULT;
             advance = 1;
-            status = STATUS_SUCCESS;
             break;
         default:
             break;
     }
-
+    
     data->seqbuf_start = (data->seqbuf_start + advance) % sizeof(data->seqbuf);
-    interrupt_enable();
 
-    if (status == STATUS_SUCCESS) {
-        *key = ret_key;
-        *flags = ret_flags;
-    }
+    if (!CHECK_SUCCESS(status)) goto has_error;
+    
+    status = _pc_isr_unmask_interrupt(data->irq_num);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    if (key) *key = ret_key;
+    if (flags) *flags = ret_flags;
+
+    return STATUS_SUCCESS;
+
+has_error:
+    _pc_isr_unmask_interrupt(data->irq_num);
 
     return status;
 }
@@ -126,18 +141,20 @@ static const struct hid_interface hidif = {
     .poll_event = poll_event,
 };
 
-static void mouse_isr(struct device *dev, int num)
+static void mouse_isr(void *_dev, int num)
 {
-    struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
+    struct device *dev = _dev;
+    struct ps2_mouse_data *data = (struct ps2_mouse_data *)dev->data;
     status_t status;
     uint8_t byte;
 
     status = data->ps2if->irq_get_byte(data->ps2dev, &byte);
     if (!CHECK_SUCCESS(status)) return;
-    data->seqbuf[data->seqbuf_end] = byte;
-
+    
     int next_seqbuf_end = (data->seqbuf_end + 1) % sizeof(data->seqbuf);
     if (next_seqbuf_end == data->seqbuf_start) return;
+    
+    data->seqbuf[data->seqbuf_end] = byte;
     data->seqbuf_end = next_seqbuf_end;
 }
 
@@ -152,10 +169,10 @@ static void ps2_mouse_init(void)
 
     status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        panic(status, "cannot register device driver \"ps2_keyboard\"");
+        panic(status, "cannot register device driver \"ps2_mouse\"");
     }
 
-    drv->name = "ps2_keyboard";
+    drv->name = "ps2_mouse";
     drv->probe = probe;
     drv->remove = remove;
     drv->get_interface = get_interface;
@@ -167,7 +184,8 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     struct device *dev = NULL;
     struct device *ps2dev = NULL;
     const struct ps2_interface *ps2if = NULL;
-    struct ps2_keyboard_data *data = NULL;
+    struct ps2_mouse_data *data = NULL;
+    uint8_t buf[2];
 
     if (!rsrc || rsrc_cnt != 2 ||
         rsrc[0].type != RT_BUS || rsrc[0].base != rsrc[0].limit ||
@@ -191,26 +209,34 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     status = device_generate_name("mouse", dev->name, sizeof(dev->name));
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    LOG_DEBUG("creating device data...\n");
     data = malloc(sizeof(*data));
     data->ps2dev = ps2dev;
     data->ps2if = ps2if;
+    data->irq_num = rsrc[1].base;
     data->seqbuf_start = data->seqbuf_end = 0;
     data->seq_state = SS_DEFAULT;
+    data->isr = NULL;
     dev->data = data;
-    
-    interrupt_disable();
 
-    status = _pc_isr_set_interrupt_handler(rsrc[1].base, dev, mouse_isr);
+    status = _pc_isr_mask_interrupt(data->irq_num);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    LOG_DEBUG("registering interrupt service routine...\n");
+    status = _pc_isr_add_interrupt_handler(data->irq_num, dev, mouse_isr, &data->isr);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    LOG_DEBUG("testing port...\n");
     status = ps2if->test_port(ps2dev, rsrc[0].base);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    LOG_DEBUG("enabling port...\n");
     status = ps2if->enable_port(ps2dev, rsrc[0].base);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    LOG_DEBUG("resetting keyboard...\n");
     /* reset device */
-    uint8_t buf[2] = { 0xFF };
+    buf[0] = 0xFF;
 
     status = ps2if->send_data(ps2dev, rsrc[0].base, buf, 1);
     if (!CHECK_SUCCESS(status)) goto has_error;
@@ -218,6 +244,9 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 1);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
+    data->device_type = buf[0];
+
+    LOG_DEBUG("setting scale 2:1 mode...\n");
     /* set scaling 2:1 */
     buf[0] = 0xE7;
 
@@ -226,7 +255,9 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
 
     status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 1);
     if (!CHECK_SUCCESS(status)) goto has_error;
+    if (buf[0] != 0xFA) goto has_error;
 
+    LOG_DEBUG("setting sample rate...\n");
     /* set sample rate */
     buf[0] = 0xF3;
     buf[1] = 40;
@@ -236,7 +267,9 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
 
     status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 1);
     if (!CHECK_SUCCESS(status)) goto has_error;
+    if (buf[0] != 0xFA) goto has_error;
 
+    LOG_DEBUG("enabling data reporting...\n");
     /* enable data reporting */
     buf[0] = 0xF4;
 
@@ -245,15 +278,23 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
 
     status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 1);
     if (!CHECK_SUCCESS(status)) goto has_error;
+    if (buf[0] != 0xFA) goto has_error;
 
-    interrupt_enable();
-    
+    status = _pc_isr_unmask_interrupt(data->irq_num);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
     if (devout) *devout = dev;
+
+    LOG_DEBUG("initialization success\n");
 
     return STATUS_SUCCESS;
 
 has_error:
-    interrupt_disable();
+    _pc_isr_unmask_interrupt(rsrc[1].base);
+
+    if (data && data->isr) {
+        _pc_isr_remove_handler(data->isr);
+    }
 
     if (data) {
         free(data);
@@ -270,6 +311,8 @@ static status_t remove(struct device *dev)
 {
     struct ps2_mouse_data *data = (struct ps2_mouse_data *)dev->data;
 
+    _pc_isr_remove_handler(data->isr);
+    
     free(data);
 
     device_remove(dev);

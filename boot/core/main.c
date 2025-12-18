@@ -36,55 +36,31 @@ void setup_tty(void)
     status = device_find("video0", &fbdev);
     if (!CHECK_SUCCESS(status)) {
         fprintf(stderr, "find_device() failed: 0x%08X\n", status);
-        panic(status, "find_device() failed");
+        panic(status, "video device not available");
     }
     
     status = fbdev->driver->get_interface(fbdev, "framebuffer", (const void **)&fbi);
     if (!CHECK_SUCCESS(status)) {
         fprintf(stderr, "get_interface() failed: 0x%08X\n", status);
-        panic(status, "get_interface() failed");
+        panic(status, "failed to get interface from device");
+    }
+    
+    status = device_driver_find("vconsole", &condrv);
+    if (!CHECK_SUCCESS(status)) {
+        fprintf(stderr, "find_device_driver() failed: 0x%08X\n", status);
+        panic(status, "failed to initialize essential virtual device");
     }
 
-    if (fbi) {
-        fbi->set_mode(fbdev, 640, 480, 24);
-        
-        status = device_driver_find("vconsole", &condrv);
-        if (!CHECK_SUCCESS(status)) {
-            fprintf(stderr, "find_device_driver() failed: 0x%08X\n", status);
-            panic(status, "failed to initialize essential virtual device");
-        }
+    status = condrv->probe(&condev, condrv, fbdev, NULL, 0);
+    if (!CHECK_SUCCESS(status)) {
+        fprintf(stderr, "register_device() failed: 0x%08X\n", status);
+        panic(status, "failed to initialize essential virtual device");
+    }
 
-        status = condrv->probe(&condev, condrv, fbdev, NULL, 0);
-        if (!CHECK_SUCCESS(status)) {
-            fprintf(stderr, "register_device() failed: 0x%08X\n", status);
-            panic(status, "failed to initialize essential virtual device");
-        }
-
-        status = condev->driver->get_interface(condev, "console", (const void **)&vci);
-        if (!CHECK_SUCCESS(status)) {
-            fprintf(stderr, "get_interface() failed: 0x%08X\n", status);
-            panic(status, "failed to get interface from device");
-        }
-
-        status = vci->set_dimension(condev, 80, 30);
-        if (!CHECK_SUCCESS(status)) {
-            fprintf(stderr, "set_dimension() failed: 0x%08X\n", status);
-            panic(status, "failed to set up device");
-        }
-    } else {
-        condev = fbdev;
-
-        status = condev->driver->get_interface(condev, "console", (const void **)&vci);
-        if (!CHECK_SUCCESS(status)) {
-            fprintf(stderr, "get_interface() failed: 0x%08X\n", status);
-            panic(status, "failed to get interface from device");
-        }
-
-        vci->set_dimension(condev, 80, 25);
-        if (!CHECK_SUCCESS(status)) {
-            fprintf(stderr, "set_dimension() failed: 0x%08X\n", status);
-            panic(status, "failed to set up device");
-        }
+    status = condev->driver->get_interface(condev, "console", (const void **)&vci);
+    if (!CHECK_SUCCESS(status)) {
+        fprintf(stderr, "get_interface() failed: 0x%08X\n", status);
+        panic(status, "failed to get interface from device");
     }
 
     status = device_driver_find("ansiterm", &ttydrv);
@@ -179,7 +155,7 @@ void show_menu(void)
     if (!CHECK_SUCCESS(status)) {
         panic(status, "keyboard not detected");
     }
-
+    
     status = kbd->driver->get_interface(kbd, "hid", (const void **)&hidi);
     if (!CHECK_SUCCESS(status)) {
         panic(status, "failed to get interface from device");
@@ -187,17 +163,36 @@ void show_menu(void)
 
     status = json_object_find_value(&json->obj, "options", &options);
     if (!CHECK_SUCCESS(status) || !options) {
-        panic(STATUS_INVALID_FORMAT, "status, element \"options\" not found");
+        panic(!CHECK_SUCCESS(status) ? status : STATUS_INVALID_FORMAT, "element \"options\" not found");
     } else if (options->type != JVT_ARRAY) {
         panic(STATUS_INVALID_FORMAT, "element \"options\" has invalid value type");
     }
-    
+
     status = json_array_get_element_count(&options->arr, &option_count);
     if (!CHECK_SUCCESS(status)) {
         panic(status, "cannot get element count of element \"options\"");
     }
 
     while (!selected) {
+        printf("\x1b[3;0H");
+        for (int i = 0; i < option_count; i++) {
+            status = json_array_find_value(&options->arr, i, &option);
+            if (!CHECK_SUCCESS(status) || !option || option->type != JVT_OBJECT) {
+                panic(STATUS_INVALID_FORMAT, "an element of array \"options\" is not found or has invalid type");
+            }
+
+            status = json_object_find_value(&option->obj, "name", &option_name);
+            if (!CHECK_SUCCESS(status) || !option_name || option_name->type != JVT_STRING) {
+                panic(STATUS_INVALID_FORMAT, "element \"name\" is not found or has invalid type");
+            }
+
+            if (selection == i) {
+                printf("\x1b[7m%s\x1b[0m\n", option_name->str);
+            } else {
+                printf("%s\n", option_name->str);
+            }
+        }
+
         status = hidi->wait_event(kbd);
         if (!CHECK_SUCCESS(status)) continue;
 
@@ -222,25 +217,6 @@ void show_menu(void)
             default:
                 break;
         }
-
-        for (int i = 0; i < option_count; i++) {
-            status = json_array_find_value(&options->arr, i, &option);
-            if (!CHECK_SUCCESS(status) || !option || option->type != JVT_OBJECT) {
-                panic(STATUS_INVALID_FORMAT, "an element of array \"options\" is not found or has invalid type");
-            }
-
-            status = json_object_find_value(&option->obj, "name", &option_name);
-            if (!CHECK_SUCCESS(status) || !option_name || option_name->type != JVT_STRING) {
-                panic(STATUS_INVALID_FORMAT, "element \"name\" is not found or has invalid type");
-            }
-
-            if (selection == i) {
-                printf("\x1b[7m%s\x1b[0m\n", option_name->str);
-            } else {
-                printf("%s\n", option_name->str);
-            }
-        }
-        printf("\x1b[%uA", option_count);
     }
 
     status = json_array_find_value(&options->arr, selection, &option);
@@ -248,7 +224,7 @@ void show_menu(void)
         panic(STATUS_INVALID_FORMAT, "an element of array \"options\" is not found or has invalid type");
     }
 
-    fputs("\x1b[?25h\n", stdout);
+    fputs("\x1b[3J\x1b[0;0f\x1b[?25h", stdout);
 
     status = json_object_find_value(&option->obj, "script", &option_script);
     if (!CHECK_SUCCESS(status) || !option_script) {
@@ -273,6 +249,9 @@ void main(void)
 {
     setup_tty();
     show_menu();
+
+    printf("Kernel returned. Press any key to reboot.");
+    fgetc(stdin);
 
     reboot();
 }

@@ -5,6 +5,8 @@
 extern void (*__fini_array_start)(void);
 extern void (*__fini_array_end)(void);
 
+extern void _pc_cleanup(void);
+
 void cleanup(void)
 {
     struct device *dev = device_get_first_dev();
@@ -29,4 +31,6 @@ void cleanup(void)
     for (int i = 0; &(&__fini_array_start)[i] != &__fini_array_end; i++) {
         (&__fini_array_start)[i]();
     }
+
+    _pc_cleanup();
 }

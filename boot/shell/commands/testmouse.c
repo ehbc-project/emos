@@ -6,6 +6,7 @@
 #include <eboot/device.h>
 #include <eboot/hid.h>
 #include <eboot/interface/hid.h>
+#include <eboot/interface/video.h>
 #include <eboot/interface/framebuffer.h>
 
 static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
@@ -28,18 +29,27 @@ static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
         return 1;
     }
 
+    const struct video_interface *vidif;
+    status = fbdev->driver->get_interface(fbdev, "video", (const void **)&vidif);
+    if (!CHECK_SUCCESS(status)) return 1;
+
     const struct framebuffer_interface *fbif;
     status = fbdev->driver->get_interface(fbdev, "framebuffer", (const void **)&fbif);
     if (!CHECK_SUCCESS(status)) return 1;
 
-    int width, height;
+    int current_vmode;
+    struct video_mode_info vmode_info;
     uint32_t *framebuffer;
     status = fbif->get_framebuffer(fbdev, (void **)&framebuffer);
     if (!CHECK_SUCCESS(status)) return 1;
-    status = fbif->get_mode(fbdev, &width, &height, NULL);
+
+    status = vidif->get_mode(fbdev, &current_vmode);
     if (!CHECK_SUCCESS(status)) return 1;
 
-    int xpos = width / 2, ypos = height / 2, should_exit = 0;
+    status = vidif->get_mode_info(fbdev, current_vmode, &vmode_info);
+    if (!CHECK_SUCCESS(status)) return 1;
+
+    int xpos = vmode_info.width / 2, ypos = vmode_info.height / 2, should_exit = 0;
     uint16_t key, flags;
 
     puts("\x1b[3J\x1b[0;0f\x1b[?25lclose");
@@ -65,8 +75,8 @@ static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
                         xpos -= key;
                     }
                 } else if (!(flags & KEY_FLAG_NEGATIVE)) {
-                    if (width <= xpos + key) {
-                        xpos = width - 1;
+                    if (vmode_info.width <= xpos + key) {
+                        xpos = vmode_info.width - 1;
                     } else {
                         xpos += key;
                     }
@@ -74,8 +84,8 @@ static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
                 break;
             case KEY_FLAG_YMOVE:
                 if ((flags & KEY_FLAG_NEGATIVE)) {
-                    if (height <= ypos + key) {
-                        ypos = height - 1;
+                    if (vmode_info.height <= ypos + key) {
+                        ypos = vmode_info.height - 1;
                     } else {
                         ypos += key;
                     }
@@ -87,10 +97,9 @@ static int testmouse_handler(struct shell_instance *inst, int argc, char **argv)
                     }
                 }
 
-                framebuffer[ypos * width + xpos] = 0xFFFFFF;
+                framebuffer[ypos * vmode_info.width + xpos] = 0xFFFFFF;
                 fbif->invalidate(fbdev, xpos, ypos, xpos, ypos);
                 fbif->flush(fbdev);
-                fbif->present(fbdev);
                 break;
             default:
                 break;

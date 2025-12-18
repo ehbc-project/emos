@@ -7,13 +7,17 @@
 #include <eboot/asm/time.h>
 #include <eboot/asm/intrinsics/misc.h>
 
+#include <eboot/log.h>
 #include <eboot/macros.h>
 #include <eboot/status.h>
 #include <eboot/device.h>
 #include <eboot/hid.h>
+#include <eboot/debug.h>
 #include <eboot/interface/char.h>
 #include <eboot/interface/hid.h>
 #include <eboot/interface/ps2.h>
+
+#define MODULE_NAME "ps2kbd"
 
 enum sequence_state {
     SS_DEFAULT = 0,
@@ -36,6 +40,9 @@ struct ps2_keyboard_data {
     struct device *ps2dev;
     const struct ps2_interface *ps2if;
 
+    int irq_num;
+    struct isr_handler *isr;
+
     volatile int seqbuf_start, seqbuf_end;
     volatile uint8_t seqbuf[64];
     enum sequence_state seq_state;
@@ -54,7 +61,7 @@ static const uint16_t translated_keycode_char_table[256] = {
     'u' , 'v' , 'w' , 'x' , 'y' , 'z' , '1' , '2' ,  /* 0x18 - 0x1F */
     '3' , '4' , '5' , '6' , '7' , '8' , '9' , '0' ,  /* 0x20 - 0x27 */
     '\n', '\0', '\b', '\t', ' ' , '-' , '=' , '[' ,  /* 0x28 - 0x2F */
-    ']' , '\\', '#' , ':' , '\'', '`' , ',' , '.' ,  /* 0x30 - 0x37 */
+    ']' , '\\', '#' , ':' , '"' , '`' , ',' , '.' ,  /* 0x30 - 0x37 */
     '/' , '\0', '\0', '\0', '\0', '\0', '\0', '\0',  /* 0x38 - 0x3F */
     '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',  /* 0x40 - 0x47 */
     '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',  /* 0x48 - 0x4F */
@@ -193,11 +200,9 @@ static const uint16_t code_table_set2_ext_low[128] = {
 static int translate_scancode_set1(struct device *dev, uint16_t *keycode, uint16_t *flags)
 {
     struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
-
-    int ret = 1;
+    int ret = 0;
     uint16_t ret_keycode = KEY_NONE, ret_flags = 0;
 
-    interrupt_disable();
     uint8_t byte = data->seqbuf[data->seqbuf_start];
     switch (byte) {
         case 0xE0:  /* extend */
@@ -297,7 +302,6 @@ static int translate_scancode_set1(struct device *dev, uint16_t *keycode, uint16
     }
 
     data->seqbuf_start = (data->seqbuf_start + 1) % sizeof(data->seqbuf);
-    interrupt_enable();
 
     if (!ret) {
         *keycode = ret_keycode;
@@ -314,7 +318,6 @@ static int translate_scancode_set2(struct device *dev, uint16_t *keycode, uint16
     int ret = 1;
     uint16_t ret_keycode = KEY_NONE, ret_flags = 0;
 
-    interrupt_disable();
     uint8_t byte = data->seqbuf[data->seqbuf_start];
     switch (byte) {
         case 0xF0:  /* break */
@@ -437,7 +440,6 @@ static int translate_scancode_set2(struct device *dev, uint16_t *keycode, uint16
     }
 
     data->seqbuf_start = (data->seqbuf_start + 1) % sizeof(data->seqbuf);
-    interrupt_enable();
 
     if (!ret) {
         *keycode = ret_keycode;
@@ -456,11 +458,19 @@ static int translate_scancode(struct device *dev)
     int ret;
 
     do {
+        while (data->seqbuf_start == data->seqbuf_end) {
+            _i686_pause();
+        }
+
+        _pc_isr_mask_interrupt(data->irq_num);
+
         if (data->scancode_set == 1) {
             ret = translate_scancode_set1(dev, &translated, &flags);
         } else if (data->scancode_set == 2) {
             ret = translate_scancode_set2(dev, &translated, &flags);
         }
+
+        _pc_isr_unmask_interrupt(data->irq_num);
     } while (ret);
 
     if (translated < sizeof(translated_keycode_char_table)) {
@@ -472,15 +482,10 @@ static int translate_scancode(struct device *dev)
 
 static status_t read(struct device *dev, char *buf, size_t len, size_t *result)
 {
-    struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
     size_t read_len = 0;
     int ch;
 
     while (read_len < len) {
-        while (data->seqbuf_start == data->seqbuf_end) {
-            _i686_pause();
-        }
-
         ch = translate_scancode(dev);
         if (ch) {
             *buf++ = ch;
@@ -511,14 +516,27 @@ static status_t wait_event(struct device *dev)
 static status_t poll_event(struct device *dev, uint16_t *key, uint16_t *flags)
 {
     struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
+    status_t status;
+
+    status = _pc_isr_mask_interrupt(data->irq_num);
+    if (!CHECK_SUCCESS(status)) goto has_error;
 
     if (data->scancode_set == 1) {
-        return translate_scancode_set1(dev, key, flags) ? STATUS_BUFFER_UNDERFLOW : STATUS_SUCCESS;
+        status = translate_scancode_set1(dev, key, flags) ? STATUS_BUFFER_UNDERFLOW : STATUS_SUCCESS;
     } else if (data->scancode_set == 2) {
-        return translate_scancode_set2(dev, key, flags) ? STATUS_BUFFER_UNDERFLOW : STATUS_SUCCESS;
+        status = translate_scancode_set2(dev, key, flags) ? STATUS_BUFFER_UNDERFLOW : STATUS_SUCCESS;
     }
+    if (!CHECK_SUCCESS(status)) goto has_error;
 
-    return STATUS_UNKNOWN_ERROR;
+    status = _pc_isr_unmask_interrupt(data->irq_num);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    return STATUS_SUCCESS;
+
+has_error:
+    _pc_isr_unmask_interrupt(data->irq_num);
+
+    return status;
 }
 
 static const struct hid_interface hidif = {
@@ -526,18 +544,21 @@ static const struct hid_interface hidif = {
     .poll_event = poll_event,
 };
 
-static void keyboard_isr(struct device *dev, int num)
+static void keyboard_isr(void *_dev, int num)
 {
+    struct device *dev = _dev;
     struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
     status_t status;
     uint8_t byte;
+    int next_seqbuf_end;
 
     status = data->ps2if->irq_get_byte(data->ps2dev, &byte);
     if (!CHECK_SUCCESS(status)) return;
-    data->seqbuf[data->seqbuf_end] = byte;
-
-    int next_seqbuf_end = (data->seqbuf_end + 1) % sizeof(data->seqbuf);
+    
+    next_seqbuf_end = (data->seqbuf_end + 1) % sizeof(data->seqbuf);
     if (next_seqbuf_end == data->seqbuf_start) return;
+
+    data->seqbuf[data->seqbuf_end] = byte;
     data->seqbuf_end = next_seqbuf_end;
 }
 
@@ -568,8 +589,8 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     struct device *ps2dev = NULL;
     const struct ps2_interface *ps2if = NULL;
     struct ps2_keyboard_data *data = NULL;
+    uint8_t buf[2];
 
-    fprintf(stderr, "[ps2kbd] checking resources...\n");
     if (!rsrc || rsrc_cnt != 2 ||
         rsrc[0].type != RT_BUS || rsrc[0].base != rsrc[0].limit ||
         rsrc[1].type != RT_IRQ || rsrc[1].base != rsrc[1].limit) {
@@ -577,7 +598,6 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         goto has_error;
     }
 
-    fprintf(stderr, "[ps2kbd] verifying parent...\n");
     ps2dev = parent;
     if (!ps2dev) {
         status = STATUS_INVALID_VALUE;
@@ -587,40 +607,40 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     status = ps2dev->driver->get_interface(ps2dev, "ps2", (const void **)&ps2if);
     if (!CHECK_SUCCESS(status)) goto has_error;
     
-    fprintf(stderr, "[ps2kbd] creating device...\n");
     status = device_create(&dev, drv, parent);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    fprintf(stderr, "[ps2kbd] checking resources...\n");
     status = device_generate_name("kbd", dev->name, sizeof(dev->name));
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    fprintf(stderr, "[ps2kbd] creating device data...\n");
     data = malloc(sizeof(*data));
     data->ps2dev = ps2dev;
     data->ps2if = ps2if;
     data->seqbuf_start = data->seqbuf_end = 0;
     data->seq_state = SS_DEFAULT;
     data->scancode_set = 1;
+    data->irq_num = rsrc[1].base;
+    data->isr = NULL;
     dev->data = data;
 
-    interrupt_disable();
-    
-    fprintf(stderr, "[ps2kbd] registering interrupt service routine...\n");
-    status = _pc_isr_set_interrupt_handler(rsrc[1].base, dev, keyboard_isr);
+    status = _pc_isr_mask_interrupt(rsrc[1].base);
     if (!CHECK_SUCCESS(status)) goto has_error;
     
-    fprintf(stderr, "[ps2kbd] testing port...\n");
+    LOG_DEBUG("registering interrupt service routine...\n");
+    status = _pc_isr_add_interrupt_handler(rsrc[1].base, dev, keyboard_isr, &data->isr);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+    
+    LOG_DEBUG("testing port...\n");
     status = ps2if->test_port(ps2dev, rsrc[0].base);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    fprintf(stderr, "[ps2kbd] enabling port...\n");
+    LOG_DEBUG("enabling port...\n");
     status = ps2if->enable_port(ps2dev, rsrc[0].base);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    fprintf(stderr, "[ps2kbd] resetting keyboard...\n");
+    LOG_DEBUG("resetting keyboard...\n");
     /* reset device */
-    uint8_t buf[2] = { 0xFF };
+    buf[0] = 0xFF;
 
     status = ps2if->send_data(ps2dev, rsrc[0].base, buf, 1);
     if (!CHECK_SUCCESS(status)) goto has_error;
@@ -632,7 +652,7 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         goto has_error;
     }
 
-    fprintf(stderr, "[ps2kbd] trying scancode set 2...\n");
+    LOG_DEBUG("trying scancode set 2...\n");
     /* try scan code set 2 */
     buf[0] = 0xF0;
     buf[1] = 0x02;
@@ -647,14 +667,21 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     data->scancode_set = 2;
 
 skip_set2:
-    interrupt_enable();
+    status = _pc_isr_unmask_interrupt(rsrc[1].base);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    LOG_DEBUG("initialization success\n");
     
     if (devout) *devout = dev;
 
     return STATUS_SUCCESS;
 
 has_error:
-    interrupt_enable();
+    _pc_isr_unmask_interrupt(rsrc[1].base);
+
+    if (data && data->isr) {
+        _pc_isr_remove_handler(data->isr);
+    }
 
     if (data) {
         free(data);
@@ -664,12 +691,16 @@ has_error:
         device_remove(dev);
     }
 
+    fprintf(stderr, "%08X\n", status);
+
     return status;
 }
 
 static status_t remove(struct device *dev)
 {
     struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
+
+    _pc_isr_remove_handler(data->isr);
 
     free(data);
 

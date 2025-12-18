@@ -86,17 +86,18 @@ add_custom_target(stage1_bin ALL
 set(I686_EXCLUDE_CPU_MODE TRUE PARENT_SCOPE)
 add_dependencies(bootloader stage1)
 target_link_options(bootloader PUBLIC -Wl,--just-symbols=$<TARGET_FILE:stage1>)
-set_target_properties(bootloader PROPERTIES LINK_DEPENDS stage1)
+set_target_properties(bootloader PROPERTIES LINK_DEPENDS stage1.elf)
 
 target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(bootloader PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(bootloader PRIVATE "${CMAKE_BINARY_DIR}")
 
-target_sources(bootloader PRIVATE init.c isr.c isr.S panic.c power.c start.S)
+target_sources(bootloader PRIVATE gdt.c init.c isr.c isr.S panic.c power.c start.S instruction.c)
 target_link_options(bootloader PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds")
-set_target_properties(bootloader PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds")
+set_target_properties(bootloader PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds;${CMAKE_CURRENT_BINARY_DIR}/stage1.elf")
 
 add_subdirectory(acpi)
+add_subdirectory(apm)
 add_subdirectory(bios)
 add_subdirectory(pci)
 add_subdirectory(shell)

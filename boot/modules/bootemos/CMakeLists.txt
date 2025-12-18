@@ -1,16 +1,16 @@
 cmake_minimum_required(VERSION 3.13)
 cmake_policy(SET CMP0076 NEW)
 
-set(MODULE_NAME example)
+set(MODULE_NAME bootemos)
 
 # Compiler Tests
 
 # Target Configurations
-add_library(bootloader_module_${MODULE_NAME} OBJECT main.c my_basic.c shell.c)
+add_library(bootloader_module_${MODULE_NAME} OBJECT main.c)
 add_custom_target(bootloader_module_${MODULE_NAME}_mod ALL
     COMMAND
         ${CMAKE_LD}
-            -shared -z notext -Bsymbolic
+            -shared -fno-plt -z now -Bsymbolic
             --emit-relocs --export-dynamic --allow-shlib-undefined
             $<TARGET_OBJECTS:bootloader_module_${MODULE_NAME}>
             -o ${MODULE_NAME}.elf
@@ -32,12 +32,11 @@ target_compile_features(bootloader_module_${MODULE_NAME} PUBLIC cxx_std_14)
 target_compile_options(bootloader_module_${MODULE_NAME} PUBLIC 
     $<$<COMPILE_LANGUAGE:C,CXX>:
         -fpic
+        -fno-plt
         -Werror
         -Wall
         -Wunused-result
         -Wno-unused-function
-        -Wno-unused-variable
-        -Wno-unused-but-set-variable
     >
 )
 

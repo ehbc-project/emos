@@ -23,27 +23,32 @@ struct trap_regs {
     uint32_t eax;
 } __packed;
 
-typedef void (*interrupt_handler_t)(struct device *, int);
+typedef void (*interrupt_handler_t)(void *, int);
 typedef void (*trap_handler_t)(struct interrupt_frame *, struct trap_regs *, int, int);
 
-struct isr_table_entry {
-    struct isr_table_entry *next;
-    struct device *dev;
+struct isr_handler {
+    struct isr_handler *next;
+
+    int irq_num;
     int is_interrupt;
+    void *data;
+
     union {
         interrupt_handler_t interrupt_handler;
         trap_handler_t trap_handler;
     };
 };
 
-void _pc_init_idt(void);
-status_t _pc_isr_set_interrupt_handler(int num, struct device *dev, interrupt_handler_t func);
-status_t _pc_isr_set_trap_handler(int num, trap_handler_t func);
+void _pc_isr_init(void);
+status_t _pc_isr_add_interrupt_handler(int num, void *data, interrupt_handler_t func, struct isr_handler **handler);
+status_t _pc_isr_add_trap_handler(int num, trap_handler_t func, struct isr_handler **handler);
+void _pc_isr_remove_handler(struct isr_handler *handler);
 
-struct isr_table_entry *_pc_get_isr_table_entry(int num);
+status_t _pc_isr_mask_interrupt(int num);
+status_t _pc_isr_unmask_interrupt(int num);
 
 uint64_t _pc_get_irq_count(void);
 
-#define isr_set_interrupt_handler _pc_isr_set_interrupt_handler
+#define isr_add_interrupt_handler _pc_isr_add_interrupt_handler
 
 #endif // __EBOOT_ASM_ISR_H__

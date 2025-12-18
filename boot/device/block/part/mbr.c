@@ -15,6 +15,13 @@ struct mbr_data {
     const struct block_interface *blkif;
 };
 
+static status_t get_block_size(struct device *dev, size_t *size)
+{
+    struct mbr_data *data = (struct mbr_data *)dev->data;
+
+    return data->blkif->get_block_size(data->blkdev, size);
+}
+
 static status_t read(struct device *dev, lba_t lba, void *buf, size_t count, size_t *result)
 {
     struct mbr_data *data = (struct mbr_data *)dev->data;
@@ -30,6 +37,7 @@ static status_t write(struct device *dev, lba_t lba, const void *buf, size_t cou
 }
 
 static const struct block_interface blkif = {
+    .get_block_size = get_block_size,
     .read = read,
     .write = write,
 };

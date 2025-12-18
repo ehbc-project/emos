@@ -2,16 +2,23 @@
 
 #include <stdio.h>
 
-void uacpi_kernel_log(uacpi_log_level, const uacpi_char *fmt, ...)
+#include <eboot/log.h>
+
+#define MODULE_NAME "acpi"
+
+void uacpi_kernel_log(uacpi_log_level ll, const uacpi_char *fmt, ...)
 {
     va_list args;
-    
+    int internal_ll = ll;
+
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
+    log_vprintf(internal_ll, MODULE_NAME, fmt, args);
     va_end(args);
 }
 
-void uacpi_kernel_vlog(uacpi_log_level, const uacpi_char *fmt, uacpi_va_list args)
+void uacpi_kernel_vlog(uacpi_log_level ll, const uacpi_char *fmt, uacpi_va_list args)
 {
-    vfprintf(stderr, fmt, args);
+    int internal_ll = ll;
+
+    log_vprintf(internal_ll, MODULE_NAME, fmt, (va_list)args);
 }

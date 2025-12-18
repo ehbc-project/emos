@@ -71,16 +71,16 @@ struct vbe_controller_info {
     /* VBE 1.0 */
     char signature[4];
     uint16_t vbe_version;
-    farptr_t oem_string;
+    farptr16_t oem_string;
     uint32_t capabilities;
-    farptr_t video_modes;
+    farptr16_t video_modes;
     uint16_t total_memory;
 
     /* VBE 2.0 */
     uint16_t oem_software_rev;
-    farptr_t oem_vendor_name_ptr;
-    farptr_t oem_product_name_ptr;
-    farptr_t oem_product_rev_ptr;
+    farptr16_t oem_vendor_name_ptr;
+    farptr16_t oem_product_name_ptr;
+    farptr16_t oem_product_rev_ptr;
 
     uint8_t reserved[222];
 
@@ -233,7 +233,7 @@ status_t _pc_bios_vbe_schedule_display_start(uint32_t fboffset);
 
 status_t _pc_bios_vbe_schedule_display_start_at_retrace(uint32_t fboffset);
 
-status_t _pc_bios_vbe_get_pm_interface(farptr_t *pmi_table, uint16_t *size);
+status_t _pc_bios_vbe_get_pm_interface(farptr16_t *pmi_table, uint16_t *size);
 
 status_t _pc_bios_vbeddc_check_capability(uint16_t ctrlr_unit, uint8_t *xfer_time, uint8_t *flags);
 

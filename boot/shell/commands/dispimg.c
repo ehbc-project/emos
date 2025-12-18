@@ -6,6 +6,7 @@
 #include <eboot/status.h>
 #include <eboot/path.h>
 #include <eboot/device.h>
+#include <eboot/interface/video.h>
 #include <eboot/interface/framebuffer.h>
 
 static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
@@ -43,16 +44,24 @@ static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
         return 1;
     }
 
+    const struct video_interface *vidif;
+    status = fbdev->driver->get_interface(fbdev, "video", (const void **)&vidif);
+    if (!CHECK_SUCCESS(status)) return 1;
+
     const struct framebuffer_interface *fbif;
     status = fbdev->driver->get_interface(fbdev, "framebuffer", (const void **)&fbif);
     if (!CHECK_SUCCESS(status)) return 1;
 
-    int width, height;
+    int current_vmode;
+    struct video_mode_info vmode_info;
     uint32_t *framebuffer;
     status = fbif->get_framebuffer(fbdev, (void **)&framebuffer);
     if (!CHECK_SUCCESS(status)) return 1;
 
-    status = fbif->get_mode(fbdev, &width, &height, NULL);
+    status = vidif->get_mode(fbdev, &current_vmode);
+    if (!CHECK_SUCCESS(status)) return 1;
+
+    status = vidif->get_mode_info(fbdev, current_vmode, &vmode_info);
     if (!CHECK_SUCCESS(status)) return 1;
 
     struct bmp_header {
@@ -87,19 +96,18 @@ static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
 
     fseek(fp, header.bitmap_offset, SEEK_SET);
 
-    int ystart = (height - dibheader.height) / 2;
-    int xstart = (width - dibheader.width) / 2;
+    int ystart = (vmode_info.height - dibheader.height) / 2;
+    int xstart = (vmode_info.width - dibheader.width) / 2;
 
     for (int y = 0; y < dibheader.height; y++) {
         for (int x = 0; x < dibheader.width; x++) {
             uint32_t buf;
             fread(&buf, dibheader.bpp / 8, 1, fp);
-            framebuffer[(ystart + dibheader.height - y - 1) * width + xstart + x] = buf;
+            framebuffer[(ystart + dibheader.height - y - 1) * vmode_info.width + xstart + x] = buf;
         }
     }
-    fbif->invalidate(fbdev, 0, 0, width - 1, height - 1);
+    fbif->invalidate(fbdev, 0, 0, vmode_info.width - 1, vmode_info.height - 1);
     fbif->flush(fbdev);
-    fbif->present(fbdev);
     
     fclose(fp);
 
@@ -114,7 +122,7 @@ static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
 static struct command dispimg_command = {
     .name = "dispimg",
     .handler = dispimg_handler,
-    .help_message = "Write arguments to a device",
+    .help_message = "Show BMP file",
 };
 
 static void dispimg_command_init(void)

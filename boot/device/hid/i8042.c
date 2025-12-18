@@ -7,11 +7,14 @@
 #include <eboot/asm/time.h>
 #include <eboot/asm/intrinsics/misc.h>
 
+#include <eboot/log.h>
 #include <eboot/status.h>
 #include <eboot/macros.h>
 #include <eboot/hid.h>
 #include <eboot/device.h>
 #include <eboot/interface/ps2.h>
+
+#define MODULE_NAME "i8042"
 
 struct i8042_data {
     uint16_t io_data, io_ctrl;
@@ -24,13 +27,13 @@ struct key_event {
     uint16_t flags;
 };
 
-static status_t wait_for_output_buffer_full(struct device *dev, unsigned int timeout)
+static status_t wait_for_status_register(struct device *dev, uint8_t value, uint8_t mask, unsigned int timeout)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
 
     uint64_t tick_start = get_global_tick();
 
-    while (!(io_in8(data->io_ctrl) & 0x01)) {
+    while ((io_in8(data->io_ctrl) & mask) != value) {
         if (get_global_tick() - tick_start > timeout) return STATUS_IO_TIMEOUT;
         _i686_pause();
     }
@@ -38,30 +41,33 @@ static status_t wait_for_output_buffer_full(struct device *dev, unsigned int tim
     return STATUS_SUCCESS;
 }
 
-static status_t wait_for_output_buffer_empty(struct device *dev, unsigned int timeout)
+static status_t read_ccb(struct device *dev, uint8_t *value)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
+    status_t status;
+    uint8_t ccb;
 
-    uint64_t tick_start = get_global_tick();
+    io_out8(data->io_ctrl, 0x20);
 
-    while (io_in8(data->io_ctrl) & 0x01) {
-        if (get_global_tick() - tick_start > timeout) return STATUS_IO_TIMEOUT;
-        _i686_pause();
-    }
+    status = wait_for_status_register(dev, 0x01, 0x01, 2);
+    if (!CHECK_SUCCESS(status)) return status;
+    ccb = io_in8(data->io_data);
+
+    if (value) *value = ccb;
 
     return STATUS_SUCCESS;
 }
 
-static status_t wait_for_input_buffer_empty(struct device *dev, unsigned int timeout)
+static status_t write_ccb(struct device *dev, uint8_t value)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
+    status_t status;
 
-    uint64_t tick_start = get_global_tick();
+    io_out8(data->io_ctrl, 0x60);
 
-    while (io_in8(data->io_ctrl) & 0x02) {
-        if (get_global_tick() - tick_start > timeout) return STATUS_IO_TIMEOUT;
-        _i686_pause();
-    }
+    status = wait_for_status_register(dev, 0x08, 0x0A, 2);
+    if (!CHECK_SUCCESS(status)) return status;
+    io_out8(data->io_data, value);
 
     return STATUS_SUCCESS;
 }
@@ -69,12 +75,16 @@ static status_t wait_for_input_buffer_empty(struct device *dev, unsigned int tim
 static status_t enable_port(struct device *dev, int port)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
+    status_t status;
+    uint8_t prev_ccb;
 
-    io_out8(data->io_ctrl, !port ? 0xAE : 0xA8);
-    io_out8(data->io_ctrl, 0x20);
-    uint8_t prev_ccb = io_in8(data->io_data);
-    io_out8(data->io_ctrl, 0x60);
-    io_out8(data->io_data, prev_ccb | (!port ? 0x01 : 0x02));
+    io_out8(data->io_ctrl, port ? 0xA8 : 0xAE);
+
+    status = read_ccb(dev, &prev_ccb);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = write_ccb(dev, prev_ccb | (port ? 0x02 : 0x01));
+    if (!CHECK_SUCCESS(status)) return status;
 
     return STATUS_SUCCESS;
 }
@@ -82,12 +92,16 @@ static status_t enable_port(struct device *dev, int port)
 static status_t disable_port(struct device *dev, int port)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
+    status_t status;
+    uint8_t prev_ccb;
 
-    io_out8(data->io_ctrl, !port ? 0xAD : 0xA7);
-    io_out8(data->io_ctrl, 0x20);
-    uint8_t prev_ccb = io_in8(data->io_data);
-    io_out8(data->io_ctrl, 0x60);
-    io_out8(data->io_data, prev_ccb & ~(!port ? 0x01 : 0x02));
+    io_out8(data->io_ctrl, port ? 0xA7 : 0xAD);
+
+    status = read_ccb(dev, &prev_ccb);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    status = write_ccb(dev, prev_ccb & ~(port ? 0x02 : 0x01));
+    if (!CHECK_SUCCESS(status)) return status;
 
     return STATUS_SUCCESS;
 }
@@ -95,8 +109,13 @@ static status_t disable_port(struct device *dev, int port)
 static status_t test_port(struct device *dev, int port)
 {
     struct i8042_data *data = (struct i8042_data *)dev->data;
+    status_t status;
 
-    io_out8(data->io_ctrl, !port ? 0xAB : 0xA9);
+    io_out8(data->io_ctrl, port ? 0xA9 : 0xAB);
+
+    status = wait_for_status_register(dev, 0x01, 0x01, 2);
+    if (!CHECK_SUCCESS(status)) return status;
+
     return io_in8(data->io_data) ? STATUS_HARDWARE_NOT_FOUND : STATUS_SUCCESS;
 }
 
@@ -110,12 +129,10 @@ static status_t send_data(struct device *dev, int port, const uint8_t *buf, int 
     }
 
     for (int i = 0; i < len; i++) {
-        status = wait_for_input_buffer_empty(dev, 1);
+        status = wait_for_status_register(dev, 0x00, 0x02, 2);
         if (!CHECK_SUCCESS(status)) return status;
 
         io_out8(data->io_data, buf[i]);
-
-        fprintf(stderr, "[i8042] send byte %02X ok\n", buf[i]);
     }
 
     return STATUS_SUCCESS;
@@ -127,12 +144,10 @@ static status_t recv_data(struct device *dev, int port, uint8_t *buf, int len)
     status_t status;
 
     for (int i = 0; i < len; i++) {
-        status = wait_for_output_buffer_full(dev, 1);
+        status = wait_for_status_register(dev, 0x01, 0x01, 2);
         if (!CHECK_SUCCESS(status)) return status;
 
         buf[i] = io_in8(data->io_data);
-
-        fprintf(stderr, "[i8042] recv byte %02X ok\n", buf[i]);
     }
 
     return STATUS_SUCCESS;
@@ -187,8 +202,8 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     struct device_driver *kbdrv = NULL;
     struct device_driver *msdrv = NULL;
     int has_second_port = 0;
+    uint8_t prev_ccb;
 
-    fprintf(stderr, "[i8042] checking resources...\n");
     if (!rsrc || rsrc_cnt != 4 ||
         rsrc[0].type != RT_IOPORT || rsrc[0].base != rsrc[0].limit ||
         rsrc[1].type != RT_IOPORT || rsrc[1].base != rsrc[1].limit ||
@@ -198,15 +213,12 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         goto has_error;
     }
 
-    fprintf(stderr, "[i8042] creating device...\n");
     status = device_create(&dev, drv, parent);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    fprintf(stderr, "[i8042] generating device name...\n");
     status = device_generate_name("ps2c", dev->name, sizeof(dev->name));
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    fprintf(stderr, "[i8042] creating device data...\n");
     data = malloc(sizeof(*data));
     data->io_data = rsrc[0].base;
     data->io_ctrl = rsrc[1].base;
@@ -214,50 +226,59 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     data->irq_port1 = rsrc[3].base;
     dev->data = data;
 
-    fprintf(stderr, "[i8042] disabling all connected peripherals...\n");
+    LOG_DEBUG("disabling all connected peripherals...\n");
     /* disable all devices */
-    io_out8(data->io_ctrl, 0xAD);
-    io_out8(data->io_ctrl, 0xA7);
+    status = disable_port(dev, 0);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+
+    status = disable_port(dev, 1);
+    if (!CHECK_SUCCESS(status)) goto has_error;
     
-    fprintf(stderr, "[i8042] flushing output buffer...\n");
+    LOG_DEBUG("flushing output buffer...\n");
     /* flush the output buffer*/
     io_in8(data->io_data);
 
-    fprintf(stderr, "[i8042] disabling translation & IRQ...\n");
+    LOG_DEBUG("disabling translation & IRQ...\n");
     /* disable translation & IRQ */
-    io_out8(data->io_ctrl, 0x60);
-    status = wait_for_input_buffer_empty(dev, 1);
+    status = read_ccb(dev, &prev_ccb);
     if (!CHECK_SUCCESS(status)) goto has_error;
-    io_out8(data->io_data, 0x00);
+    
+    status = write_ccb(dev, prev_ccb & ~0x43);
+    if (!CHECK_SUCCESS(status)) goto has_error;
 
-    fprintf(stderr, "[i8042] running controller self-test...\n");
+    LOG_DEBUG("running controller self-test...\n");
     /* perform controller self-test */
     io_out8(data->io_ctrl, 0xAA);
-    status = wait_for_output_buffer_full(dev, 5);
-    if (!CHECK_SUCCESS(status)) goto has_error;
-    if (io_in8(data->io_data) != 0x55) {
-        return STATUS_HARDWARE_FAILED;
-    }
 
-    fprintf(stderr, "[i8042] disabling translation & IRQ again...\n");
+    status = wait_for_status_register(dev, 0x01, 0x01, 2);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+    if (io_in8(data->io_data) != 0x55) return STATUS_HARDWARE_FAILED;
+
+    LOG_DEBUG("disabling translation & IRQ again...\n");
     /* disable translation & IRQ (again) */
-    io_out8(data->io_ctrl, 0x60);
-    status = wait_for_input_buffer_empty(dev, 1);
+    status = read_ccb(dev, &prev_ccb);
     if (!CHECK_SUCCESS(status)) goto has_error;
-    io_out8(data->io_data, 0x00);
+    
+    status = write_ccb(dev, prev_ccb & ~0x43);
+    if (!CHECK_SUCCESS(status)) goto has_error;
 
-    fprintf(stderr, "[i8042] checking if the second port is available...\n");
+    LOG_DEBUG("checking if the second port is available...\n");
     /* determine if the second port is available */
     io_out8(data->io_ctrl, 0xA8);
-    io_out8(data->io_ctrl, 0x20);
-    status = wait_for_output_buffer_full(dev, 1);
+
+    status = read_ccb(dev, &prev_ccb);
     if (!CHECK_SUCCESS(status)) goto has_error;
-    if (!(io_in8(data->io_data) & 0x20)) {
+    if (!(prev_ccb & 0x20)) {
         has_second_port = 1;
         io_out8(data->io_ctrl, 0xA7);
+
+        status = read_ccb(dev, &prev_ccb);
+        if (!CHECK_SUCCESS(status)) goto has_error;
+        
+        status = write_ccb(dev, prev_ccb & ~0x22);
+        if (!CHECK_SUCCESS(status)) goto has_error;
     }
 
-    fprintf(stderr, "[i8042] initializing child devices...\n");
     /* initialize child devices */
     status = device_driver_find("ps2_keyboard", &kbdrv);
     if (!CHECK_SUCCESS(status)) {
@@ -268,8 +289,10 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     if (!CHECK_SUCCESS(status)) {
         msdrv = NULL;
     }
-        
+
     if (kbdrv) {
+        LOG_DEBUG("initializing first port...\n");
+
         struct resource res[] = {
             {
                 .type = RT_BUS,
@@ -290,6 +313,8 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     }
 
     if (has_second_port && msdrv) {
+        LOG_DEBUG("initializing second port...\n");
+
         struct resource res[] = {
             {
                 .type = RT_BUS,
@@ -305,10 +330,12 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
             },
         };
 
-        status = kbdrv->probe(&idev, msdrv, dev, res, ARRAY_SIZE(res));
+        status = msdrv->probe(&idev, msdrv, dev, res, ARRAY_SIZE(res));
         // ignore status
     }
-    
+
+    LOG_DEBUG("initialization success\n");
+
     if (devout) *devout = dev;
 
     return STATUS_SUCCESS;
@@ -341,7 +368,7 @@ static status_t remove(struct device *dev)
 
     /* enable translation & IRQ */
     io_out8(data->io_ctrl, 0x60);
-    io_out8(data->io_data, 0x63);
+    io_out8(data->io_data, 0x67);
 
     free(data);
 
