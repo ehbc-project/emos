@@ -6,7 +6,7 @@ set(MODULE_NAME guishell)
 # Compiler Tests
 
 # Target Configurations
-add_library(bootloader_module_${MODULE_NAME} OBJECT color.c cursor_data.c draw.c main.c)
+add_library(bootloader_module_${MODULE_NAME} OBJECT main.c)
 add_custom_target(bootloader_module_${MODULE_NAME}_mod ALL
     COMMAND
         ${CMAKE_LD}

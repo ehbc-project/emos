@@ -141,6 +141,7 @@ json_array_get_element_count
 json_destruct
 json_object_find_value
 json_parse
+labs
 liballoc_alloc
 liballoc_free
 liballoc_lock

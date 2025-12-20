@@ -31,6 +31,11 @@ struct brush {
     color_t secondary_color;
 };
 
+struct pen {
+    color_t primary_color;
+    color_t secondary_color;
+};
+
 color_t color_blend(color_t upper, color_t lower);
 
 color_t color_resolve_brush(const struct brush *b, struct point2 start, struct point2 end, struct point2 current);

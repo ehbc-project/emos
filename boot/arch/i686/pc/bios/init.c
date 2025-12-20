@@ -8,7 +8,6 @@
 #include <eboot/asm/bios/disk.h>
 #include <eboot/asm/bios/video.h>
 #include <eboot/asm/bios/keyboard.h>
-#include <eboot/asm/bios/mem.h>
 #include <eboot/asm/bios/misc.h>
 #include <eboot/asm/pci/cfgspace.h>
 #include <eboot/asm/io.h>
@@ -17,6 +16,7 @@
 #include <eboot/asm/pic.h>
 #include <eboot/asm/pc_gdt.h>
 #include <eboot/asm/apm.h>
+#include <eboot/asm/intrinsics/rdtsc.h>
 
 #include <eboot/compiler.h>
 #include <eboot/status.h>
@@ -26,6 +26,7 @@
 #include <eboot/log.h>
 #include <eboot/mm.h>
 #include <eboot/device.h>
+#include <eboot/global_configs.h>
 #include <eboot/filesystem.h>
 #include <eboot/interface/char.h>
 #include <eboot/interface/block.h>
@@ -370,9 +371,9 @@ static status_t init_nonpnp_devices(int has_acpi)
     return 0;
 }
 
-static uint8_t rtc_century_offset = 0x00;
-
 #define MAKE_ACPI_STATUS(uacpi_status) (0x80010000 | (uacpi_status))
+
+int config_rtc_century_offset;
 
 static status_t acpi_early_init(void)
 {
@@ -391,7 +392,7 @@ static status_t acpi_early_init(void)
         return MAKE_ACPI_STATUS(uacpi_status);
     }
 
-    rtc_century_offset = fadt->century;
+    config_rtc_century_offset = fadt->century;
 
     return STATUS_SUCCESS;
 }
@@ -474,63 +475,6 @@ static void raw_print(struct console_char_cell *buf, const char *str, int len)
     }
 }
 
-static void rtc_isr(void *data, int num)
-{
-    // static uint8_t prev_sec = 0xFF;
-    // static uint64_t prev_irq_count = 0;
-    // uint8_t current_sec, min, hour, day, month, year, century;
-    // 
-    // io_out8(0x70, 0x0C);
-    // io_in8(0x71);
-
-    // io_out8(0x70, 0x00);
-    // current_sec = io_in8(0x71);
-    // if (prev_sec != current_sec) {
-    //     io_out8(0x70, 0x02);
-    //     min = io_in8(0x71);
-    //     io_out8(0x70, 0x04);
-    //     hour = io_in8(0x71);
-    //     io_out8(0x70, 0x07);
-    //     day = io_in8(0x71);
-    //     io_out8(0x70, 0x08);
-    //     month = io_in8(0x71);
-    //     io_out8(0x70, 0x09);
-    //     year = io_in8(0x71);
-    //     if (rtc_century_offset) {
-    //         io_out8(0x70, rtc_century_offset);
-    //         century = io_in8(0x71);
-    //     }
-
-    //     uint64_t irq_count = _pc_get_irq_count();
-    //     prev_sec = current_sec;
-
-    //     struct device *condev = find_device("console0");
-    //     if (!condev) {
-    //         return;
-    //     }
-    //     const struct console_interface *conif = condev->driver->get_interface(condev, "console");
-
-    //     struct console_char_cell *buf = conif->get_buffer(condev);
-    //     int con_width;
-    //     conif->get_dimension(condev, &con_width, NULL);
-    //     char str[19];
-    //     snprintf(str, sizeof(str), "%12llu IRQs/s", irq_count - prev_irq_count);
-    //     raw_print(buf + con_width * 2 - 19, str, sizeof(str));
-    //     
-    //     if (rtc_century_offset) {
-    //         snprintf(str, sizeof(str), "%02X%02X-%02X-%02X %02X:%02X:%02X", century, year, month, day, hour, min, current_sec);
-    //     } else {
-    //         snprintf(str, sizeof(str), "  %02X-%02X-%02X %02X:%02X:%02X", year, month, day, hour, min, current_sec);
-    //     }
-    //     raw_print(buf + con_width * 3 - 19, str, sizeof(str));
-    //     conif->invalidate(condev, con_width - 19, 1, con_width - 1, 2);
-    //     conif->flush(condev);
-    //     conif->present(condev);
-
-    //     prev_irq_count = irq_count;
-    // }
-}
-
 static void pit_isr(void *data, int num)
 {
     global_tick++;
@@ -567,21 +511,6 @@ static void bkpt_handler(struct interrupt_frame *frame, struct trap_regs *regs, 
     }
 }
 
-static void init_rtc(void)
-{
-    uint8_t temp;
-
-    io_out8(0x0070, 0x8A);
-    temp = io_in8(0x0071);
-    io_out8(0x0070, 0x8A); 
-    io_out8(0x0071, (temp & 0xF0) | 0x0C);
-
-    io_out8(0x0070, 0x8B);
-    temp = io_in8(0x0071);
-    io_out8(0x0070, 0x8B);
-    io_out8(0x0071, temp | 0x40);
-}
-
 static void init_pit(void)
 {
     static const uint16_t pit_value = 1193182 / 20;
@@ -609,14 +538,6 @@ void _pc_init(void)
     LOG_DEBUG("initializing GDT...\n");
     _pc_gdt_init();
 
-    uint32_t cursor = 0;
-    struct smap_entry entry;
-
-    do {
-        _pc_bios_mem_query_map(&cursor, &entry, sizeof(entry));
-        LOG_DEBUG("memory map entry %08lX%08lX %08lX%08lX %08lX\n", entry.base_addr_high, entry.base_addr_low, entry.length_high, entry.length_low, entry.type);
-    } while (cursor);
-
     LOG_DEBUG("initializing memory management...\n");
     mm_init();
 
@@ -626,15 +547,11 @@ void _pc_init(void)
     if (!CHECK_SUCCESS(status)) {
         panic(status, "could not reload VBR sector");
     }
-    
+
     _pc_pic_remap_int(0x20, 0x28);
 
     _pc_isr_add_trap_handler(0x03, bkpt_handler, NULL);
     _pc_isr_add_interrupt_handler(0x20, NULL, pit_isr, NULL);
-    _pc_isr_add_interrupt_handler(0x28, NULL, rtc_isr, NULL);
-
-    LOG_DEBUG("initializing RTC...\n");
-    init_rtc();
 
     LOG_DEBUG("initializing PIT...\n");
     init_pit();

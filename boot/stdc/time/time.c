@@ -1,25 +1,45 @@
 #include <time.h>
 
+#include <eboot/status.h>
+#include <eboot/device.h>
+#include <eboot/global_configs.h>
+#include <eboot/interface/rtc.h>
+
 time_t time(time_t *time)
 {
-    return 0;
-}
+    status_t status;
+    struct device *rtcdev;
+    const struct rtc_interface *rtcif;
+    struct rtc_time rtctime;
 
-time_t mktime(struct tm *tm)
-{
-    return 0;
-}
+    status = device_find("rtc0", &rtcdev);
+    if (!CHECK_SUCCESS(status)) return 0;
 
-struct tm *gmtime(const time_t *time)
-{
-    static struct tm tim = { 0, };
-    return &tim;
-}
+    status = rtcdev->driver->get_interface(rtcdev, "rtc", (const void **)&rtcif);
+    if (!CHECK_SUCCESS(status)) return 0;
 
-struct tm *localtime(const time_t *time)
-{
-    static struct tm tim = { 0, };
-    return &tim;
+    status = rtcif->get_time(rtcdev, &rtctime);
+    if (!CHECK_SUCCESS(status)) return 0;
+
+    struct tm newtime = {
+        .tm_year = rtctime.year - 1900,
+        .tm_mon = rtctime.month - 1,
+        .tm_mday = rtctime.mday,
+        .tm_hour = rtctime.hour,
+        .tm_min = rtctime.minute,
+        .tm_sec = rtctime.second,
+        .tm_isdst = 0,
+    };
+
+    time_t newtimet = mktime(&newtime);
+
+    if (!config_rtc_utc) {
+        newtimet -= config_timezone_offset;
+    }
+
+    if (time) *time = newtimet;
+
+    return newtimet;
 }
 
 size_t strftime(char *__restrict str, size_t maxsize, const char *__restrict fmt, const struct tm *__restrict tm)

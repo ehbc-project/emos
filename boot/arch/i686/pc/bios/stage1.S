@@ -50,7 +50,7 @@ _s1start:
     jmp     .halt16
 
 _s1start.1:
-    call    switch_real_to_prot         # switch to protected mode
+    call    switch_r16_to_p32         # switch to protected mode
     .code32
 
 .jump:

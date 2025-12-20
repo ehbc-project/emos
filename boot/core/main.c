@@ -14,6 +14,7 @@
 #include <eboot/json.h>
 #include <eboot/hid.h>
 #include <eboot/shell.h>
+#include <eboot/global_configs.h>
 #include <eboot/interface/block.h>
 #include <eboot/interface/char.h>
 #include <eboot/interface/console.h>
@@ -86,7 +87,15 @@ void setup_tty(void)
     }
 }
 
-void show_menu(void)
+struct json_value *config_data;
+const char *config_title;
+const char *config_password;
+time_t config_timezone_offset;
+int config_rtc_utc;
+int config_timeout;
+int config_default_entry;
+
+void read_config(void)
 {
     status_t status;
     FILE *cfg_fp = NULL;
@@ -94,17 +103,12 @@ void show_menu(void)
     char *cfg_str = NULL;
     struct json_value *json = NULL;
     struct json_value *title = NULL;
-    struct json_value *start_script = NULL;
-    struct device *kbd;
-    const struct hid_interface *hidi;
-    struct json_value *options;
-    unsigned int option_count;
-    int selection = 0, selected = 0;
-    uint16_t key, flags;
-    struct json_value *option;
-    struct json_value *option_name;
-    struct json_value *option_script;
-    
+    struct json_value *password = NULL;
+    struct json_value *timezone = NULL;
+    struct json_value *rtc_utc = NULL;
+    struct json_value *timeout = NULL;
+    struct json_value *default_entry = NULL;
+
     cfg_fp = fopen("boot:/config/boot.json", "r");
     if (!cfg_fp) {
         panic(STATUS_ENTRY_NOT_FOUND, "boot:/config/boot.json not found");
@@ -124,15 +128,87 @@ void show_menu(void)
     
     free(cfg_str);
     fclose(cfg_fp);
-    
-    status = json_object_find_value(&json->obj, "title", &title);
+
+    config_data = json;
+
+    /* read out title */
+    status = json_object_find_value(&config_data->obj, "title", &title);
     if (!CHECK_SUCCESS(status) || !title) {
-        panic(STATUS_INVALID_FORMAT, "element \"title\" not found");
-    } else if (title->type != JVT_STRING) {
+        config_title = NULL;
+    } else if (title->type == JVT_STRING) {
+        config_title = title->str;
+    } else {
         panic(STATUS_INVALID_FORMAT, "element \"title\" has invalid value type");
     }
 
-    status = json_object_find_value(&json->obj, "start_script", &start_script);
+    /* read out password */
+    status = json_object_find_value(&config_data->obj, "password", &password);
+    if (!CHECK_SUCCESS(status) || !password) {
+        config_password = NULL;
+    } else if (password->type == JVT_STRING) {
+        config_password = password->str;
+    } else {
+        panic(STATUS_INVALID_FORMAT, "element \"password\" has invalid value type");
+    }
+
+    /* read out timezone */
+    status = json_object_find_value(&config_data->obj, "timezone", &timezone);
+    if (!CHECK_SUCCESS(status) || !timezone) {
+        config_timezone_offset = 0;
+    } else if (timezone->type == JVT_STRING) {
+        // TODO: do timezone parsing
+    } else if (timezone->type == JVT_NUMBER) {
+        config_timezone_offset = timezone->num;
+    } else {
+        panic(STATUS_INVALID_FORMAT, "element \"timezone\" has invalid value type");
+    }
+
+    /* read out whether rtc stores utc */
+    status = json_object_find_value(&config_data->obj, "rtc_utc", &rtc_utc);
+    if (!CHECK_SUCCESS(status) || !rtc_utc) {
+        config_rtc_utc = 1;  /* assume that rtc stores utc time */
+    } else if (rtc_utc->type == JVT_BOOLEAN) {
+        config_rtc_utc = rtc_utc->boolean;
+    } else {
+        panic(STATUS_INVALID_FORMAT, "element \"rtc_utc\" has invalid value type");
+    }
+
+    /* read out option selection timeout */
+    status = json_object_find_value(&config_data->obj, "timeout", &timeout);
+    if (!CHECK_SUCCESS(status) || !timeout) {
+        config_timeout = 5;
+    } else if (timeout->type == JVT_NUMBER) {
+        config_timeout = timeout->num;
+    } else {
+        panic(STATUS_INVALID_FORMAT, "element \"timeout\" has invalid value type");
+    }
+
+    /* read out default option entry */
+    status = json_object_find_value(&config_data->obj, "default_entry", &default_entry);
+    if (!CHECK_SUCCESS(status) || !default_entry) {
+        config_default_entry = 0;
+    } else if (default_entry->type == JVT_NUMBER) {
+        config_default_entry = default_entry->num;
+    } else {
+        panic(STATUS_INVALID_FORMAT, "element \"default_entry\" has invalid value type");
+    }
+}
+
+void show_menu(void)
+{
+    status_t status;
+    struct json_value *start_script = NULL;
+    struct device *kbd;
+    const struct hid_interface *hidi;
+    struct json_value *options;
+    unsigned int option_count;
+    int selection, selected;
+    uint16_t key, flags;
+    struct json_value *option;
+    struct json_value *option_name;
+    struct json_value *option_script;
+
+    status = json_object_find_value(&config_data->obj, "start_script", &start_script);
     if (!CHECK_SUCCESS(status) || !start_script) {
         // skip running startup script
     } else if (start_script->type == JVT_STRING) {
@@ -148,7 +224,7 @@ void show_menu(void)
         panic(STATUS_INVALID_FORMAT, "element \"start_script\" has invalid value type");
     }
 
-    printf("\x1b[3J\x1b[0;0f\x1b[?25l%s\n", title->str);
+    printf("\x1b[3J\x1b[0;0f\x1b[?25l%s\n", config_title);
     printf("════════════════════════════════════════\n");
 
     status = device_find("kbd0", &kbd);
@@ -161,7 +237,7 @@ void show_menu(void)
         panic(status, "failed to get interface from device");
     }
 
-    status = json_object_find_value(&json->obj, "options", &options);
+    status = json_object_find_value(&config_data->obj, "options", &options);
     if (!CHECK_SUCCESS(status) || !options) {
         panic(!CHECK_SUCCESS(status) ? status : STATUS_INVALID_FORMAT, "element \"options\" not found");
     } else if (options->type != JVT_ARRAY) {
@@ -173,6 +249,8 @@ void show_menu(void)
         panic(status, "cannot get element count of element \"options\"");
     }
 
+    selected = 0;
+    selection = config_default_entry;
     while (!selected) {
         printf("\x1b[3;0H");
         for (int i = 0; i < option_count; i++) {
@@ -245,13 +323,14 @@ void show_menu(void)
     for (;;) {
         shell_execute(NULL, "shell");
     }
-
-    json_destruct(json);
 }
 
 void main(void)
 {
     setup_tty();
+    
+    read_config();
+
     show_menu();
 
     printf("Kernel returned. Press any key to reboot. (btw, how did you get here?)");

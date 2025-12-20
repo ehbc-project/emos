@@ -28,8 +28,10 @@ time_t time(time_t *time);
 time_t mktime(struct tm *tm);
 
 struct tm *gmtime(const time_t *time);
+void gmtime_r(const time_t *_time, struct tm *result);
 
 struct tm *localtime(const time_t *time);
+void localtime_r(const time_t *_time, struct tm *result);
 
 size_t strftime(char *__restrict str, size_t maxsize, const char *__restrict fmt, const struct tm *__restrict tm);
 

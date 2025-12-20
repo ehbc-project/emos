@@ -272,13 +272,26 @@ static status_t parse_number(struct json_state *state, struct json_value **value
 {
     skip_whitespace(state);
 
-    if (!isdigit(state->str[state->cursor])) return JSON_SYNTAX_ERR;
-    if (++state->cursor >= state->len) return JSON_SYNTAX_ERR;
+    if (!isdigit(state->str[state->cursor]) && state->str[state->cursor] != '-') return JSON_SYNTAX_ERR;
+    if (state->cursor + 1 >= state->len) return JSON_SYNTAX_ERR;
 
     struct json_value *value = malloc(sizeof(struct json_value));
     value->type = JVT_NUMBER;
 
-    for (; isdigit(state->str[state->cursor]); state->cursor++) {}
+    int negate = 0;
+    if (state->str[state->cursor] == '-') {
+        negate = 1;
+        state->cursor++;
+    }
+
+    value->num = 0;
+    for (; isdigit(state->str[state->cursor]); state->cursor++) {
+        value->num = value->num * 10 + state->str[state->cursor] - '0';
+    }
+
+    if (negate) {
+        value->num = -value->num;
+    }
 
     if (valueout) *valueout = value;
 
@@ -348,6 +361,7 @@ static status_t parse_value(struct json_state *state, struct json_value **value)
         case '7':
         case '8':
         case '9':
+        case '-':
             return parse_number(state, value);
         case 't':
         case 'f':

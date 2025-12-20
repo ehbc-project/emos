@@ -2,7 +2,9 @@
 
 #include <stdio.h>
 
-#include <eboot/asm/intrinsics/rdtsc.h>
+#include <eboot/status.h>
+#include <eboot/device.h>
+#include <eboot/interface/rtc.h>
 
 #ifdef NDEBUG
 static int log_level = LL_NONE;
@@ -46,14 +48,72 @@ void log_vprintf(int level, const char *module_name, const char *fmt, va_list ar
 {
     if (log_level < level) return;
 
-    fprintf(stddbg, "%llu %s [%s] ", _i686_rdtsc(), module_name, ll_str[level]);
+    status_t status;
+    int time_available = 1;
+    struct device *rtcdev;
+    const struct rtc_interface *rtcif;
+    struct rtc_time rtctime;
+
+    status = device_find("rtc0", &rtcdev);
+    if (!CHECK_SUCCESS(status)) {
+        time_available = 0;
+        goto skip_time;
+    }
+
+    status = rtcdev->driver->get_interface(rtcdev, "rtc", (const void **)&rtcif);
+    if (!CHECK_SUCCESS(status)) {
+        time_available = 0;
+        goto skip_time;
+    }
+
+    status = rtcif->get_time(rtcdev, &rtctime);
+    if (!CHECK_SUCCESS(status)) {
+        time_available = 0;
+        goto skip_time;
+    }
+
+skip_time:
+    if (time_available) {
+        fprintf(stddbg, "%d-%02d-%02dT%02d:%02d:%02d.%03dZ %s [%s] ", rtctime.year, rtctime.month, rtctime.mday, rtctime.hour, rtctime.minute, rtctime.second, rtctime.millisecond, module_name, ll_str[level]);
+    } else {
+        fprintf(stddbg, "--time not available-- %s [%s] ", module_name, ll_str[level]);
+    }
     vfprintf(stddbg, fmt, args);
 }
 
 void log_isr_vprintf(int level, const char *module_name, const char *fmt, va_list args)
 {
     if (log_level < level) return;
+    
+    status_t status;
+    int time_available = 1;
+    struct device *rtcdev;
+    const struct rtc_interface *rtcif;
+    struct rtc_time rtctime;
 
-    fprintf(stddbg, "%llu %s [%s] ", _i686_rdtsc(), module_name, ll_str[level]);
+    status = device_find("rtc0", &rtcdev);
+    if (!CHECK_SUCCESS(status)) {
+        time_available = 0;
+        goto skip_time;
+    }
+
+    status = rtcdev->driver->get_interface(rtcdev, "rtc", (const void **)&rtcif);
+    if (!CHECK_SUCCESS(status)) {
+        time_available = 0;
+        goto skip_time;
+    }
+
+    status = rtcif->get_time(rtcdev, &rtctime);
+    if (!CHECK_SUCCESS(status)) {
+        time_available = 0;
+        goto skip_time;
+    }
+
+skip_time:
+    if (time_available) {
+        fprintf(stddbg, "%d-%02d-%02dT%02d:%02d:%02d.%03dZ %s [%s] ", rtctime.year, rtctime.month, rtctime.mday, rtctime.hour, rtctime.minute, rtctime.second, rtctime.millisecond, module_name, ll_str[level]);
+    } else {
+        fprintf(stddbg, "--time not available-- %s [%s] ", module_name, ll_str[level]);
+    }
     vfprintf(stddbg, fmt, args);
 }

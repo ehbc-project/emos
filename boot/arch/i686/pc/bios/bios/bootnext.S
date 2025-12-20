@@ -23,7 +23,7 @@ _pc_bios_bootnext:
 
     mov     8(%ebp), %dl            # get drive number
 
-    call    switch_prot_to_real
+    call    switch_p32_to_r16
 
     .code16
     xor     %ax, %ax                # Set video mode 0x03

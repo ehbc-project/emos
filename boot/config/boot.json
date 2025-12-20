@@ -1,13 +1,14 @@
 {
     "title": "EMOS Bootloader",
-    "password": null,
-    "theme": "default",
-    "timeout": 5,
-    "default_entry": 0,
+    "password": "SHA256:6b3a55e0261b0304143f805a24924d0c1c44524821305f31d9277843b8a10f4e",
+    "timezone": 32400,
+    "rtc_utc": true,
     "start_script": [
         "usefont boot:/unifont.bfn",
         "vmode 640x480x24"
     ],
+    "timeout": 5,
+    "default_entry": 0,
     "options": [
         {
             "name": "Boot from next device",

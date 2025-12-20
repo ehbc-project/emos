@@ -10,8 +10,8 @@
 
     .section .text
     .code16
-    .globl  switch_real_to_prot
-switch_real_to_prot:
+    .globl  switch_r16_to_p32
+switch_r16_to_p32:
     cli                                 # clear interrupt
 
     xor     %ax, %ax
@@ -72,8 +72,8 @@ switch_real_to_prot:
 
     ret
 
-    .globl  switch_prot_to_real
-switch_prot_to_real:
+    .globl  switch_p32_to_r16
+switch_p32_to_r16:
     cli                                 # clear interrupt
     lgdt    _i686_gdtr                  # load gdt
 

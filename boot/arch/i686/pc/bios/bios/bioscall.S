@@ -38,7 +38,7 @@ _pc_bios_call:
     mov     30(%edx), %ax
     mov     %ax, .Les
 
-    call    switch_prot_to_real         # switch to real mode
+    call    switch_p32_to_r16         # switch to real mode
     .code16
 
     .byte   0x66, 0xB8                  # mov imm32, %eax
@@ -109,7 +109,7 @@ _pc_bios_call:
     mov     %ds, %ax
     mov     %ax, .Lds
 
-    call    switch_real_to_prot         # switch back to protected mode
+    call    switch_r16_to_p32         # switch back to protected mode
 
     .code32 
     pop     %ebp                        # restore stack base pointer
