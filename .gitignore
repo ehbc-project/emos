@@ -3,3 +3,4 @@ build
 *.img
 *.iso
 *.objdump
+*.log

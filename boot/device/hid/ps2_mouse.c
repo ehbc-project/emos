@@ -251,35 +251,6 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     }
     data->device_type = buf[2];
 
-    LOG_DEBUG("setting scale 2:1 mode...\n");
-    /* set scaling 2:1 */
-    buf[0] = 0xE7;
-
-    status = ps2if->send_data(ps2dev, rsrc[0].base, buf, 1);
-    if (!CHECK_SUCCESS(status)) goto has_error;
-
-    status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 1);
-    if (!CHECK_SUCCESS(status)) goto has_error;
-    if (buf[0] != 0xFA) {
-        status = STATUS_HARDWARE_FAILED;
-        goto has_error;
-    }
-
-    LOG_DEBUG("setting sample rate...\n");
-    /* set sample rate */
-    buf[0] = 0xF3;
-    buf[1] = 40;
-
-    status = ps2if->send_data(ps2dev, rsrc[0].base, buf, 2);
-    if (!CHECK_SUCCESS(status)) goto has_error;
-
-    status = ps2if->recv_data(ps2dev, rsrc[0].base, buf, 1);
-    if (!CHECK_SUCCESS(status)) goto has_error;
-    if (buf[0] != 0xFA) {
-        status = STATUS_HARDWARE_FAILED;
-        goto has_error;
-    }
-
     LOG_DEBUG("enabling data reporting...\n");
     /* enable data reporting */
     buf[0] = 0xF4;

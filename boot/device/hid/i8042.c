@@ -203,7 +203,6 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     struct device *idev = NULL;
     struct device_driver *kbdrv = NULL;
     struct device_driver *msdrv = NULL;
-    int has_second_port = 0;
     uint8_t prev_ccb;
 
     if (!rsrc || rsrc_cnt != 4 ||
@@ -264,23 +263,6 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     status = write_ccb(dev, prev_ccb & ~0x43);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    LOG_DEBUG("checking if the second port is available...\n");
-    /* determine if the second port is available */
-    io_out8(data->io_ctrl, 0xA8);
-
-    status = read_ccb(dev, &prev_ccb);
-    if (!CHECK_SUCCESS(status)) goto has_error;
-    if (!(prev_ccb & 0x20)) {
-        has_second_port = 1;
-        io_out8(data->io_ctrl, 0xA7);
-
-        status = read_ccb(dev, &prev_ccb);
-        if (!CHECK_SUCCESS(status)) goto has_error;
-        
-        status = write_ccb(dev, prev_ccb & ~0x22);
-        if (!CHECK_SUCCESS(status)) goto has_error;
-    }
-
     /* initialize child devices */
     status = device_driver_find("ps2_keyboard", &kbdrv);
     if (!CHECK_SUCCESS(status)) {
@@ -292,7 +274,7 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         msdrv = NULL;
     }
 
-    if (has_second_port && msdrv) {
+    if (msdrv) {
         LOG_DEBUG("initializing second port...\n");
 
         struct resource res[] = {

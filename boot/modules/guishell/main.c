@@ -223,7 +223,8 @@ void draw_ellipse_rect(int x0, int y0, int x1, int y1, uint32_t color, int fill)
         }
     }
 }
-void draw_bezier2_part (int x0, int y0, int x1, int y1, int x2, int y2, uint32_t color)
+
+static void draw_bezier2_part(int x0, int y0, int x1, int y1, int x2, int y2, uint32_t color)
 {                            
     int sx = x0 < x2 ? 1 : -1;
     int sy = y0 < y2 ? 1 : -1; /* step direction */
@@ -318,6 +319,7 @@ void draw_bezier2(
     draw_bezier2(x0, y0, x01, y01, x012, y012, color);
     draw_bezier2(x012, y012, x12, y12, x2, y2, color);
 }
+
 static inline int mid(int a, int b) {
     return (a + b) >> 1;
 }
@@ -330,40 +332,48 @@ static inline long cross(
 }
 
 static void split_bezier3(
-    int x0,int y0,int x1,int y1,
-    int x2,int y2,int x3,int y3,
-
-    int *lx0,int *ly0,int *lx1,int *ly1,
-    int *lx2,int *ly2,int *lx3,int *ly3,
-
-    int *rx0,int *ry0,int *rx1,int *ry1,
-    int *rx2,int *ry2,int *rx3,int *ry3
+    int x0, int y0, int x1, int y1,
+    int x2, int y2, int x3, int y3,
+    int *lx0, int *ly0, int *lx1, int *ly1,
+    int *lx2, int *ly2, int *lx3, int *ly3,
+    int *rx0, int *ry0, int *rx1, int *ry1,
+    int *rx2, int *ry2, int *rx3, int *ry3
 ){
-    int x01 = mid(x0,x1), y01 = mid(y0,y1);
-    int x12 = mid(x1,x2), y12 = mid(y1,y2);
-    int x23 = mid(x2,x3), y23 = mid(y2,y3);
+    int x01 = mid(x0, x1), y01 = mid(y0, y1);
+    int x12 = mid(x1, x2), y12 = mid(y1, y2);
+    int x23 = mid(x2, x3), y23 = mid(y2, y3);
 
-    int x012 = mid(x01,x12), y012 = mid(y01,y12);
-    int x123 = mid(x12,x23), y123 = mid(y12,y23);
+    int x012 = mid(x01, x12), y012 = mid(y01, y12);
+    int x123 = mid(x12, x23), y123 = mid(y12, y23);
 
-    int x0123 = mid(x012,x123), y0123 = mid(y012,y123);
+    int x0123 = mid(x012, x123), y0123 = mid(y012, y123);
 
-    *lx0=x0;    *ly0=y0;
-    *lx1=x01;   *ly1=y01;
-    *lx2=x012;  *ly2=y012;
-    *lx3=x0123; *ly3=y0123;
+    *lx0=x0;
+    *ly0=y0;
+    *lx1=x01;
+    *ly1=y01;
+    *lx2=x012;
+    *ly2=y012;
+    *lx3=x0123;
+    *ly3=y0123;
 
-    *rx0=x0123; *ry0=y0123;
-    *rx1=x123;  *ry1=y123;
-    *rx2=x23;   *ry2=y23;
-    *rx3=x3;    *ry3=y3;
+    *rx0=x0123;
+    *ry0=y0123;
+    *rx1=x123;
+    *ry1=y123;
+    *rx2=x23;
+    *ry2=y23;
+    *rx3=x3;
+    *ry3=y3;
 }
+
 static int bezier3_flat_enough(
     int x0,int y0,
     int x1,int y1,
     int x2,int y2,
     int x3,int y3
-){
+)
+{
     long dx = x3 - x0;
     long dy = y3 - y0;
 
@@ -378,62 +388,130 @@ static int bezier3_flat_enough(
 #define BEZIER3_MAX_SPLIT 24
 
 void draw_bezier3(
-    int x0,int y0,
-    int x1,int y1,
-    int x2,int y2,
-    int x3,int y3,
+    int x0, int y0,
+    int x1, int y1,
+    int x2, int y2,
+    int x3, int y3,
     uint32_t color
-){
+)
+{
     struct {
-        int x0,y0,x1,y1,x2,y2,x3,y3;
+        int x0, y0, x1, y1, x2, y2, x3, y3;
         int depth;
     } stack[BEZIER3_MAX_SPLIT];
 
     int sp = 0;
-    stack[sp++] = (typeof(stack[0])){x0,y0,x1,y1,x2,y2,x3,y3,0};
+    stack[sp++] = (typeof(stack[0])){ x0, y0, x1, y1, x2, y2, x3, y3, 0 };
 
     while (sp > 0) {
         auto c = stack[--sp];
 
         /* 충분히 평평 → 2차로 근사 */
         if (bezier3_flat_enough(
-                c.x0,c.y0,c.x1,c.y1,
-                c.x2,c.y2,c.x3,c.y3))
-        {
+            c.x0, c.y0, c.x1, c.y1,
+            c.x2, c.y2, c.x3, c.y3
+        )) {
             /* 3차 → 2차 근사 */
             int qx1 = (c.x1 * 3 + c.x2 * 3 - c.x0 - c.x3) >> 2;
             int qy1 = (c.y1 * 3 + c.y2 * 3 - c.y0 - c.y3) >> 2;
 
-            draw_bezier2(
-                c.x0, c.y0,
-                qx1, qy1,
-                c.x3, c.y3,
-                color
-            );
+            draw_bezier2(c.x0, c.y0, qx1, qy1, c.x3, c.y3, color);
             continue;
         }
 
         /* 분할 한계 */
         if (c.depth >= BEZIER3_MAX_SPLIT - 1) {
-            draw_line(c.x0,c.y0,c.x3,c.y3,color);
+            draw_line(c.x0, c.y0, c.x3, c.y3, color);
             continue;
         }
 
         /* 분할 */
-        int lx0,ly0,lx1,ly1,lx2,ly2,lx3,ly3;
-        int rx0,ry0,rx1,ry1,rx2,ry2,rx3,ry3;
+        int lx0, ly0, lx1, ly1, lx2, ly2, lx3, ly3;
+        int rx0, ry0, rx1, ry1, rx2, ry2, rx3, ry3;
 
         split_bezier3(
-            c.x0,c.y0,c.x1,c.y1,c.x2,c.y2,c.x3,c.y3,
-            &lx0,&ly0,&lx1,&ly1,&lx2,&ly2,&lx3,&ly3,
-            &rx0,&ry0,&rx1,&ry1,&rx2,&ry2,&rx3,&ry3
+            c.x0, c.y0, c.x1, c.y1, c.x2, c.y2, c.x3, c.y3,
+            &lx0, &ly0, &lx1, &ly1, &lx2, &ly2, &lx3, &ly3,
+            &rx0, &ry0, &rx1, &ry1, &rx2, &ry2, &rx3, &ry3
         );
 
         /* 오른쪽 먼저 push → 왼쪽이 먼저 그려짐 */
-        stack[sp++] = (typeof(stack[0])){rx0,ry0,rx1,ry1,rx2,ry2,rx3,ry3,c.depth+1};
-        stack[sp++] = (typeof(stack[0])){lx0,ly0,lx1,ly1,lx2,ly2,lx3,ly3,c.depth+1};
+        stack[sp++] = (typeof(stack[0])){ rx0, ry0, rx1, ry1, rx2, ry2, rx3, ry3, c.depth + 1 };
+        stack[sp++] = (typeof(stack[0])){ lx0, ly0, lx1, ly1, lx2, ly2, lx3, ly3, c.depth + 1 };
     }
 }
+
+void draw_polygon(int pts[][2], int count, uint32_t color, int fill) {
+    if (count < 3) return;
+
+    // 1. Wireframe 모드: Bresenham 기반 선 그리기만 수행
+    if (!fill) {
+        for (int i = 0; i < count; i++) {
+            draw_line(pts[i][0], pts[i][1], pts[(i + 1) % count][0], pts[(i + 1) % count][1], color);
+        }
+        return;
+    }
+
+    // 2. Filled 모드: Scanline 알고리즘
+    // 다각형의 Y축 범위(Bounding Box) 찾기
+    int min_y = pts[0][1];
+    int max_y = pts[0][1];
+    for (int i = 1; i < count; i++) {
+        if (pts[i][1] < min_y) min_y = pts[i][1];
+        if (pts[i][1] > max_y) max_y = pts[i][1];
+    }
+
+    // 화면 경계 클리핑 (예시)
+    if (min_y < 0) min_y = 0;
+    if (max_y >= vmode_info.height) max_y = vmode_info.height - 1;
+
+    // 각 스캔라인을 순회
+    for (int y = min_y; y <= max_y; y++) {
+        int nodes[64]; // 최대 꼭짓점 수에 따라 조절 가능
+        int node_count = 0;
+
+        // 모든 변에 대해 현재 y와의 교점 x를 계산
+        for (int i = 0; i < count; i++) {
+            int p1[2] = { pts[i][0], pts[i][1], };
+            int p2[2] = { pts[(i + 1) % count][0], pts[(i + 1) % count][1], };
+
+            // 수평선은 무시하고, y가 변의 범위 안에 있는지 확인
+            if ((p1[1] < y && p2[1] >= y) || (p2[1] < y && p1[1] >= y)) {
+                // 정수 연산만 사용 (나눗셈 1회 발생)
+                // 선형 보간: x = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+                int x = p1[0] + (y - p1[1]) * (p2[0] - p1[0]) / (p2[1] - p1[1]);
+                nodes[node_count++] = x;
+            }
+        }
+
+        // x 교점들을 오름차순으로 정렬 (단순 삽입 정렬)
+        for (int i = 1; i < node_count; i++) {
+            int j = i;
+            while (j > 0 && nodes[j - 1] > nodes[j]) {
+                int temp = nodes[j];
+                nodes[j] = nodes[j - 1];
+                nodes[j - 1] = temp;
+                j--;
+            }
+        }
+
+        // 두 개씩 짝지어 그 사이를 수평선으로 채움
+        for (int i = 0; i < node_count; i += 2) {
+            if (i + 1 >= node_count) break;
+            int x_start = nodes[i];
+            int x_end = nodes[i + 1];
+            
+            // 수평선 직접 그리기 (성능 최적화 지점)
+            if (x_start < 0) x_start = 0;
+            if (x_end >= vmode_info.width) x_end = vmode_info.width - 1;
+            
+            for (int x = x_start; x <= x_end; x++) {
+                framebuffer[y * vmode_info.width + x] = color;
+            }
+        }
+    }
+}
+
 static void draw_image(int xpos, int ypos, int width, int height, const uint32_t *img)
 {
     for (int y = ypos; y < ypos + height; y++) {
@@ -592,36 +670,37 @@ static void draw_frame(int xpos, int ypos, int width, int height)
     draw_rect(xpos + 1, ypos + 1, width - 2, height - 2, color_palette[7], 1);
 }
 
+static const uint32_t cursor_data[21][12] = {
+    { 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, },
+    { 0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, },
+    { 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, },
+    { 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, },
+    { 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, },
+    { 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFF000000, 0x00000000, 0x00000000, },
+};
+
+static int has_drawn_before = 0;
+static int prev_xpos, prev_ypos;
+static uint32_t prev_cursor_area_data[21][12];
+
 static status_t mouse_move_to(int xpos, int ypos)
 {
     status_t status;
-
-    static const uint32_t cursor_data[21][12] = {
-        { 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, },
-        { 0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, },
-        { 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, },
-        { 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, },
-        { 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, },
-        { 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFF000000, 0x00000000, 0x00000000, },
-    };
-    static int has_drawn_before = 0;
-    static int prev_xpos, prev_ypos;
-    static uint32_t prev_cursor_area_data[21][12];
 
     if (has_drawn_before) {
         for (int y = prev_ypos; y < MIN(prev_ypos + 21, vmode_info.height); y++) {
@@ -736,7 +815,7 @@ static int guishell_handler(struct shell_instance *inst, int argc, char **argv)
         mouse_move_to(mouse_xpos, mouse_ypos);
     }
 
-    int points[4][2];
+    int points[9][2];
     int current_point_index = 0;
 
     should_exit = 0;
@@ -769,14 +848,14 @@ static int guishell_handler(struct shell_instance *inst, int argc, char **argv)
                             points[current_point_index][0] = mouse_xpos;
                             points[current_point_index][1] = mouse_ypos;
 
-                            if (current_point_index == 3) {
-                                draw_bezier3(points[0][0], points[0][1], points[1][0], points[1][1], points[2][0], points[2][1], points[3][0], points[3][1], color_palette[0]);
+                            if (current_point_index == 8) {
+                                draw_polygon(points, 9, color_palette[0], 1);
 
                                 fbif->invalidate(fbdev, 0, 0, vmode_info.width - 1, vmode_info.height - 1);
                                 fbif->flush(fbdev);
                             }
 
-                            current_point_index = (current_point_index + 1) % 4;
+                            current_point_index = (current_point_index + 1) % 9;
                         }
                     }
                     break;
