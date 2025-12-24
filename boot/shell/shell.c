@@ -9,6 +9,7 @@
 #include <getopt.h>
 
 #include <eboot/macros.h>
+#include <eboot/filesystem.h>
 
 static struct command *command_list_head = NULL;
 

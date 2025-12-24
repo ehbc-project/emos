@@ -78,9 +78,9 @@ case $BOOT_TYPE in
         mcopy -i "$CURRENT_PART_IMAGE" "build/boot/arch/$ARCH/pc/uefi/bootloader.efi" ::/EFI/BOOT/BOOT$UEFI_ARCH.EFI
         ;;
     bios)
-        mformat -i "$CURRENT_PART_IMAGE" -H 63 -R 63 -B "build/boot/arch/$ARCH/pc/bios/fdboot.bin"
+        mformat -i "$CURRENT_PART_IMAGE" -H 63 -B "build/boot/arch/$ARCH/pc/bios/fdboot.bin"
+        mcopy -i "$CURRENT_PART_IMAGE" "build/boot/arch/$ARCH/pc/bios/stage1.x86" ::/STAGE1.$BOOTBIN_EXT
         mcopy -i "$CURRENT_PART_IMAGE" "build/boot/arch/$ARCH/pc/bios/bootloader.bin" ::/BOOTLDR.$BOOTBIN_EXT
-        python tools/injectbin/injectbin.py "build/boot/arch/$ARCH/pc/bios/stage1.bin" "$CURRENT_PART_IMAGE" 512
         ;;
 esac
 mmd -i "$CURRENT_PART_IMAGE" ::/CONFIG

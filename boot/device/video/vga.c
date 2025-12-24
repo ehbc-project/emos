@@ -1028,7 +1028,7 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     data->vbe_offers_nonvbe_mode_info = 0;
     data->cursor_col = data->cursor_row = 0;
     data->cursor_visible = 1;
-    data->cursor_shape_start = 12;
+    data->cursor_shape_start = 14;
     data->cursor_shape_end = 15;
     dev->data = data;
 

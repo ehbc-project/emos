@@ -179,7 +179,7 @@ void read_config(void)
     }
 }
 
-void show_menu(struct json_value *menu, int root_menu)
+int show_menu(struct json_value *menu, int root_menu)
 {
     status_t status;
     struct device *kbd;
@@ -229,13 +229,6 @@ void show_menu(struct json_value *menu, int root_menu)
         panic(STATUS_INVALID_FORMAT, "element \"default\" has invalid value type");
     }
 
-    if (title_value) {
-        printf("\x1b[3J\x1b[0;0f\x1b[?25l\n  %s\n  ", title_value);
-        for (int i = 0; title_value[i]; i++) {
-            fputs("═", stdout);
-        }
-    }
-
     status = device_find("kbd0", &kbd);
     if (!CHECK_SUCCESS(status)) {
         panic(status, "keyboard not detected");
@@ -256,6 +249,14 @@ void show_menu(struct json_value *menu, int root_menu)
     status = json_array_get_element_count(&options->arr, &option_count);
     if (!CHECK_SUCCESS(status)) {
         panic(status, "cannot get element count of element \"options\"");
+    }
+
+reselect:
+    if (title_value) {
+        printf(" \x1b[3J\x1b[0;0f\x1b[?25l\n  %s\n  ", title_value);
+        for (int i = 0; title_value[i]; i++) {
+            fputs("═", stdout);
+        }
     }
 
     selected = 0;
@@ -281,10 +282,18 @@ void show_menu(struct json_value *menu, int root_menu)
             }
         }
 
+        if (!root_menu) {
+            if (selection == option_count) {
+                printf("  \x1b[7m%d. Go Back\x1b[0m\n", option_count + 1);
+            } else {
+                printf("  %d. Go Back\n", option_count + 1);
+            }
+        }
+
         if (selection_changed) {
-            printf("\n  Select option: %d\x1b[0K\x1b[%d;18H\x1b[?25h", selection + 1, option_count + 6);
+            printf("\n  Select option: %d\x1b[0K\x1b[%d;18H\x1b[?25h", selection + 1, root_menu ? option_count + 6 : option_count + 7);
         } else {
-            printf("\n  Select option: %d\tTime remaining: %d\x1b[%d;18H\x1b[?25h", selection + 1, timeout_value, option_count + 6);
+            printf("\n  Select option: %d\tTime remaining: %d\x1b[%d;18H\x1b[?25h", selection + 1, timeout_value, root_menu ? option_count + 6 : option_count + 7);
         }
 
         status = hidi->wait_event(kbd);
@@ -303,7 +312,7 @@ void show_menu(struct json_value *menu, int root_menu)
                 selection_changed = 1;
                 break;
             case KEY_DOWN:
-                if (selection < option_count - 1) {
+                if (selection < (root_menu ? option_count - 1 : option_count)) {
                     selection++;
                 }
                 selection_changed = 1;
@@ -315,6 +324,10 @@ void show_menu(struct json_value *menu, int root_menu)
             default:
                 break;
         }
+    }
+
+    if (selection == option_count) {
+        return 1;
     }
 
     status = json_array_find_value(&options->arr, selection, &option);
@@ -342,10 +355,12 @@ void show_menu(struct json_value *menu, int root_menu)
     status = json_object_find_value(&option->obj, "submenu", &submenu);
     if (!CHECK_SUCCESS(status) || !submenu) {
     } else if (submenu->type == JVT_OBJECT) {
-        show_menu(submenu, 0);
+        if (show_menu(submenu, 0)) goto reselect;
     } else {
         panic(STATUS_INVALID_FORMAT, "element \"script\" has invalid value type");
     }
+
+    return 0;
 }
 
 __noreturn

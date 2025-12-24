@@ -6,6 +6,16 @@
 
 #include "../../filesystem/fat/fat.h"
 
+#ifdef NDEBUG
+#   define PRINT_STR(str)
+#   define PRINT_HEX(val)
+
+#else
+#   define PRINT_STR(str) print_str(str)
+#   define PRINT_HEX(val) print_hex(val)
+
+#endif
+
 static uint8_t sect_buf[4096] __aligned(16);
 static uint8_t clus_buf[4096] __aligned(16);
 static struct fat_bpb_sector *bpb = (struct fat_bpb_sector *)0x7C00;
@@ -65,11 +75,11 @@ void s1main(void)
 {
     status_t status;
 
-    // print_str("[stage1] getting disk parameters...\r\n");
+    PRINT_STR("[stage1] getting disk parameters...\r\n");
     status = _pc_bios_disk_get_params(_pc_boot_drive, NULL, NULL, &geom, NULL);
     if (!CHECK_SUCCESS(status)) {
-        // print_str("failed to request disk geometry: ");
-        // print_hex(status);
+        PRINT_STR("[stage1 ]failed to request disk geometry: ");
+        PRINT_HEX(status);
         return;
     }
 
@@ -79,12 +89,12 @@ void s1main(void)
     uint16_t bytes_per_cluster = bpb->bytes_per_sector * bpb->sectors_per_cluster;
 
     union fat_dir_entry *entry = NULL;
-    // print_str("[stage1] searching root directory...\r\n");
+    PRINT_STR("[stage1] searching root directory...\r\n");
     for (lba_t current_lba = rootdir_lba; current_lba < cluster_start_lba; current_lba++) {
         status = read_disk(current_lba, 1, sect_buf);
         if (!CHECK_SUCCESS(status)) {
-            // print_str("[stage1] failed to read disk: ");
-            // print_hex(status);
+            PRINT_STR("[stage1] failed to read disk: ");
+            PRINT_HEX(status);
             return;
         }
     
@@ -94,7 +104,7 @@ void s1main(void)
             if (memcmp(entry->file.name_ext, "BOOTLDR X86", sizeof(entry->file.name) + sizeof(entry->file.extension)) == 0) {
                 goto file_found;
             } else if (!entry->file.name[0]) {
-                // print_str("[stage1] BOOTLDR.X86 not found");
+                PRINT_STR("[stage1] BOOTLDR.X86 not found");
                 return;
             }
         }
@@ -105,26 +115,26 @@ file_found: {}
 
     uint32_t *load_dest = (uint32_t *)0x00100000;
 
-    // print_str("[stage1] reading FAT area...\r\n");
+    PRINT_STR("[stage1] reading FAT area...\r\n");
     status = read_disk(fat_lba, 8, sect_buf);
     if (!CHECK_SUCCESS(status)) {
-        // print_str("[stage1] failed to read disk: ");
-        // print_hex(status);
+        PRINT_STR("[stage1] failed to read disk: ");
+        PRINT_HEX(status);
         return;
     }
-    // print_str("[stage1] loading file...\r\n");
+    PRINT_STR("[stage1] loading file...\r\n");
     while (current_cluster <= FAT12_MAX_CLUSTER) {
         status = read_disk(cluster_start_lba + (current_cluster - 2) * bpb->sectors_per_cluster, bpb->sectors_per_cluster, clus_buf);
         if (!CHECK_SUCCESS(status)) {
-            // print_str("\r\n[stage1] failed to read disk: ");
-            // print_hex(status);
+            PRINT_STR("\r\n[stage1] failed to read disk: ");
+            PRINT_HEX(status);
             return;
         }
 
         for (int i = 0; i < bytes_per_cluster / sizeof(uint32_t); i++) {
             *load_dest++ = ((uint32_t *)clus_buf)[i];
         }
-        // print_str(".");
+        print_str(".");
 
         if (current_cluster & 1) {
             current_cluster = (sect_buf[current_cluster * 3 / 2 + 1] << 4) | (sect_buf[current_cluster * 3 / 2] >> 4);
@@ -132,7 +142,7 @@ file_found: {}
             current_cluster = ((sect_buf[current_cluster * 3 / 2 + 1] & 0xF) << 8) | sect_buf[current_cluster * 3 / 2];
         }
     }
-    // print_str("\r\n");
+    PRINT_STR("\r\n");
 
     ((void (*)(void))0x00100000)();
 

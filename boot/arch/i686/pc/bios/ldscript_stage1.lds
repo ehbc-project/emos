@@ -14,7 +14,7 @@ SECTIONS
         PROVIDE_HIDDEN(__bss_end = .);
     }
 
-    . = 0x00007E00;
+    . = 0x00009000;
     .text :
     {
         PROVIDE_HIDDEN(__text_start = .);

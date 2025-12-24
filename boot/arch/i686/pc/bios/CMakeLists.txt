@@ -76,8 +76,8 @@ target_sources(stage1 PRIVATE stage1.S stage1.c ../../cpu_mode.S pic.c)
 target_link_options(stage1 PUBLIC -T "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_stage1.lds")
 set_target_properties(stage1 PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldscript_stage1.lds")
 
-add_custom_target(stage1_bin ALL
-    COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:stage1>" stage1.bin
+add_custom_target(stage1_execbin ALL
+    COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:stage1>" stage1.x86
     DEPENDS stage1
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     COMMENT "Creating stage1 binary"

@@ -10,9 +10,6 @@
     .code16
     .globl  _s1start
 _s1start:
-    popl    _pc_boot_part_base
-    popl    _pc_boot_drive
-
     xor     %ax, %ax
     mov     %ax, %ds
     mov     %ax, %es
@@ -22,8 +19,8 @@ _s1start:
     mov     %sp, %bp
 
 .clear_bss:
-    pushl    _pc_boot_drive
-    pushl    _pc_boot_part_base
+    pushl    %edx
+    pushl    %ecx
 
     mov     $0, %al
     mov     $__bss_start, %di
@@ -35,7 +32,7 @@ _s1start:
     popl    _pc_boot_drive
     
 .activate_a20:
-    mov     $0x2401, %ax                # activate A20 via bios
+    mov     $0x2401, %ax                  # activate A20 via bios
     int     $0x15
     jnc     _s1start.1                    # finish if there's no error
 
@@ -50,7 +47,7 @@ _s1start:
     jmp     .halt16
 
 _s1start.1:
-    call    switch_r16_to_p32         # switch to protected mode
+    call    switch_r16_to_p32           # switch to protected mode
     .code32
 
 .jump:
@@ -61,7 +58,7 @@ _s1start.1:
     hlt                                 # halt forever
     jmp     .halt
 
-.code16
+    .code16
 .halt16:
     hlt
     jmp     .halt16

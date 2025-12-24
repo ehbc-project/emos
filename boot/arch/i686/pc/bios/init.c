@@ -557,8 +557,6 @@ void _pc_init(void)
     LOG_DEBUG("initializing ISRs...\n");
     _pc_isr_init();
 
-    interrupt_enable();
-
     LOG_DEBUG("initializing GDT...\n");
     _pc_gdt_init();
 
@@ -588,12 +586,12 @@ void _pc_init(void)
         LOG_DEBUG("ACPI is not available\n");
     }
 
+    interrupt_enable();
+
     LOG_DEBUG("running constructors...\n");
     for (int i = 0; &(&__init_array_start)[i] != &__init_array_end; i++) {
         (&__init_array_start)[i]();
     }
-
-    interrupt_enable();
 
     LOG_DEBUG("initializing non-PnP devices...\n");
     status = init_nonpnp_devices(has_acpi);
