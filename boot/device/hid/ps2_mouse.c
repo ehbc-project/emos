@@ -152,6 +152,9 @@ static void mouse_isr(void *_dev, int num)
 
     status = data->ps2if->irq_get_byte(data->ps2dev, &byte);
     if (!CHECK_SUCCESS(status)) return;
+
+    io_out8(0x007A, 0x04);
+    io_out8(0x007B, byte);
     
     int next_seqbuf_end = (data->seqbuf_end + 1) % sizeof(data->seqbuf);
     if (next_seqbuf_end == data->seqbuf_start) return;
@@ -212,6 +215,11 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     data = malloc(sizeof(*data));
+    if (!data) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+
     data->ps2dev = ps2dev;
     data->ps2if = ps2if;
     data->irq_num = rsrc[1].base;

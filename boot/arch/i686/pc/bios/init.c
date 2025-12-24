@@ -16,6 +16,7 @@
 #include <eboot/asm/pic.h>
 #include <eboot/asm/pc_gdt.h>
 #include <eboot/asm/apm.h>
+#include <eboot/asm/instruction.h>
 #include <eboot/asm/intrinsics/rdtsc.h>
 
 #include <eboot/compiler.h>
@@ -43,13 +44,6 @@ extern void main(void);
 
 extern void (*__init_array_start)(void);
 extern void (*__init_array_end)(void);
-
-static void bios_print_str(const char *str)
-{
-    for (int i = 0; str[i]; i++) {
-        _pc_bios_video_write_tty(str[i]);
-    }
-}
 
 static ssize_t early_stderr_write(void *cookie, const char *buf, size_t count)
 {
@@ -515,9 +509,25 @@ static void init_pit(void)
 {
     static const uint16_t pit_value = 1193182 / 20;
     
-    io_out8(0x43, 0x34);
-    io_out8(0x40, pit_value & 0xFF);
-    io_out8(0x40, (pit_value >> 8) & 0xFF);
+    io_out8(0x0043, 0x34);
+    io_out8(0x0040, pit_value & 0xFF);
+    io_out8(0x0040, (pit_value >> 8) & 0xFF);
+
+    _pc_isr_unmask_interrupt(0x20);
+}
+
+int _i686_invlpg_undefined;
+int _i686_rdtsc_undefined;
+
+static void invlpg_test(void)
+{
+    asm volatile ("invlpg (%0)" : : "r"(0));
+}
+
+static void rdtsc_test(void)
+{
+    uint32_t low, high;
+    asm volatile ("rdtsc" : "=a"(low), "=d"(high));
 }
 
 __noreturn
@@ -532,8 +542,22 @@ void _pc_init(void)
 
     LOG_DEBUG("Starting bootloader...\n");
 
+    LOG_DEBUG("testing whether invlpg available...\n");
+    status = _i686_instruction_test(invlpg_test, 3, &_i686_invlpg_undefined);
+    if (!CHECK_SUCCESS(status)) {
+        panic(status, "failed to test instruction invlpg");
+    }
+
+    LOG_DEBUG("testing whether rdtsc available...\n");
+    status = _i686_instruction_test(rdtsc_test, 2, &_i686_rdtsc_undefined);
+    if (!CHECK_SUCCESS(status)) {
+        panic(status, "failed to test instruction rdtsc");
+    }
+
     LOG_DEBUG("initializing ISRs...\n");
     _pc_isr_init();
+
+    interrupt_enable();
 
     LOG_DEBUG("initializing GDT...\n");
     _pc_gdt_init();
@@ -543,9 +567,10 @@ void _pc_init(void)
 
     LOG_DEBUG("reloading VBR sector...\n");
     _pc_bios_disk_get_params(_pc_boot_drive, NULL, NULL, &bootdisk_geom, NULL);
-    status = _pc_bios_disk_read(_pc_boot_drive, disk_lba_to_chs(_pc_boot_part_base, bootdisk_geom), 1, _pc_boot_sector, NULL);
+    struct chs chs = disk_lba_to_chs(_pc_boot_part_base, bootdisk_geom);
+    status = _pc_bios_disk_read(_pc_boot_drive, chs, 1, _pc_boot_sector, NULL);
     if (!CHECK_SUCCESS(status)) {
-        panic(status, "could not reload VBR sector");
+        panic(status, "could not reload VBR sector %02X:(%d, %d, %d)", _pc_boot_drive, chs.cylinder, chs.head, chs.sector);
     }
 
     _pc_pic_remap_int(0x20, 0x28);

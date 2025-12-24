@@ -52,6 +52,7 @@ FILE *fopen(const char *__restrict path, const char *__restrict mode)
     dir->fs->driver->close_directory(dir);
 
     FILE *stream = malloc(sizeof(*stream));
+    if (!stream) return NULL;
 
     stream->type = 1;
     stream->file.fs = fs;

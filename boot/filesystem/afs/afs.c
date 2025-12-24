@@ -166,6 +166,11 @@ static status_t mount(struct filesystem **fsout, struct fs_driver *drv, struct d
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     data = malloc(sizeof(*data));
+    if (!data) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+
     data->blkdev = blkdev;
     data->blkif = blkif;
     data->blkbuf = NULL;
@@ -268,17 +273,17 @@ static void close(struct fs_file *file)
 
 static status_t open_root_directory(struct filesystem *fs, struct fs_directory **dirout)
 {
-    struct afs_data *data = (struct afs_data *)fs->data;
+    // struct afs_data *data = (struct afs_data *)fs->data;
+    // 
+    // struct afs_dir_data *dir_data = malloc(sizeof(*dir_data));
+    // dir_data->block = data->root_mdb_pointer;
+    // dir_data->offset = offsetof(struct afs_acb, entries);
+    // 
+    // struct fs_directory *dir = malloc(sizeof(*dir));
+    // dir->fs = fs;
+    // dir->data = dir_data;
 
     return STATUS_UNIMPLEMENTED;
-
-    struct afs_dir_data *dir_data = malloc(sizeof(*dir_data));
-    dir_data->block = data->root_mdb_pointer;
-    dir_data->offset = offsetof(struct afs_acb, entries);
-    
-    struct fs_directory *dir = malloc(sizeof(*dir));
-    dir->fs = fs;
-    dir->data = dir_data;
 }
 
 static status_t open_directory(struct fs_directory *dir, const char *name, struct fs_directory **dirout)

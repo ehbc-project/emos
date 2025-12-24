@@ -61,7 +61,7 @@ static const uint16_t translated_keycode_char_table[256] = {
     'u' , 'v' , 'w' , 'x' , 'y' , 'z' , '1' , '2' ,  /* 0x18 - 0x1F */
     '3' , '4' , '5' , '6' , '7' , '8' , '9' , '0' ,  /* 0x20 - 0x27 */
     '\n', '\0', '\b', '\t', ' ' , '-' , '=' , '[' ,  /* 0x28 - 0x2F */
-    ']' , '\\', '#' , ':' , '"' , '`' , ',' , '.' ,  /* 0x30 - 0x37 */
+    ']' , '\\', '#' , ':' , '"' , '$' , ',' , '.' ,  /* 0x30 - 0x37 */
     '/' , '\0', '\0', '\0', '\0', '\0', '\0', '\0',  /* 0x38 - 0x3F */
     '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',  /* 0x40 - 0x47 */
     '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',  /* 0x48 - 0x4F */
@@ -556,6 +556,9 @@ static void keyboard_isr(void *_dev, int num)
 
     status = data->ps2if->irq_get_byte(data->ps2dev, &byte);
     if (!CHECK_SUCCESS(status)) return;
+
+    io_out8(0x007A, 0x02);
+    io_out8(0x007B, byte);
     
     next_seqbuf_end = (data->seqbuf_end + 1) % sizeof(data->seqbuf);
     if (next_seqbuf_end == data->seqbuf_start) return;
@@ -616,6 +619,11 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     data = malloc(sizeof(*data));
+    if (!data) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+
     data->ps2dev = ps2dev;
     data->ps2if = ps2if;
     data->seqbuf_start = data->seqbuf_end = 0;

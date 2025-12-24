@@ -1,6 +1,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <limits.h>
 
 #include <eboot/log.h>
@@ -13,7 +14,20 @@
 #include <eboot/mm.h>
 #include <eboot/interface/video.h>
 
+#include "bootinfo.h"
+
 #define MODULE_NAME "bootemos"
+
+__noreturn
+static void jump_kernel(void *entry, struct bootinfo_table_header *btblhdr)
+{
+    asm volatile (
+        "jmp *%1"
+        : : "d"(btblhdr), "r"(entry)
+    );
+
+    for (;;) {}
+}
 
 static int bootemos_handler(struct shell_instance *inst, int argc, char **argv)
 {
@@ -23,6 +37,13 @@ static int bootemos_handler(struct shell_instance *inst, int argc, char **argv)
     struct elf32_phdr phdr;
     size_t program_size = 0;
     void *load_vaddr = NULL;
+    size_t btblentsize;
+    size_t btblhdrsize;
+    struct bootinfo_table_header *btblhdr;
+    struct bootinfo_entry_command_args *entry_command_args;
+    struct bootinfo_entry_loader_info *entry_loader_info;
+    struct bootinfo_entry_framebuffer *entry_framebuffer;
+    uint32_t strtab_cursor;
 
     if (argc < 2) {
         fprintf(stderr, "usage: %s path\n", argv[0]);
@@ -110,9 +131,96 @@ static int bootemos_handler(struct shell_instance *inst, int argc, char **argv)
     
     // cleanup();
 
-    ((void (*)(uint8_t *, int))elf->ehdr32.entry)(hwmode.framebuffer, hwmode.pitch);
+    btblentsize = 0;
+    btblhdrsize = 0;
 
-    for (;;) {}
+    /* add header size */
+    btblhdrsize += sizeof(*btblhdr);
+
+    /* add command args entry size */
+    for (int i = 2; i < argc; i++) {
+        btblhdrsize += strlen(argv[i]) + 1;
+    }
+    btblentsize += sizeof(*entry_command_args) + (argc - 2) * sizeof(*entry_command_args->arg_offsets);
+
+    /* add loader info entry size */
+    btblhdrsize += sizeof("eboot") + 1;
+    btblhdrsize += sizeof("0.0.1") + 1;
+    btblhdrsize += sizeof("kms1212") + 1;
+    btblentsize += sizeof(*entry_loader_info);
+
+    /* add memory map entry size */
+    // TODO: implement
+
+    /* add system disk entry size */
+    // TODO: implement
+
+    /* add acpi rsdp entry size */
+    // TODO: implement
+
+    /* add framebuffer entry size */
+    btblentsize += sizeof(*entry_framebuffer);
+    
+    /* allocate and fill table */
+    btblhdr = malloc(btblhdrsize + btblentsize);
+    if (!btblhdr) {
+        return 1;
+    }
+    
+    btblhdr->flags = 0;
+    btblhdr->version = BTV_CURRENT;
+    btblhdr->entry_count = 3;
+    btblhdr->entry_start = btblhdrsize;
+    strtab_cursor = 0;
+    
+    entry_command_args = (void *)((uintptr_t)btblhdr + btblhdrsize);
+    entry_command_args->header.size = sizeof(*entry_command_args) + (argc - 2) * sizeof(*entry_command_args->arg_offsets);
+    entry_command_args->header.type = BET_COMMAND_ARGS;
+    entry_command_args->arg_count = argc - 2;
+
+    for (int i = 2; i < argc; i++) {
+        strcpy(&btblhdr->strtab[strtab_cursor], argv[i]);
+        entry_command_args->arg_offsets[i - 2] = strtab_cursor;
+        strtab_cursor += strlen(argv[i]) + 1;
+    }
+
+    entry_loader_info = (void *)((uintptr_t)entry_command_args + entry_command_args->header.size);
+    entry_loader_info->header.size = sizeof(*entry_loader_info);
+    entry_loader_info->header.type = BET_LOADER_INFO;
+    entry_loader_info->additional_entry_count = 0;
+
+    strcpy(&btblhdr->strtab[strtab_cursor], "eboot");
+    entry_loader_info->name_offset = strtab_cursor;
+    strtab_cursor += sizeof("eboot") + 1;
+    strcpy(&btblhdr->strtab[strtab_cursor], "0.0.1");
+    entry_loader_info->version_offset = strtab_cursor;
+    strtab_cursor += sizeof("0.0.1") + 1;
+    strcpy(&btblhdr->strtab[strtab_cursor], "kms1212");
+    entry_loader_info->author_offset = strtab_cursor;
+    strtab_cursor += sizeof("kms1212") + 1;
+
+    entry_framebuffer = (void *)((uintptr_t)entry_loader_info + entry_loader_info->header.size);
+    entry_framebuffer->header.size = sizeof(*entry_framebuffer);
+    entry_framebuffer->header.type = BET_FRAMEBUFFER;
+    entry_framebuffer->framebuffer_addr = (uintptr_t)hwmode.framebuffer;
+    entry_framebuffer->width = hwmode.width;
+    entry_framebuffer->pitch = hwmode.pitch;
+    entry_framebuffer->height = hwmode.height;
+    entry_framebuffer->bpp = hwmode.bpp;
+    if (hwmode.memory_model == VMM_DIRECT) {
+        entry_framebuffer->type = BEFT_DIRECT;
+
+        entry_framebuffer->direct.red_pos = hwmode.rpos;
+        entry_framebuffer->direct.red_size = hwmode.rmask;
+        entry_framebuffer->direct.green_pos = hwmode.gpos;
+        entry_framebuffer->direct.green_size = hwmode.gmask;
+        entry_framebuffer->direct.blue_pos = hwmode.bpos;
+        entry_framebuffer->direct.blue_size = hwmode.bmask;
+    } else {
+        entry_framebuffer->type = BEFT_TEXT;
+    }
+
+    jump_kernel((void *)elf->ehdr32.entry, btblhdr);
 }
 
 static struct command bootemos_command = {

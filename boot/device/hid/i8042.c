@@ -47,6 +47,8 @@ static status_t read_ccb(struct device *dev, uint8_t *value)
     status_t status;
     uint8_t ccb;
 
+    status = wait_for_status_register(dev, 0x00, 0x02, 2);
+    if (!CHECK_SUCCESS(status)) return status;
     io_out8(data->io_ctrl, 0x20);
 
     status = wait_for_status_register(dev, 0x01, 0x01, 2);
@@ -63,9 +65,11 @@ static status_t write_ccb(struct device *dev, uint8_t value)
     struct i8042_data *data = (struct i8042_data *)dev->data;
     status_t status;
 
+    status = wait_for_status_register(dev, 0x00, 0x02, 2);
+    if (!CHECK_SUCCESS(status)) return status;
     io_out8(data->io_ctrl, 0x60);
 
-    status = wait_for_status_register(dev, 0x08, 0x0A, 2);
+    status = wait_for_status_register(dev, 0x00, 0x02, 2);
     if (!CHECK_SUCCESS(status)) return status;
     io_out8(data->io_data, value);
 
@@ -78,6 +82,8 @@ static status_t enable_port(struct device *dev, int port)
     status_t status;
     uint8_t prev_ccb;
 
+    status = wait_for_status_register(dev, 0x00, 0x02, 2);
+    if (!CHECK_SUCCESS(status)) return status;
     io_out8(data->io_ctrl, port ? 0xA8 : 0xAE);
 
     status = read_ccb(dev, &prev_ccb);
@@ -95,6 +101,8 @@ static status_t disable_port(struct device *dev, int port)
     status_t status;
     uint8_t prev_ccb;
 
+    status = wait_for_status_register(dev, 0x00, 0x02, 2);
+    if (!CHECK_SUCCESS(status)) return status;
     io_out8(data->io_ctrl, port ? 0xA7 : 0xAD);
 
     status = read_ccb(dev, &prev_ccb);
@@ -111,6 +119,8 @@ static status_t test_port(struct device *dev, int port)
     struct i8042_data *data = (struct i8042_data *)dev->data;
     status_t status;
 
+    status = wait_for_status_register(dev, 0x00, 0x02, 2);
+    if (!CHECK_SUCCESS(status)) return status;
     io_out8(data->io_ctrl, port ? 0xA9 : 0xAB);
 
     status = wait_for_status_register(dev, 0x01, 0x01, 2);
@@ -128,6 +138,8 @@ static status_t send_data(struct device *dev, int port, const uint8_t *buf, int 
 
     for (int i = 0; i < len; i++) {
         if (port) {
+            status = wait_for_status_register(dev, 0x00, 0x02, 2);
+            if (!CHECK_SUCCESS(status)) return status;
             io_out8(data->io_ctrl, 0xD4);
         }
 
@@ -221,6 +233,11 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     data = malloc(sizeof(*data));
+    if (!data) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+
     data->io_data = rsrc[0].base;
     data->io_ctrl = rsrc[1].base;
     data->irq_port0 = rsrc[2].base;

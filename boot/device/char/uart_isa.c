@@ -68,6 +68,11 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     data = malloc(sizeof(*data));
+    if (!data) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+    
     data->ioport = rsrc[0].base;
     dev->data = data;
     

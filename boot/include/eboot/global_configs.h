@@ -9,12 +9,9 @@
 /* from boot:/config/boot.json file */
 extern struct json_value *config_data;
 
-extern const char *config_title;
 extern const char *config_password;
 extern time_t config_timezone_offset;
 extern int config_rtc_utc;
-extern int config_timeout;
-extern int config_default_entry;
 
 /* from diagnostic data */
 extern int config_rtc_century_offset;

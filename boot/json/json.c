@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <eboot/panic.h>
+
 enum token_type {
     TOKEN_ERR = 0,
     TOKEN_STRING = 0x100,
@@ -26,7 +28,7 @@ static status_t parse_value(struct json_state *state, struct json_value **valueo
 
 static void skip_whitespace(struct json_state *state)
 {
-    for (; isspace(state->str[state->cursor]) && state->cursor < state->len; state->cursor++) {}
+    for (; state->cursor < state->len && isspace(state->str[state->cursor]); state->cursor++) {}
 }
 
 static status_t parse_object(struct json_state *state, struct json_value **valueout)
@@ -106,6 +108,7 @@ static status_t parse_object(struct json_state *state, struct json_value **value
 
 has_error:
     // TODO: cleanup
+    panic(STATUS_UNIMPLEMENTED, "error parsing object");
 
     return status;
 }
@@ -126,6 +129,10 @@ static status_t parse_array(struct json_state *state, struct json_value **valueo
     }
 
     struct json_value *value = malloc(sizeof(struct json_value));
+    if (!value) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
     value->type = JVT_ARRAY;
 
     struct json_array_elem **current_elem = &value->arr.elem;
@@ -136,6 +143,10 @@ static status_t parse_array(struct json_state *state, struct json_value **valueo
         skip_whitespace(state);
 
         *current_elem = malloc(sizeof(struct json_array_elem));
+        if (!*current_elem) {
+            status = STATUS_UNKNOWN_ERROR;
+            goto has_error;
+        }
         (*current_elem)->next = NULL;
         (*current_elem)->index = index++;
     
@@ -211,6 +222,10 @@ static status_t parse_string_literal(struct json_state *state, char **ptr)
 
     size_t string_len = count_escaped_string_len(state);
     char *str = malloc(string_len + 1);
+    if (!str) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
     size_t bufcur = 0;
     
     int end = 0;
@@ -253,6 +268,10 @@ static status_t parse_string(struct json_state *state, struct json_value **value
     }
 
     struct json_value *value = malloc(sizeof(struct json_value));
+    if (!value) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
     value->type = JVT_STRING;
 
     status = parse_string_literal(state, &value->str);
@@ -276,6 +295,7 @@ static status_t parse_number(struct json_state *state, struct json_value **value
     if (state->cursor + 1 >= state->len) return JSON_SYNTAX_ERR;
 
     struct json_value *value = malloc(sizeof(struct json_value));
+    if (!value) return STATUS_UNKNOWN_ERROR;
     value->type = JVT_NUMBER;
 
     int negate = 0;
@@ -303,6 +323,7 @@ static status_t parse_other(struct json_state *state, struct json_value **valueo
     skip_whitespace(state);
 
     struct json_value *value = malloc(sizeof(struct json_value));
+    if (!value) return STATUS_UNKNOWN_ERROR;
 
     switch (state->str[state->cursor]) {
         case 't':

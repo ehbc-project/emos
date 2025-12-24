@@ -41,28 +41,44 @@ static int dispimg_handler(struct shell_instance *inst, int argc, char **argv)
     status = device_find("video0", &fbdev);
     if (!CHECK_SUCCESS(status)) {
         fprintf(stderr, "%s: cannot find device\n", argv[0]);
+        fclose(fp);
         return 1;
     }
 
     const struct video_interface *vidif;
     status = fbdev->driver->get_interface(fbdev, "video", (const void **)&vidif);
-    if (!CHECK_SUCCESS(status)) return 1;
+    if (!CHECK_SUCCESS(status)) {
+        fclose(fp);
+        return 1;
+    }
 
     const struct framebuffer_interface *fbif;
     status = fbdev->driver->get_interface(fbdev, "framebuffer", (const void **)&fbif);
-    if (!CHECK_SUCCESS(status)) return 1;
+    if (!CHECK_SUCCESS(status)) {
+        fclose(fp);
+        return 1;
+    }
 
     int current_vmode;
     struct video_mode_info vmode_info;
     uint32_t *framebuffer;
     status = fbif->get_framebuffer(fbdev, (void **)&framebuffer);
-    if (!CHECK_SUCCESS(status)) return 1;
+    if (!CHECK_SUCCESS(status)) {
+        fclose(fp);
+        return 1;
+    }
 
     status = vidif->get_mode(fbdev, &current_vmode);
-    if (!CHECK_SUCCESS(status)) return 1;
+    if (!CHECK_SUCCESS(status)) {
+        fclose(fp);
+        return 1;
+    }
 
     status = vidif->get_mode_info(fbdev, current_vmode, &vmode_info);
-    if (!CHECK_SUCCESS(status)) return 1;
+    if (!CHECK_SUCCESS(status)) {
+        fclose(fp);
+        return 1;
+    }
 
     struct bmp_header {
         char signature[2];

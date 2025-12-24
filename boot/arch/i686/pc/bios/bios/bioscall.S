@@ -41,6 +41,8 @@ _pc_bios_call:
     call    switch_p32_to_r16         # switch to real mode
     .code16
 
+    clc
+
     .byte   0x66, 0xB8                  # mov imm32, %eax
 .Lbx:
     .long   0

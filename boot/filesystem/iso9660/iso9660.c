@@ -188,6 +188,11 @@ static status_t mount(struct filesystem **fsout, struct fs_driver *drv, struct d
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     data = malloc(sizeof(*data));
+    if (!data) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+    
     data->blkdev = blkdev;
     data->blkif = blkif;
     data->databuf_lba = -1;

@@ -39,5 +39,6 @@ struct pen {
 color_t color_blend(color_t upper, color_t lower);
 
 color_t color_resolve_brush(const struct brush *b, struct point2 start, struct point2 end, struct point2 current);
+color_t color_resolve_pen(const struct pen *b, struct point2 start, struct point2 end, struct point2 current);
 
 #endif // __COLOR_H__

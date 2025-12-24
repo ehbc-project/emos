@@ -88,12 +88,9 @@ void setup_tty(void)
 }
 
 struct json_value *config_data;
-const char *config_title;
 const char *config_password;
 time_t config_timezone_offset;
 int config_rtc_utc;
-int config_timeout;
-int config_default_entry;
 
 void read_config(void)
 {
@@ -102,12 +99,10 @@ void read_config(void)
     long cfg_len;
     char *cfg_str = NULL;
     struct json_value *json = NULL;
-    struct json_value *title = NULL;
     struct json_value *password = NULL;
     struct json_value *timezone = NULL;
     struct json_value *rtc_utc = NULL;
-    struct json_value *timeout = NULL;
-    struct json_value *default_entry = NULL;
+    struct json_value *start_script = NULL;
 
     cfg_fp = fopen("boot:/config/boot.json", "r");
     if (!cfg_fp) {
@@ -119,6 +114,9 @@ void read_config(void)
     fseek(cfg_fp, 0, SEEK_SET);
 
     cfg_str = malloc(cfg_len);
+    if (!cfg_str) {
+        panic(STATUS_UNKNOWN_ERROR, "failed to allocate memory");
+    }
     fread(cfg_str, cfg_len, 1, cfg_fp);
 
     status = json_parse(cfg_str, cfg_len, &json);
@@ -130,16 +128,6 @@ void read_config(void)
     fclose(cfg_fp);
 
     config_data = json;
-
-    /* read out title */
-    status = json_object_find_value(&config_data->obj, "title", &title);
-    if (!CHECK_SUCCESS(status) || !title) {
-        config_title = NULL;
-    } else if (title->type == JVT_STRING) {
-        config_title = title->str;
-    } else {
-        panic(STATUS_INVALID_FORMAT, "element \"title\" has invalid value type");
-    }
 
     /* read out password */
     status = json_object_find_value(&config_data->obj, "password", &password);
@@ -173,41 +161,7 @@ void read_config(void)
         panic(STATUS_INVALID_FORMAT, "element \"rtc_utc\" has invalid value type");
     }
 
-    /* read out option selection timeout */
-    status = json_object_find_value(&config_data->obj, "timeout", &timeout);
-    if (!CHECK_SUCCESS(status) || !timeout) {
-        config_timeout = 5;
-    } else if (timeout->type == JVT_NUMBER) {
-        config_timeout = timeout->num;
-    } else {
-        panic(STATUS_INVALID_FORMAT, "element \"timeout\" has invalid value type");
-    }
-
-    /* read out default option entry */
-    status = json_object_find_value(&config_data->obj, "default_entry", &default_entry);
-    if (!CHECK_SUCCESS(status) || !default_entry) {
-        config_default_entry = 0;
-    } else if (default_entry->type == JVT_NUMBER) {
-        config_default_entry = default_entry->num;
-    } else {
-        panic(STATUS_INVALID_FORMAT, "element \"default_entry\" has invalid value type");
-    }
-}
-
-void show_menu(void)
-{
-    status_t status;
-    struct json_value *start_script = NULL;
-    struct device *kbd;
-    const struct hid_interface *hidi;
-    struct json_value *options;
-    unsigned int option_count;
-    int selection, selected;
-    uint16_t key, flags;
-    struct json_value *option;
-    struct json_value *option_name;
-    struct json_value *option_script;
-
+    /* run startup script */
     status = json_object_find_value(&config_data->obj, "start_script", &start_script);
     if (!CHECK_SUCCESS(status) || !start_script) {
         // skip running startup script
@@ -223,9 +177,64 @@ void show_menu(void)
     } else {
         panic(STATUS_INVALID_FORMAT, "element \"start_script\" has invalid value type");
     }
+}
 
-    printf("\x1b[3J\x1b[0;0f\x1b[?25l%s\n", config_title);
-    printf("════════════════════════════════════════\n");
+void show_menu(struct json_value *menu, int root_menu)
+{
+    status_t status;
+    struct device *kbd;
+    const struct hid_interface *hidi;
+    struct json_value *title = NULL;
+    char *title_value;
+    struct json_value *timeout = NULL;
+    int timeout_value;
+    struct json_value *_default = NULL;
+    int default_value;
+    struct json_value *options = NULL;
+    unsigned int option_count;
+    int selection, selected, selection_changed;
+    uint16_t key, flags;
+    struct json_value *option = NULL;
+    struct json_value *option_name = NULL;
+    struct json_value *option_script = NULL;
+    struct json_value *submenu = NULL;
+
+    /* read out title */
+    status = json_object_find_value(&menu->obj, "title", &title);
+    if (!CHECK_SUCCESS(status) || !title) {
+        title_value = NULL;
+    } else if (title->type == JVT_STRING) {
+        title_value = title->str;
+    } else {
+        panic(STATUS_INVALID_FORMAT, "element \"title\" has invalid value type");
+    }
+
+    /* read out option selection timeout */
+    status = json_object_find_value(&menu->obj, "timeout", &timeout);
+    if (!CHECK_SUCCESS(status) || !timeout) {
+        timeout_value = 5;
+    } else if (timeout->type == JVT_NUMBER) {
+        timeout_value = timeout->num;
+    } else {
+        panic(STATUS_INVALID_FORMAT, "element \"timeout\" has invalid value type");
+    }
+
+    /* read out default option entry */
+    status = json_object_find_value(&menu->obj, "default", &_default);
+    if (!CHECK_SUCCESS(status) || !_default) {
+        default_value = 0;
+    } else if (_default->type == JVT_NUMBER) {
+        default_value = _default->num;
+    } else {
+        panic(STATUS_INVALID_FORMAT, "element \"default\" has invalid value type");
+    }
+
+    if (title_value) {
+        printf("\x1b[3J\x1b[0;0f\x1b[?25l\n  %s\n  ", title_value);
+        for (int i = 0; title_value[i]; i++) {
+            fputs("═", stdout);
+        }
+    }
 
     status = device_find("kbd0", &kbd);
     if (!CHECK_SUCCESS(status)) {
@@ -237,7 +246,7 @@ void show_menu(void)
         panic(status, "failed to get interface from device");
     }
 
-    status = json_object_find_value(&config_data->obj, "options", &options);
+    status = json_object_find_value(&menu->obj, "options", &options);
     if (!CHECK_SUCCESS(status) || !options) {
         panic(!CHECK_SUCCESS(status) ? status : STATUS_INVALID_FORMAT, "element \"options\" not found");
     } else if (options->type != JVT_ARRAY) {
@@ -250,9 +259,10 @@ void show_menu(void)
     }
 
     selected = 0;
-    selection = config_default_entry;
+    selection = default_value;
+    selection_changed = 0;
     while (!selected) {
-        printf("\x1b[3;0H");
+        printf("\x1b[?25l\x1b[5;0H");
         for (int i = 0; i < option_count; i++) {
             status = json_array_find_value(&options->arr, i, &option);
             if (!CHECK_SUCCESS(status) || !option || option->type != JVT_OBJECT) {
@@ -265,16 +275,24 @@ void show_menu(void)
             }
 
             if (selection == i) {
-                printf("\x1b[7m%s\x1b[0m\n", option_name->str);
+                printf("  \x1b[7m%d. %s\x1b[0m\n", i + 1, option_name->str);
             } else {
-                printf("%s\n", option_name->str);
+                printf("  %d. %s\n", i + 1, option_name->str);
             }
+        }
+
+        if (selection_changed) {
+            printf("\n  Select option: %d\x1b[0K\x1b[%d;18H\x1b[?25h", selection + 1, option_count + 6);
+        } else {
+            printf("\n  Select option: %d\tTime remaining: %d\x1b[%d;18H\x1b[?25h", selection + 1, timeout_value, option_count + 6);
         }
 
         status = hidi->wait_event(kbd);
         if (!CHECK_SUCCESS(status)) continue;
 
-        status = hidi->poll_event(kbd, &key, &flags);
+        do {
+            status = hidi->poll_event(kbd, &key, &flags);
+        } while (status == STATUS_BUFFER_UNDERFLOW);
         if (!CHECK_SUCCESS(status) || (flags & 1)) continue;
 
         switch (key)  {
@@ -282,11 +300,13 @@ void show_menu(void)
                 if (selection > 0) {
                     selection--;
                 }
+                selection_changed = 1;
                 break;
             case KEY_DOWN:
                 if (selection < option_count - 1) {
                     selection++;
                 }
+                selection_changed = 1;
                 break;
             case KEY_ENTER:
             case KEY_KPENTER:
@@ -306,7 +326,6 @@ void show_menu(void)
 
     status = json_object_find_value(&option->obj, "script", &option_script);
     if (!CHECK_SUCCESS(status) || !option_script) {
-        panic(STATUS_INVALID_FORMAT, "element \"script\" is not available");
     } else if (option_script->type == JVT_STRING) {
         shell_execute(NULL, option_script->str);
     } else if (option_script->type == JVT_ARRAY) {
@@ -320,21 +339,34 @@ void show_menu(void)
         panic(STATUS_INVALID_FORMAT, "element \"script\" has invalid value type");
     }
 
-    for (;;) {
-        shell_execute(NULL, "shell");
+    status = json_object_find_value(&option->obj, "submenu", &submenu);
+    if (!CHECK_SUCCESS(status) || !submenu) {
+    } else if (submenu->type == JVT_OBJECT) {
+        show_menu(submenu, 0);
+    } else {
+        panic(STATUS_INVALID_FORMAT, "element \"script\" has invalid value type");
     }
 }
 
+__noreturn
 void main(void)
 {
+    status_t status;
+    struct json_value *menu = NULL;
+
     setup_tty();
-    
+
     read_config();
 
-    show_menu();
+    status = json_object_find_value(&config_data->obj, "menu", &menu);
+    if (!CHECK_SUCCESS(status) || !menu) {
+    } else if (menu->type == JVT_OBJECT) {
+        show_menu(menu, 1);
+    } else {
+        panic(STATUS_INVALID_FORMAT, "element \"menu\" has invalid value type");
+    }
 
-    printf("Kernel returned. Press any key to reboot. (btw, how did you get here?)");
-    fgetc(stdin);
-
-    reboot();
+    for (;;) {
+        shell_execute(NULL, "shell");
+    }
 }

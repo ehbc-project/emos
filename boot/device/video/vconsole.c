@@ -276,10 +276,12 @@ static status_t set_cursor_visibility(struct device *dev, int visibility)
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
 
     if (data->current_vmode_info.text) {
-        return data->conif->set_cursor_visibility(dev, visibility);
+        return data->conif->set_cursor_visibility(data->fbdev, visibility);
     }
 
     data->cursor_visible = visibility;
+
+    flush(dev);
 
     return STATUS_SUCCESS;
 }
@@ -289,7 +291,7 @@ static status_t get_cursor_visibility(struct device *dev, int *visibility)
     struct vconsole_data *data = (struct vconsole_data *)dev->data;
 
     if (data->current_vmode_info.text) {
-        return data->conif->get_cursor_visibility(dev, visibility);
+        return data->conif->get_cursor_visibility(data->fbdev, visibility);
     }
 
     if (visibility) *visibility = data->cursor_visible;
@@ -417,6 +419,11 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     data = malloc(sizeof(*data));
+    if (!data) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+
     data->fbdev = fbdev;
     data->vidif = vidif;
     data->fbif = fbif;

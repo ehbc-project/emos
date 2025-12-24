@@ -13,6 +13,9 @@ uacpi_status uacpi_kernel_pci_device_open(
 )
 {
     struct pci_device *pdev = malloc(sizeof(*pdev));
+    if (!pdev) {
+        return UACPI_STATUS_INTERNAL_ERROR;
+    }
 
     pdev->addr = address;
 

@@ -613,6 +613,11 @@ static status_t mount(struct filesystem **fsout, struct fs_driver *drv, struct d
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     data = malloc(sizeof(*data));
+    if (!data) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+
     data->blkdev = blkdev;
     data->blkif = blkif;
     data->databuf = NULL;
@@ -733,6 +738,11 @@ static status_t open(struct fs_directory *dir, const char *name, struct fs_file 
     }
 
     file_data = malloc(sizeof(*file_data));
+    if (!file_data) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+
     file_data->direntry_cluster = dir_data->current_cluster;
     file_data->direntry_entry_index = dir_data->current_entry_index;
     memcpy(&file_data->direntry, &dir_data->direntry, sizeof(dir_data->direntry));
@@ -741,6 +751,11 @@ static status_t open(struct fs_directory *dir, const char *name, struct fs_file 
     file_data->cursor = 0;
 
     file = malloc(sizeof(*file));
+    if (!file) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+    
     file->fs = fs;
     file->data = file_data;
 

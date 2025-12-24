@@ -61,6 +61,10 @@ status_t font_use(const char *path)
         free(font_file_data);
     }
     font_file_data = malloc(file_size);
+    if (!font_file_data) {
+        fclose(fp);
+        return STATUS_UNKNOWN_ERROR;
+    }
     if (fread(font_file_data, file_size, 1, fp) != 1) {
         free(font_file_data);
         font_file_data = NULL;

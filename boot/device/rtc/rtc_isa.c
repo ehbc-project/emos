@@ -8,6 +8,7 @@
 
 #include <eboot/asm/io.h>
 #include <eboot/asm/isr.h>
+#include <eboot/asm/instruction.h>
 #include <eboot/asm/intrinsics/rdtsc.h>
 
 #include <eboot/device.h>
@@ -92,7 +93,7 @@ retry:
     io_out8(data->io_index, RTC_NMI_DISABLE | RTC_REG_SECONDS);
     if (tm->second != bcd2int(io_in8(data->io_data))) goto retry;
 
-    if (data->tsc_diff_per_second) {
+    if (!_i686_rdtsc_undefined && data->tsc_diff_per_second) {
         tm->millisecond = (uint32_t)((_i686_rdtsc() - data->prev_tsc_value) >> 16) * 1000 / data->tsc_diff_per_second;
         if (tm->millisecond >= 1000) {
             tm->millisecond = 999;
@@ -150,7 +151,7 @@ static void rtc_isr(void *_dev, int num)
     io_out8(data->io_index, RTC_NMI_DISABLE | RTC_REG_STATUS_C);
     regc = io_in8(data->io_data);
 
-    if (regc & 0x10) {
+    if (!_i686_rdtsc_undefined && (regc & 0x10)) {
         if (data->prev_tsc_value) {
             data->tsc_diff_per_second = (_i686_rdtsc() - data->prev_tsc_value) >> 16;
         }
@@ -199,6 +200,11 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     data = malloc(sizeof(*data));
+    if (!data) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+
     data->io_index = rsrc[0].base;
     data->io_data = rsrc[0].limit;
     data->irq_num = rsrc[1].base;

@@ -18,7 +18,6 @@ extern int __end;
 
 static uintptr_t alloc_paddr;
 static uintptr_t alloc_vaddr = 0x00400000;
-static int invlpg_available;
 
 struct page_dir {
     union page_dir_entry pde[1023];
@@ -61,15 +60,8 @@ static void init_page_directory(void)
     v_page_dir = (void *)0xFFFFF000;
 }
 
-static void invlpg_test(void)
-{
-    asm volatile ("invlpg (%0)" : : "r"(0));
-}
-
 status_t mm_init(void)
 {
-    status_t status;
-
     alloc_paddr = ALIGN((uintptr_t)&__end, 4096);
  
     LOG_DEBUG("initializing page directory...\n");
@@ -80,12 +72,6 @@ status_t mm_init(void)
     uint32_t cr0 = _i686_read_cr0();
     cr0 |= CR0_PG;
     _i686_write_cr0(cr0);
-
-    LOG_DEBUG("testing whether invlpg available...\n");
-    int invlpg_undefined;
-    status = _i686_instruction_test(invlpg_test, 3, &invlpg_undefined);
-    if (!CHECK_SUCCESS(status)) return status;
-    invlpg_available = !invlpg_undefined;
 
     return STATUS_SUCCESS;
 }
@@ -109,7 +95,7 @@ static status_t map(uintptr_t paddr, void *vaddr, uint32_t flags)
 
         v_page_dir->pde[vaddri >> 22].raw = 0x00000003 | (new_pt_paddr & 0xFFFFF000);
 
-        if (invlpg_available) {
+        if (!_i686_invlpg_undefined) {
             asm volatile ("invlpg (%0)" : : "r"(pt));
         } else {
             _i686_write_cr3(_i686_read_cr3());
@@ -162,7 +148,7 @@ static status_t map(uintptr_t paddr, void *vaddr, uint32_t flags)
 
     pt[(vaddri & 0x003FF000) >> 12].p = 1;
 
-    if (invlpg_available) {
+    if (!_i686_invlpg_undefined) {
         asm volatile ("invlpg (%0)" : : "r"(pt));
     } else {
         _i686_write_cr3(_i686_read_cr3());
@@ -193,7 +179,7 @@ static void unmap(void *vaddr)
 
     pt[(vaddri & 0x003FF000) >> 12].raw = 0;
 
-    if (invlpg_available) {
+    if (!_i686_invlpg_undefined) {
         asm volatile ("invlpg (%0)" : : "r"(pt));
     } else {
         _i686_write_cr3(_i686_read_cr3());

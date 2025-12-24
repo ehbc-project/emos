@@ -239,12 +239,12 @@ status_t _pc_isr_mask_interrupt(int num)
 
     // LOG_DEBUG("masking interrupt #%02X...\n", num);
 
-    _pc_idt[num].attributes &= ~0x80000000;
-
     if (0x20 <= num && num < 0x30) {
-        /* mask PIC too */
+        /* mask PIC first */
         _pc_pic_mask_int(num - 0x20);
     }
+
+    _pc_idt[num].attributes &= ~0x80000000;
 
     return STATUS_SUCCESS;
 }

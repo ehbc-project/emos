@@ -44,7 +44,7 @@ status_t _pc_bios_disk_read(uint8_t drive, struct chs chs, uint8_t count, void *
     };
 
     if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {
-        return MAKE_STATUS(regs.a.b.h);
+        return MAKE_STATUS(regs.a.b.h); 
     }
 
     if (result) {

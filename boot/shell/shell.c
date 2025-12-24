@@ -12,6 +12,21 @@
 
 static struct command *command_list_head = NULL;
 
+static int set_handler(struct shell_instance *inst, int argc, char **argv)
+{
+    status_t status;
+
+    if (argc != 3) {
+        fprintf(stderr, "usage: %s key value\n", argv[0]);
+        return 1;
+    }
+
+    status = shell_set_variable(inst, argv[1], argv[2]);
+    if (!CHECK_SUCCESS(status)) return 1;
+
+    return 0;
+}
+
 static int help_handler(struct shell_instance *inst, int argc, char **argv)
 {
     if (argc > 1) {
@@ -42,6 +57,8 @@ static struct shell_instance global_inst = {
 
 int shell_execute(struct shell_instance *inst, const char *line)
 {
+    status_t status;
+    char line_buf[4096];
     char elem_buf[512], *newargv[32];
 
     if (!inst) {
@@ -51,6 +68,12 @@ int shell_execute(struct shell_instance *inst, const char *line)
     char *elem_cursor = elem_buf;
     size_t elem_buf_len = sizeof(elem_buf);
     int newargc = 0;
+
+    status = shell_expand(inst, line, line_buf, sizeof(line_buf));
+    if (!CHECK_SUCCESS(status)) {
+        return 1;
+    }
+    line = line_buf;
 
     while (newargc < ARRAY_SIZE(newargv)) {
         line = shell_parse(line, elem_cursor, elem_buf_len);
@@ -138,6 +161,19 @@ void shell_command_unregister(struct command *cmd)
 
     prev_cmd->next = cmd->next;
 }
+
+static struct command set_command = {
+    .name = "set",
+    .handler = set_handler,
+    .help_message = "Set variable",
+};
+
+static void set_init(void)
+{
+    shell_command_register(&set_command);
+}
+
+REGISTER_SHELL_COMMAND(set, set_init)
 
 static struct command help = {
     .name = "help",

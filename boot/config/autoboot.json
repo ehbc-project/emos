@@ -1,9 +1,4 @@
 {
-    "title": "EMOS Bootloader",
-    "password": null,
-    "theme": "default",
-    "timeout": 5,
-    "default_entry": 0,
     "start_script": [
         "usefont boot:/unifont.bfn",
         "vmode 640x480x24",

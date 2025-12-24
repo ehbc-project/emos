@@ -1,30 +1,30 @@
 {
-    "title": "EMOS Installer CD-ROM",
-    "password": null,
-    "theme": "default",
-    "timeout": 5,
-    "default_entry": 0,
     "start_script": [
         "vmode 640x480x24",
         "usefont boot:/unifont.bfn"
     ],
-    "options": [
-        {
-            "name": "Boot from next device",
-            "script": "bootnext"
-        },
-        {
-            "name": "Boot from current device",
-            "script": [
-                "loadmodule boot:/modules/bootemos.mod",
-                "bootemos boot:/system/kernel/kernel.elf -v"
-            ]
-        },
-        {   
-            "name": "Start bootloader shell",
-            "script": [
-                "shell"
-            ]
-        }
-    ]
+    "menu": {
+        "title": "EMOS Installer CD-ROM Startup Menu",
+        "timeout": 5,
+        "default": 0,
+        "options": [
+            {
+                "name": "Boot from next device",
+                "script": "bootnext"
+            },
+            {
+                "name": "Boot from current device",
+                "script": [
+                    "loadmodule boot:/modules/bootemos.mod",
+                    "bootemos boot:/system/kernel/kernel.elf -v"
+                ]
+            },
+            {   
+                "name": "Start bootloader shell",
+                "script": [
+                    "shell"
+                ]
+            }
+        ]
+    }
 }

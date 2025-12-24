@@ -12,11 +12,14 @@ _start:
     mov     $__bss_start, %edi          # clear bss
     mov     $__bss_end, %ecx
     sub     $__bss_start, %ecx
+    add     $3, %ecx
     shr     $2, %ecx
     rep     stosl
 
-    # mov     $STACK_START, %esp
+    mov     $STACK_START, %esp
     mov     %esp, %ebp
+
+    push    %edx
 
     mov     $__init_array_start, %ebx
 0:
@@ -27,11 +30,9 @@ _start:
 1:
 
 .jump:
-    pushl   8(%ebp)
-    pushl   4(%ebp)
     call    main                        # jump to c code.
                                         # this function should not return
-    add     $8, %esp
+    add     $4, %esp
 
 .halt:
     hlt

@@ -9,6 +9,7 @@
 #include <eboot/asm/io.h>
 #include <eboot/asm/bios/video.h>
 #include <eboot/asm/bios/vbe_pmi.h>
+#include <eboot/asm/isr.h>
 
 #include <eboot/status.h>
 #include <eboot/macros.h>
@@ -24,6 +25,27 @@
 #define MODULE_NAME "vga"
 
 #define DIFF_REGION_SIZE 16
+
+#define VGA_CR_M_ADDR       0x03B4
+#define VGA_CR_M_DATA       0x03B5
+#define VGA_FCR             0x03BA
+#define VGA_AR_AD           0x03C0
+#define VGA_AR_DR           0x03C1
+#define VGA_ISR0            0x03C2
+#define VGA_MISCW           0x03C2
+#define VGA_SR_ADDR         0x03C4
+#define VGA_SR_DATA         0x03C5
+#define VGA_PALMASK         0x03C6
+#define VGA_DR_STATE        0x03C7
+#define VGA_DR_ADDRR        0x03C7
+#define VGA_DR_ADDRW        0x03C8
+#define VGA_DR_DATA         0x03C9
+#define VGA_MISCR           0x03CC
+#define VGA_GR_ADDR         0x03CE
+#define VGA_GR_DATA         0x03CF
+#define VGA_CR_C_ADDR       0x03D4
+#define VGA_CR_C_DATA       0x03D5
+#define VGA_ISR1            0x03DA
 
 struct callback_list_entry {
     struct callback_list_entry *next;
@@ -45,10 +67,56 @@ struct vga_data {
     int vga_width, vga_height;
     int mode_set_by_vbe;
 
+    int cursor_col, cursor_row;
+    int cursor_visible;
+    uint8_t cursor_shape_start, cursor_shape_end;
+
     struct callback_list_entry *mode_callback_list;
 
     void (*convert_color)(const struct vbe_video_mode_info *, const uint32_t *, void *, long);
 };
+
+static void write_cr(int idx, uint8_t val, int mda)
+{
+    if (mda) {
+        io_out8(VGA_CR_M_ADDR, idx);
+        io_out8(VGA_CR_M_DATA, val);
+    } else {
+        io_out8(VGA_CR_C_ADDR, idx);
+        io_out8(VGA_CR_C_DATA, val);
+    }
+}
+
+static uint8_t read_cr(int idx, int mda)
+{
+    if (mda) {
+        io_out8(VGA_CR_M_ADDR, idx);
+        return io_in8(VGA_CR_M_DATA);
+    } else {
+        io_out8(VGA_CR_C_ADDR, idx);
+        return io_in8(VGA_CR_C_DATA);
+    }
+}
+
+static void write_ar(int idx, uint8_t val)
+{
+    io_in8(VGA_ISR1);
+    uint8_t temp = io_in8(VGA_AR_AD);
+    io_out8(VGA_AR_AD, idx);
+    io_out8(VGA_AR_AD, val);
+    io_out8(VGA_AR_AD, temp);
+}
+
+static uint8_t read_ar(int idx)
+{
+    io_in8(VGA_ISR1);
+    uint8_t temp = io_in8(VGA_AR_AD);
+    io_out8(VGA_AR_AD, idx);
+    uint8_t val = io_in8(VGA_AR_DR);
+    io_in8(VGA_ISR1);
+    io_out8(VGA_AR_AD, temp);
+    return val;
+}
 
 inline static uint32_t get_pixel(struct device *dev, int x, int y)
 {
@@ -251,6 +319,8 @@ has_error:
     panic(status, "failed to initialize buffers for video");
 }
 
+static status_t set_cursor_pos(struct device *dev, int col, int row);
+
 static status_t set_mode_vga(struct device *dev, int mode)
 {
     struct vga_data *data = (struct vga_data *)dev->data;
@@ -265,10 +335,6 @@ static status_t set_mode_vga(struct device *dev, int mode)
             data->vga_width = 80;
             data->vga_height = 25;
             break;
-        case 0x0C:
-            data->vga_width = 80;
-            data->vga_height = 30;
-            break;
         default:
             return STATUS_ENTRY_NOT_FOUND;
     }
@@ -281,11 +347,13 @@ static status_t set_mode_vga(struct device *dev, int mode)
     if (!CHECK_SUCCESS(status)) return status;
 
     memset((void *)0xB8000, 0, data->vga_width * data->vga_height * sizeof(uint16_t));
-    _pc_bios_video_set_cursor_pos(0, 0, 0);
+    set_cursor_pos(dev, 0, 0);
     
     LOG_DEBUG("setting video mode...\n");
     _pc_bios_video_set_mode(mode);
 
+    write_ar(0x10, read_ar(0x10) & 0xF7);
+    
     data->is_switching_mode = 0;
 
     return STATUS_SUCCESS;
@@ -318,7 +386,8 @@ static status_t set_mode_vbe(struct device *dev, int mode)
         if (!vbe_mode_info.framebuffer) {
             memset((void *)0xB8000, 0, vbe_mode_info.width * vbe_mode_info.height * sizeof(uint16_t));
         }
-        _pc_bios_video_set_cursor_pos(0, 0, 0);
+        
+        set_cursor_pos(dev, 0, 0);
     } else {
         status = setup_bitmap_buffer(dev, vbe_mode_info.width, vbe_mode_info.height, vbe_mode_info.bpp);
         if (!CHECK_SUCCESS(status)) goto has_error;
@@ -362,6 +431,9 @@ static status_t set_mode(struct device *dev, int mode)
     
     status = data->vbe_available ? set_mode_vbe(dev, mode) : set_mode_vga(dev, mode);
 
+    _pc_isr_unmask_interrupt(0x20);
+    _pc_isr_unmask_interrupt(0x28);
+
     for (
         struct callback_list_entry *current = data->mode_callback_list;
         current;
@@ -389,6 +461,8 @@ static status_t add_mode_callback(struct device *dev, void *cb_data, video_mode_
     int new_id = 0;
 
     entry = malloc(sizeof(*entry));
+    if (!entry) return STATUS_UNKNOWN_ERROR;
+
     entry->data = cb_data;
     entry->func = callback;
 
@@ -448,17 +522,10 @@ static status_t get_mode_info_vga(struct device *dev, int mode, struct video_mod
             break;
         case 0x03:
             mode_info->current_mode = 0x03;
-            mode_info->next_mode = 0x0C;
-            mode_info->text = 1;
-            mode_info->width = 80;
-            mode_info->height = 25;
-            break;
-        case 0x0C:
-            mode_info->current_mode = 0x0C;
             mode_info->next_mode = -1;
             mode_info->text = 1;
             mode_info->width = 80;
-            mode_info->height = 30;
+            mode_info->height = 25;
             break;
         default:
             return STATUS_ENTRY_NOT_FOUND;
@@ -540,12 +607,11 @@ static status_t get_hw_mode_info_vbe(struct device *dev, int mode, struct video_
     status_t status;
     struct vbe_video_mode_info vbe_mode_info;
 
+    if (!data->vbe_offers_nonvbe_mode_info && mode < 0x100) return STATUS_CONFLICTING_STATE;
+
     status = _pc_bios_vbe_get_video_mode_info(mode, &vbe_mode_info);
     if (!CHECK_SUCCESS(status)) return status;
 
-    if (!data->mode_set_by_vbe) return STATUS_CONFLICTING_STATE;
-
-    hwmode->framebuffer = (void *)vbe_mode_info.framebuffer;
     hwmode->width = vbe_mode_info.width;
     hwmode->height = vbe_mode_info.height;
     hwmode->pitch = vbe_mode_info.pitch;
@@ -553,19 +619,45 @@ static status_t get_hw_mode_info_vbe(struct device *dev, int mode, struct video_
     switch (vbe_mode_info.memory_model) {
         case VBEMM_DIRECT:
             hwmode->memory_model = VMM_DIRECT;
+            hwmode->framebuffer = (void *)vbe_mode_info.framebuffer;
+            hwmode->rmask = vbe_mode_info.red_mask;
+            hwmode->rpos = vbe_mode_info.red_position;
+            hwmode->gmask = vbe_mode_info.green_mask;
+            hwmode->gpos = vbe_mode_info.green_position;
+            hwmode->bmask = vbe_mode_info.blue_mask;
+            hwmode->bpos = vbe_mode_info.blue_position;
             break;
         case VBEMM_TEXT:
             hwmode->memory_model = VMM_TEXT;
+            hwmode->framebuffer = (void *)0xB8000;
             break;
         default:
             return 1;
     }
-    hwmode->rmask = vbe_mode_info.red_mask;
-    hwmode->rpos = vbe_mode_info.red_position;
-    hwmode->gmask = vbe_mode_info.green_mask;
-    hwmode->gpos = vbe_mode_info.green_position;
-    hwmode->bmask = vbe_mode_info.blue_mask;
-    hwmode->bpos = vbe_mode_info.blue_position;
+
+    return STATUS_SUCCESS;
+}
+
+static status_t get_hw_mode_info_vga(struct device *dev, int mode, struct video_hw_mode_info *hwmode)
+{
+    if (mode >= 0x100) return STATUS_CONFLICTING_STATE;
+
+    switch (mode) {
+        case 0x00:
+            hwmode->memory_model = VMM_TEXT;
+            hwmode->framebuffer = (void *)0xB8000;
+            hwmode->width = 40;
+            hwmode->height = 25;
+            break;
+        case 0x03:
+            hwmode->memory_model = VMM_TEXT;
+            hwmode->framebuffer = (void *)0xB8000;
+            hwmode->width = 80;
+            hwmode->height = 25;
+            break;
+        default:
+            return STATUS_ENTRY_NOT_FOUND;
+    }
 
     return STATUS_SUCCESS;
 }
@@ -576,6 +668,10 @@ static status_t get_hw_mode_info(struct device *dev, int mode, struct video_hw_m
 
     if (!data->vbe_available) return STATUS_UNSUPPORTED;
     
+    if (!data->vbe_offers_nonvbe_mode_info && mode < 0x100) {
+        return get_hw_mode_info_vga(dev, mode, hwmode);
+    }
+
     return get_hw_mode_info_vbe(dev, mode, hwmode);
 }
 
@@ -809,41 +905,65 @@ static status_t con_flush(struct device *dev)
 
 static status_t set_cursor_pos(struct device *dev, int col, int row)
 {
-    if (col < 0 || row < 0) {
-        uint8_t row_prev, col_prev;
-        _pc_bios_video_get_cursor_info(0, NULL, row < 0 ? &row_prev : NULL, col < 0 ? &col_prev : NULL);
-        if (col < 0) {
-            col = col_prev;
-        }
-        if (row < 0) {
-            row = row_prev;
-        }
+    status_t status;
+    struct vga_data *data = (struct vga_data *)dev->data;
+    int width, pos;
+
+    status = get_dimension(dev, &width, NULL);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    if (col < 0) {
+        col = data->cursor_col;
+    }
+    if (row < 0) {
+        row = data->cursor_row;
     }
 
-    _pc_bios_video_set_cursor_pos(0, row, col);
+    pos = row * width + col;
+
+    io_out8(0x03D4, 0x0F);
+    io_out8(0x03D5, pos & 0xFF);
+    io_out8(0x03D4, 0x0E);
+    io_out8(0x03D5, (pos >> 8) & 0xFF);
+
+    data->cursor_col = col;
+    data->cursor_row = row;
 
     return STATUS_SUCCESS;
 }
 
 static status_t get_cursor_pos(struct device *dev, int *col, int *row)
 {
-    uint8_t b_col, b_row;
+    struct vga_data *data = (struct vga_data *)dev->data;
 
-    _pc_bios_video_get_cursor_info(0, NULL, &b_row, &b_col);
-
-    if (col) *col = b_col;
-    if (row) *row = b_row;
+    if (col) *col = data->cursor_col;
+    if (row) *row = data->cursor_row;
     
     return STATUS_SUCCESS;
 }
 
 static status_t set_cursor_visibility(struct device *dev, int visibility)
 {
+    struct vga_data *data = (struct vga_data *)dev->data;
+
+    data->cursor_visible = visibility;
+    
+    if (visibility) {
+        write_cr(0x0A, (read_cr(0x0A, 0) & 0xC0) | data->cursor_shape_start, 0);
+        write_cr(0x0B, (read_cr(0x0B, 0) & 0xE0) | data->cursor_shape_end, 0);
+    } else {
+        write_cr(0x0A, 0x20, 0);
+    }
+
     return STATUS_SUCCESS;
 }
 
 static status_t get_cursor_visibility(struct device *dev, int *visibility)
 {
+    struct vga_data *data = (struct vga_data *)dev->data;
+
+    if (visibility) *visibility = data->cursor_visible;
+
     return STATUS_SUCCESS;
 }
 
@@ -896,11 +1016,20 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
     if (!CHECK_SUCCESS(status)) goto has_error;
 
     data = malloc(sizeof(*data));
+    if (!data) {
+        status = STATUS_UNKNOWN_ERROR;
+        goto has_error;
+    }
+
     data->char_buffer = NULL;
     data->frame_buffer = NULL;
     data->diff_buffer = NULL;
     data->mode_callback_list = NULL;
     data->vbe_offers_nonvbe_mode_info = 0;
+    data->cursor_col = data->cursor_row = 0;
+    data->cursor_visible = 1;
+    data->cursor_shape_start = 12;
+    data->cursor_shape_end = 15;
     dev->data = data;
 
     LOG_DEBUG("checking wheter VBE is supported...\n");
@@ -982,7 +1111,6 @@ static status_t remove(struct device *dev)
     }
 
     if (data->frame_buffer) {
-        _pc_bios_vbe_set_display_start(0, 0);
         free(data->frame_buffer);
     }
 
