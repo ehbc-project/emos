@@ -87,11 +87,16 @@ status_t enc_utf32_to_cp437(wchar_t utf32, uint8_t *cp437out)
             return STATUS_INVALID_VALUE;
         }
         cp437 = unicode_cp437_table_1[utf32 - 0x00A0];
-    } else if (utf32 < 0x2321) {
+    } else if (utf32 < 0x2500) {
         switch (utf32 >> 8) {
             case 0x01:
                 if (utf32 != 0x0192) return STATUS_INVALID_VALUE;
                 cp437 = 0x9F;
+                break;
+            case 0x03:
+                if (utf32 >= 0x0390 + sizeof(unicode_cp437_table_2)) return STATUS_INVALID_VALUE;
+                if (!unicode_cp437_table_2[utf32 - 0x0390]) return STATUS_INVALID_VALUE;
+                cp437 = unicode_cp437_table_2[utf32 - 0x0390];
                 break;
             case 0x20:
                 switch (utf32 & 0xFF) {
@@ -140,17 +145,13 @@ status_t enc_utf32_to_cp437(wchar_t utf32, uint8_t *cp437out)
             default:
                 return STATUS_INVALID_VALUE;
         }
-    } else if (utf32 < 0x2500) {
-        if (utf32 >= 0x0390 + sizeof(unicode_cp437_table_2)) return STATUS_INVALID_VALUE;
-        if (!unicode_cp437_table_2[utf32 - 0x0390]) return STATUS_INVALID_VALUE;
-        cp437 = unicode_cp437_table_2[utf32 - 0x0390];
     } else if (utf32 < 0x2630) {
         if (utf32 >= 0x2500 + sizeof(unicode_cp437_table_3)) return STATUS_INVALID_VALUE;
         if (!unicode_cp437_table_3[utf32 - 0x2500]) return STATUS_INVALID_VALUE;
         cp437 = unicode_cp437_table_3[utf32 - 0x2500];
     } else {
         if (utf32 >= 0x2630 + sizeof(unicode_cp437_table_4)) return STATUS_INVALID_VALUE;
-        if (!unicode_cp437_table_3[utf32 - 0x2630]) return STATUS_INVALID_VALUE;
+        if (!unicode_cp437_table_4[utf32 - 0x2630]) return STATUS_INVALID_VALUE;
         cp437 = unicode_cp437_table_4[utf32 - 0x2630];
     }
 

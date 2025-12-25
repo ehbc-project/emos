@@ -887,7 +887,7 @@ static status_t con_flush(struct device *dev)
             src = &data->char_buffer[y * width + x];
             status = enc_utf32_to_cp437(src->codepoint, &cp437_char);
             if (!CHECK_SUCCESS(status)) {
-                cp437_char = 0;
+                cp437_char = '?';
             }
             cell = cp437_char;
             cell |= (rgb_to_irgb(src->attr.text_reversed ? src->attr.bg_color : src->attr.fg_color) & 0xF) << 8;
