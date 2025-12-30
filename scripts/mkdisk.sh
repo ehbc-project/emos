@@ -79,7 +79,7 @@ case $BOOT_TYPE in
         ;;
     bios)
         mformat -i "$CURRENT_PART_IMAGE" -H 63 -B "build/boot/arch/$ARCH/pc/bios/fdboot.bin"
-        mcopy -i "$CURRENT_PART_IMAGE" "build/boot/arch/$ARCH/pc/bios/stage1.x86" ::/STAGE1.$BOOTBIN_EXT
+        mcopy -i "$CURRENT_PART_IMAGE" "build/boot/arch/$ARCH/pc/bios/stage1.bin" ::/STAGE1.$BOOTBIN_EXT
         mcopy -i "$CURRENT_PART_IMAGE" "build/boot/arch/$ARCH/pc/bios/bootloader.bin" ::/BOOTLDR.$BOOTBIN_EXT
         ;;
 esac

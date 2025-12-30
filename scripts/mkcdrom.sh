@@ -52,15 +52,17 @@ OUTPUT=$1
 CURRENT_IMAGE=$(mktemp)
 BOOT_IMAGE=$CURRENT_IMAGE
 dd if=/dev/zero of="$CURRENT_IMAGE" bs=512 count=2880
-mformat -i "$CURRENT_IMAGE" -H 63 -R 63 -B "build/boot/arch/$ARCH/pc/bios/fdboot.bin"
+mformat -i "$CURRENT_IMAGE" -B "build/boot/arch/$ARCH/pc/bios/fdboot.bin"
+mcopy -i "$CURRENT_IMAGE" "build/boot/arch/$ARCH/pc/bios/stage1.bin" ::/STAGE1.$BOOTBIN_EXT
 mcopy -i "$CURRENT_IMAGE" "build/boot/arch/$ARCH/pc/bios/bootloader.bin" ::/BOOTLDR.$BOOTBIN_EXT
-python tools/injectbin/injectbin.py "build/boot/arch/$ARCH/pc/bios/stage1.bin" "$CURRENT_IMAGE" 512
 
 if [ "${PRESERVE_TEMP}" = true ]; then
     cp "$CURRENT_IMAGE" "${OUTPUT%.*}.fd.img";
 fi
 
-rm -r ./.mkcdrom.temp
+if [ -d "./.mkcdrom.temp" ]; then
+    rm -r ./.mkcdrom.temp
+fi
 mkdir ./.mkcdrom.temp
 mkdir ./.mkcdrom.temp/config
 mkdir ./.mkcdrom.temp/modules

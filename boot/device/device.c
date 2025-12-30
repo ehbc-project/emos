@@ -67,16 +67,17 @@ void device_remove(struct device *dev)
             break;
         }
     }
+
+    if (device_list_head == dev) {
+        device_list_head = dev->next;
+    }
+    
     if (!prev_device) return;
 
     prev_device->next = dev->next;
 
     if (prev_sibling) {
         prev_sibling->sibling = dev->sibling;
-    }
-
-    if (device_list_head == dev) {
-        device_list_head = dev->next;
     }
 
     free(dev);

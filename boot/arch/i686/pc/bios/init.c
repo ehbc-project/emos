@@ -486,12 +486,16 @@ status_t mount_boot_filesystem(void)
     struct device *bootdisk;
     const struct block_interface *blki;
     uint8_t sect0[512];
+    size_t sect_size;
 
     bootdisk = device_get_first_dev();
 
     for (; bootdisk; bootdisk = bootdisk->next) {
         status = bootdisk->driver->get_interface(bootdisk, "block", (const void **)&blki);
         if (!CHECK_SUCCESS(status)) continue;
+
+        status = blki->get_block_size(bootdisk, &sect_size);
+        if (!CHECK_SUCCESS(status) || sect_size > 512) continue;
 
         status = blki->read(bootdisk, 0, sect0, 1, NULL);
         if (!CHECK_SUCCESS(status)) continue;
@@ -688,7 +692,7 @@ void _pc_init(void)
     LOG_DEBUG("mounting boot filesystem...\n");
     status = mount_boot_filesystem();
     if (!CHECK_SUCCESS(status)) {
-        panic(status, "failed to mount bootloader partition");
+        LOG_WARN("failed to mount bootloader partition");
     }
 
     LOG_DEBUG("starting main...\n");

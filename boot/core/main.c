@@ -9,6 +9,7 @@
 #include <eboot/macros.h>
 #include <eboot/status.h>
 #include <eboot/panic.h>
+#include <eboot/log.h>
 #include <eboot/device.h>
 #include <eboot/filesystem.h>
 #include <eboot/json.h>
@@ -22,6 +23,8 @@
 #include <eboot/interface/hid.h>
 
 #include <x86gprintrin.h>
+
+#define MODULE_NAME "main"
 
 void setup_tty(void)
 {
@@ -106,7 +109,14 @@ void read_config(void)
 
     cfg_fp = fopen("boot:/config/boot.json", "r");
     if (!cfg_fp) {
-        panic(STATUS_ENTRY_NOT_FOUND, "boot:/config/boot.json not found");
+        LOG_ERROR("boot:/config/boot.json not found. using default configuration...");
+
+        config_data = NULL;
+        config_password = NULL;
+        config_timezone_offset = 0;
+        config_rtc_utc = 1;
+
+        return;
     }
 
     fseek(cfg_fp, 0, SEEK_END);
@@ -373,12 +383,16 @@ void main(void)
 
     read_config();
 
-    status = json_object_find_value(&config_data->obj, "menu", &menu);
-    if (!CHECK_SUCCESS(status) || !menu) {
-    } else if (menu->type == JVT_OBJECT) {
-        show_menu(menu, 1);
+    if (config_data) {
+        status = json_object_find_value(&config_data->obj, "menu", &menu);
+        if (!CHECK_SUCCESS(status) || !menu) {
+        } else if (menu->type == JVT_OBJECT) {
+            show_menu(menu, 1);
+        } else {
+            panic(STATUS_INVALID_FORMAT, "element \"menu\" has invalid value type");
+        }
     } else {
-        panic(STATUS_INVALID_FORMAT, "element \"menu\" has invalid value type");
+        printf("boot configuration file not found.\n");
     }
 
     for (;;) {
