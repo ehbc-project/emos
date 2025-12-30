@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+
+set -e
+
+ARCH=
+BOOTBIN_EXT=
+UEFI_ARCH=
+BOOT_TYPE=bios
+OUTPUT=
+PRESERVE_TEMP=false
+PART_TABLE_IMAGE=
+CURRENT_PART_IMAGE=
+declare -a PART_IMAGES
+
+print_usage() {
+    echo "usage: $0 [-a arch] [-hSu] output"
+}
+
+while getopts "a:hSu" arg; do
+    case $arg in
+        a)
+            ARCH=$OPTARG
+            ;;
+        h)
+            print_usage
+            exit 0
+            ;;
+        S)
+            PRESERVE_TEMP=true
+            ;;
+        u)
+            BOOT_TYPE=uefi
+            ;;
+        *)
+            print_usage
+            exit 1
+            ;;
+    esac
+done
+
+case $ARCH in
+    i686)
+        BOOTBIN_EXT=X86
+        UEFI_ARCH=IA32
+        ;;
+    x86_64)
+        BOOTBIN_EXT=X64
+        UEFI_ARCH=X64
+        ;;
+    *)
+        echo "$0: unknown architecture"
+        exit 1
+        ;;
+esac
+
+case $BOOT_TYPE in
+    uefi) ;;
+    bios) ;;
+    *)
+        echo "$0: unknown boot type"
+        exit 1
+        ;;
+esac
+
+shift "$((OPTIND - 1))"
+OUTPUT=$1
+
+
+# Partition 0
+CURRENT_PART_IMAGE=$(mktemp)
+PART_IMAGES+=("$CURRENT_PART_IMAGE")
+dd if=/dev/zero of="$CURRENT_PART_IMAGE" bs=512 count=16443
+case $BOOT_TYPE in
+    uefi)
+        mformat -i "$CURRENT_PART_IMAGE" -H 63
+        mmd -i "$CURRENT_PART_IMAGE" ::/EFI
+        mmd -i "$CURRENT_PART_IMAGE" ::/EFI/BOOT
+        mcopy -i "$CURRENT_PART_IMAGE" "build/boot/arch/$ARCH/pc/uefi/bootloader.efi" ::/EFI/BOOT/BOOT$UEFI_ARCH.EFI
+        ;;
+    bios)
+        mformat -i "$CURRENT_PART_IMAGE" -H 63 -B "build/boot/arch/$ARCH/pc/bios/fdboot.bin"
+        mcopy -i "$CURRENT_PART_IMAGE" "build/boot/arch/$ARCH/pc/bios/stage1.x86" ::/STAGE1.$BOOTBIN_EXT
+        mcopy -i "$CURRENT_PART_IMAGE" "build/boot/arch/$ARCH/pc/bios/bootloader.bin" ::/BOOTLDR.$BOOTBIN_EXT
+        ;;
+esac
+mmd -i "$CURRENT_PART_IMAGE" ::/CONFIG
+mcopy -i "$CURRENT_PART_IMAGE" boot/config/boot.json ::/CONFIG/boot.json
+mmd -i "$CURRENT_PART_IMAGE" ::/MODULES
+mcopy -i "$CURRENT_PART_IMAGE" build/boot/modules/bootemos/bootemos.mod ::/MODULES/BOOTEMOS.MOD
+mcopy -i "$CURRENT_PART_IMAGE" build/boot/modules/guishell/guishell.mod ::/MODULES/guishell.MOD
+mcopy -i "$CURRENT_PART_IMAGE" build/boot/modules/helloworld/helloworld.mod ::/MODULES/HELOWRLD.MOD
+mcopy -i "$CURRENT_PART_IMAGE" build/boot/bootloader.map ::/BOOTLDR.MAP
+mcopy -i "$CURRENT_PART_IMAGE" build/boot/unifont.bfn ::/UNIFONT.BFN
+mcopy -i "$CURRENT_PART_IMAGE" disk/plchldr.bmp ::/PLCHLDR.BMP
+mcopy -i "$CURRENT_PART_IMAGE" disk/unicode.txt ::/UNICODE.TXT
+
+if [ "${PRESERVE_TEMP}" = true ]; then
+    cp "$CURRENT_PART_IMAGE" "${OUTPUT%.*}.part0.img";
+fi
+
+
+# Partition 1
+CURRENT_PART_IMAGE=$(mktemp)
+PART_IMAGES+=("$CURRENT_PART_IMAGE")
+dd if=/dev/zero of="$CURRENT_PART_IMAGE" bs=512 count=65520
+build/tools/mkfs.afs/mkfs.afs -l "Label" -j 1M -N 2 -r 1 -s 2 -o 8253 -u "$(uuidgen)" -iv "$CURRENT_PART_IMAGE"
+# build/tools/afsimg/afsimg mkdir -i "$CURRENT_PART_IMAGE" :/system
+# build/tools/afsimg/afsimg mkdir -i "$CURRENT_PART_IMAGE" :/system/kernel
+# build/tools/afsimg/afsimg mkdir -i "$CURRENT_PART_IMAGE" :/system/lib
+# build/tools/afsimg/afsimg mkdir -i "$CURRENT_PART_IMAGE" :/system/subsys
+# build/tools/afsimg/afsimg mkdir -i "$CURRENT_PART_IMAGE" :/system/services
+# build/tools/afsimg/afsimg mkdir -i "$CURRENT_PART_IMAGE" :/system/drivers
+# build/tools/afsimg/afsimg mkdir -i "$CURRENT_PART_IMAGE" :/users
+# build/tools/afsimg/afsimg mkdir -i "$CURRENT_PART_IMAGE" :/users/root
+# build/tools/afsimg/afsimg mkdir -i "$CURRENT_PART_IMAGE" :/packages
+# build/tools/afsimg/afsimg mkdir -i "$CURRENT_PART_IMAGE" :/temp
+# build/tools/afsimg/afsimg copy -i "$CURRENT_PART_IMAGE" build/kernel/kernel.elf :/system/kernel/kernel.elf
+
+if [ "${PRESERVE_TEMP}" = true ]; then
+    cp "$CURRENT_PART_IMAGE" "${OUTPUT%.*}.part1.img";
+fi
+
+
+# Partition 2
+CURRENT_PART_IMAGE=$(mktemp)
+PART_IMAGES+=("$CURRENT_PART_IMAGE")
+dd if=/dev/zero of="$CURRENT_PART_IMAGE" bs=512 count=131040
+mformat -i "$CURRENT_PART_IMAGE" -H 73773 -F
+mmd -i "$CURRENT_PART_IMAGE" ::/system
+mmd -i "$CURRENT_PART_IMAGE" ::/system/kernel
+mmd -i "$CURRENT_PART_IMAGE" ::/system/lib
+mmd -i "$CURRENT_PART_IMAGE" ::/system/subsys
+mmd -i "$CURRENT_PART_IMAGE" ::/system/services
+mmd -i "$CURRENT_PART_IMAGE" ::/system/drivers
+mmd -i "$CURRENT_PART_IMAGE" ::/users
+mmd -i "$CURRENT_PART_IMAGE" ::/users/root
+mmd -i "$CURRENT_PART_IMAGE" ::/packages
+mmd -i "$CURRENT_PART_IMAGE" ::/temp
+mcopy -i "$CURRENT_PART_IMAGE" build/kernel/kernel.elf ::/system/kernel/kernel.elf
+
+if [ "${PRESERVE_TEMP}" = true ]; then
+    cp "$CURRENT_PART_IMAGE" "${OUTPUT%.*}.part2.img";
+fi
+
+
+# Partition Table
+PART_TABLE_IMAGE=$(mktemp)
+case $BOOT_TYPE in
+    uefi)
+        dd if=/dev/zero of="$PART_TABLE_IMAGE" bs=512 count=63
+        cat "$PART_TABLE_IMAGE" "${PART_IMAGES[@]}" > "$OUTPUT"
+        cat <<'EOF' | gdisk "$OUTPUT"
+o
+y
+x
+l
+63
+m
+n
+1
+63
+16505
+ef00
+n
+2
+16506
+82025
+cd7cdb25-ee47-55dc-9989-6dfd81ef7261
+n
+3
+82026
+213066
+bce7d2e7-c1d5-573f-a5d8-7a8b40081b81
+w
+y
+EOF
+        ;;
+    bios)
+        cp "build/boot/arch/$ARCH/pc/bios/mbrboot.bin" "$PART_TABLE_IMAGE"
+        dd if=/dev/zero bs=512 count=62 >>"$PART_TABLE_IMAGE"
+        cat "$PART_TABLE_IMAGE" "${PART_IMAGES[@]}" > "$OUTPUT"
+
+        cat <<'EOF' | fdisk -e "$OUTPUT"
+e 1
+01
+n
+63
+16443
+f 1
+e 2
+78
+n
+16506
+65520
+edit 3
+79
+n
+82026
+131040
+q
+EOF
+        ;;
+    *)  ;;
+esac
+
+if [ "${PRESERVE_TEMP}" = true ]; then
+    cp "$PART_TABLE_IMAGE" "${OUTPUT%.*}.pt.img";
+fi
+
+
+rm "$PART_TABLE_IMAGE" "${PART_IMAGES[@]}"

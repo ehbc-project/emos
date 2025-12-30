@@ -1,0 +1,6 @@
+#ifndef __EMOS_ASM_PROCESSOR_H__
+#define __EMOS_ASM_PROCESSOR_H__
+
+#define __PROCESSOR_LITTLE_ENDIAN 1
+
+#endif // __EMOS_ASM_PROCESSOR_H__

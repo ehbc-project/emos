@@ -1,0 +1,17 @@
+{
+    "name": "sysutils",
+    "version": "0.0.1",
+    "description": "",
+    "author": [
+        {
+            "name": "kms1212",
+            "email": "kms1212g@gmail.com"
+        }
+    ],
+    "license": "BSD-3-Clause",
+    "tags": ["shell", "utility"],
+    "scope": ["global", "local"],
+    "directories": {
+        "executables": "executables"
+    }
+}

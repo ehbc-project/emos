@@ -1,0 +1,6 @@
+.vscode
+build
+*.img
+*.iso
+*.objdump
+*.log
