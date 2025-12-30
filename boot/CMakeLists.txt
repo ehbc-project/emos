@@ -53,6 +53,7 @@ add_custom_target(bootloader_exported_symbol_table ALL
 )
 add_dependencies(bootloader bootloader_exported_symbol_table)
 target_sources(bootloader PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/exported_symbols.c")
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/exported_symbols.c" PROPERTIES GENERATED TRUE)
 
 add_custom_target(bootloader_font ALL
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/hex2bfn/hex2bfn.py" "${CMAKE_CURRENT_SOURCE_DIR}/unifont.hex" "unifont.bfn"
