@@ -282,55 +282,28 @@ void *_pc_isr_common(struct interrupt_frame *frame, struct isr_regs *regs, int n
 {
     void *new_esp = NULL;
     int has_error = 0, is_fault = 0;
+    struct isr_handler *current_isr = _pc_isr_table[num];
+
     irq_count++;
 
     if (num < 0x20) {
-        switch (num) {
-            case 0x0A:
-            case 0x0B:
-            case 0x0C:
-            case 0x0D:
-            case 0x0E:
-            case 0x15:
-            case 0x1D:
-            case 0x1E:
-                has_error = 1;
-            case 0x00:
-            case 0x05:
-            case 0x06:
-            case 0x07:
-            case 0x08:
-            case 0x09:
-            case 0x10:
-            case 0x11:
-            case 0x13:
-            case 0x14:
-                is_fault = 1;
-                break;
+        has_error = !!(0x60207C00 & (1 << num));
+        is_fault = !!(0x603B7FE1 & (1 << num));
+    } else if (num < 0x30) {
+        if (num >= 0x28) {
+            io_out8(0x00A0, 0x20);
         }
-    } else {
-        if (num < 0x30) {
-            if (num >= 0x28) {
-                io_out8(0x00A0, 0x20);
-            }
-            io_out8(0x0020, 0x20);
-        }
-    }
-
-    struct isr_handler *current_isr = _pc_isr_table[num];
-
-    if (is_fault && !current_isr) {
-        if (has_error) {
-            panic(STATUS_UNKNOWN_ERROR, "Unrecoverable fault #%02X (error 0x%08X) has occurred at 0x%04X:0x%08lX", num, frame->error, frame->cs, frame->eip);
-        } else {
-            panic(STATUS_UNKNOWN_ERROR, "Unrecoverable fault #%02X has occurred at 0x%04X:0x%08lX", num, frame->cs, frame->eip);
-        }
+        io_out8(0x0020, 0x20);
     }
 
     if (!current_isr) {
-        if (has_error) {
-            ILOG_WARN("unhandled interrupt #%02X (error 0x%08lX) at 0x%04X:0x%08lX\n", num, frame->error, frame->cs, frame->eip);
-        } else if (num != 0x20 && num != 0x21 && num != 0x28 && num != 0x2C) {
+        if (is_fault) {
+            if (has_error) {
+                panic(STATUS_UNKNOWN_ERROR, "Unrecoverable fault #%02X(0x%08X) has occurred at 0x%04X:0x%08lX", num, frame->error, frame->cs, frame->eip);
+            } else {
+                panic(STATUS_UNKNOWN_ERROR, "Unrecoverable fault #%02X has occurred at 0x%04X:0x%08lX", num, frame->cs, frame->eip);
+            }
+        } else {
             ILOG_WARN("unhandled interrupt #%02X at 0x%04X:0x%08lX\n", num, frame->cs, frame->eip);
         }
     }
