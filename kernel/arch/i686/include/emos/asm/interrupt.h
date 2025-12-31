@@ -3,9 +3,10 @@
 
 #include <stdint.h>
 
-#include <compiler.h>
+#include <emos/compiler.h>
 
 struct interrupt_frame {
+    uint32_t error;
     uint32_t eip;
     uint16_t cs;
     uint16_t reserved1;

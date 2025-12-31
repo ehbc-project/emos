@@ -1,7 +1,7 @@
 #ifndef __EMOS_ASM_BREAKPOINT_H__
 #define __EMOS_ASM_BREAKPOINT_H__
 
-#include <compiler.h>
+#include <emos/compiler.h>
 
 __always_inline void _i686_breakpoint(void)
 {

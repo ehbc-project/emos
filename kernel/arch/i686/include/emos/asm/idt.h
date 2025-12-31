@@ -3,7 +3,12 @@
 
 #include <stdint.h>
 
-#include <compiler.h>
+#include <emos/compiler.h>
+
+struct idtr {
+    uint16_t size;
+    uint32_t idt_ptr;
+} __packed;
 
 struct idt_entry {
     uint16_t offset_low;

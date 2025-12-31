@@ -5,7 +5,7 @@
 
 #include <stdint.h>
 
-#include <compiler.h>
+#include <emos/compiler.h>
 
 enum cpuid_request {
     CPUID_GET_VENDOR_STRING = 0,
