@@ -5,14 +5,17 @@
 
 #include <eboot/asm/interrupt.h>
 
-#include <eboot/device.h>
+#include <eboot/status.h>
 
 struct trap_regs {
-    uint16_t ss;
     uint16_t gs;
+    uint16_t padding1;
     uint16_t fs;
+    uint16_t padding2;
     uint16_t es;
+    uint16_t padding3;
     uint16_t ds;
+    uint16_t padding4;
     uint32_t edi;
     uint32_t esi;
     uint32_t ebp;
@@ -23,8 +26,8 @@ struct trap_regs {
     uint32_t eax;
 } __packed;
 
-typedef void (*interrupt_handler_t)(void *, int);
-typedef void (*trap_handler_t)(struct interrupt_frame *, struct trap_regs *, int, int);
+typedef void (*interrupt_handler_t)(void *, struct interrupt_frame *, struct trap_regs *, int);
+typedef void (*trap_handler_t)(struct interrupt_frame *, struct trap_regs *, int);
 
 struct isr_handler {
     struct isr_handler *next;

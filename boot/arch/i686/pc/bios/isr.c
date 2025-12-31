@@ -35,7 +35,7 @@ DECLARE_ISRx(c) DECLARE_ISRx(d) DECLARE_ISRx(e) DECLARE_ISRx(f)
     _pc_idt[0x##num] = (struct idt_entry){ \
         .offset_low = (uint32_t)_pc_isr_##num & 0xFFFF, \
         .segment_selector = 0x0008, \
-        .attributes = 0xEE, \
+        .attributes = 0x8E, \
         .offset_high = ((uint32_t)_pc_isr_##num >> 16) & 0xFFFF, \
     }
 
@@ -43,7 +43,7 @@ DECLARE_ISRx(c) DECLARE_ISRx(d) DECLARE_ISRx(e) DECLARE_ISRx(f)
     _pc_idt[0x##num] = (struct idt_entry){ \
         .offset_low = (uint32_t)_pc_isr_##num & 0xFFFF, \
         .segment_selector = 0x0008, \
-        .attributes = 0xEF, \
+        .attributes = 0x8F, \
         .offset_high = ((uint32_t)_pc_isr_##num >> 16) & 0xFFFF, \
     }
 
@@ -272,7 +272,7 @@ uint64_t _pc_get_irq_count(void)
     return irq_count;
 }
 
-void _pc_isr_common(struct interrupt_frame *frame, struct trap_regs *regs, int num, int error)
+void _pc_isr_common(struct interrupt_frame *frame, struct trap_regs *regs, int num)
 {
     int has_error = 0, is_fault = 0;
     irq_count++;
@@ -314,7 +314,7 @@ void _pc_isr_common(struct interrupt_frame *frame, struct trap_regs *regs, int n
 
     if (is_fault && !current_isr) {
         if (has_error) {
-            panic(STATUS_UNKNOWN_ERROR, "Unrecoverable fault #%02X (error 0x%08X) has occurred at 0x%04X:0x%08lX", num, error, frame->cs, frame->eip);
+            panic(STATUS_UNKNOWN_ERROR, "Unrecoverable fault #%02X (error 0x%08X) has occurred at 0x%04X:0x%08lX", num, frame->error, frame->cs, frame->eip);
         } else {
             panic(STATUS_UNKNOWN_ERROR, "Unrecoverable fault #%02X has occurred at 0x%04X:0x%08lX", num, frame->cs, frame->eip);
         }
@@ -322,7 +322,7 @@ void _pc_isr_common(struct interrupt_frame *frame, struct trap_regs *regs, int n
 
     if (!current_isr) {
         if (has_error) {
-            ILOG_WARN("unhandled interrupt #%02X (error 0x%08X) at 0x%04X:0x%08lX\n", num, error, frame->cs, frame->eip);
+            ILOG_WARN("unhandled interrupt #%02X (error 0x%08lX) at 0x%04X:0x%08lX\n", num, frame->error, frame->cs, frame->eip);
         } else if (num != 0x20 && num != 0x21 && num != 0x28 && num != 0x2C) {
             ILOG_WARN("unhandled interrupt #%02X at 0x%04X:0x%08lX\n", num, frame->cs, frame->eip);
         }
@@ -330,9 +330,9 @@ void _pc_isr_common(struct interrupt_frame *frame, struct trap_regs *regs, int n
 
     while (current_isr) {
         if (current_isr->is_interrupt && current_isr->interrupt_handler) {
-            current_isr->interrupt_handler(current_isr->data, num);
+            current_isr->interrupt_handler(current_isr->data, frame, regs, num);
         } else if (current_isr->trap_handler) {
-            current_isr->trap_handler(frame, regs, num, error);
+            current_isr->trap_handler(frame, regs, num);
         }
         current_isr = current_isr->next;
     }

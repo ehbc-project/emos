@@ -520,18 +520,18 @@ uint64_t get_global_tick(void)
     return global_tick;
 }
 
-static void pit_isr(void *data, int num)
+static void pit_isr(void *data, struct interrupt_frame *frame, struct trap_regs *regs, int num)
 {
     global_tick++;
 }
 
-static void bkpt_handler(struct interrupt_frame *frame, struct trap_regs *regs, int num, int error)
+static void bkpt_handler(struct interrupt_frame *frame, struct trap_regs *regs, int num)
 {
     fprintf(stderr, "Breakpoint at %04X:%08lX\n", frame->cs, frame->eip);
 
     fprintf(stderr, "EAX=%08lX EBX=%08lX ECX=%08lX EDX=%08lX\n", regs->eax, regs->ebx, regs->ecx, regs->edx);
     fprintf(stderr, "ESI=%08lX EDI=%08lX EBP=%08lX ESP=%08lX\n", regs->esi, regs->edi, regs->ebp, regs->esp);
-    fprintf(stderr, "CS=%04X DS=%04X ES=%04X FS=%04X GS=%04X SS=%04X\n", frame->cs, regs->ds, regs->es, regs->fs, regs->gs, regs->ss);
+    fprintf(stderr, "CS=%04X DS=%04X ES=%04X FS=%04X GS=%04X\n", frame->cs, regs->ds, regs->es, regs->fs, regs->gs);
     fprintf(stderr, "EFLAGS=%08lX\n", frame->eflags);
 
     uint32_t bp = regs->ebp;
@@ -631,12 +631,12 @@ void _pc_init(void)
         LOG_DEBUG("ACPI is not available\n");
     }
 
-    interrupt_enable();
-
     LOG_DEBUG("running constructors...\n");
     for (int i = 0; &(&__init_array_start)[i] != &__init_array_end; i++) {
         (&__init_array_start)[i]();
     }
+
+    interrupt_enable();
 
     LOG_DEBUG("initializing non-PnP devices...\n");
     status = init_nonpnp_devices(has_acpi);

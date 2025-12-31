@@ -142,7 +142,7 @@ static const struct nvram_interface nvrif = {
     .write_nvram = write_nvram,
 };
 
-static void rtc_isr(void *_dev, int num)
+static void rtc_isr(void *_dev, struct interrupt_frame *frame, struct trap_regs *regs, int num)
 {
     struct device *dev = (struct device *)_dev;
     struct rtc_data *data = dev->data;

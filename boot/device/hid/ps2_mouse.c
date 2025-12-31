@@ -143,7 +143,7 @@ static const struct hid_interface hidif = {
     .poll_event = poll_event,
 };
 
-static void mouse_isr(void *_dev, int num)
+static void mouse_isr(void *_dev, struct interrupt_frame *frame, struct trap_regs *regs, int num)
 {
     struct device *dev = _dev;
     struct ps2_mouse_data *data = (struct ps2_mouse_data *)dev->data;

@@ -1,7 +1,5 @@
     .org    0
 
-    .globl  _pc_isr_common
-
     .section .text
     .code32
     
@@ -10,43 +8,46 @@
 _pc_isr_\num:
     cld
 
+    .if     \error
+    .else
+    pushl   $0
+    .endif
+
     pushal                              # push all registers
-    pushw   %ds
-    pushw   %es
-    pushw   %ss
-    pushw   $0
+    xor     %eax, %eax
+    mov     %ds, %ax
+    push    %eax
+    mov     %es, %ax
+    push    %eax
+    mov     %fs, %ax
+    push    %eax
+    mov     %gs, %ax
+    push    %eax
 
     push    %ebp                        # set up stack base pointer
     mov     %esp, %ebp
 
-    mov     %esp, %eax
-    add     $4, %eax
-
-    .if     \error
-    pushl   44(%ebp)                    # error num
     pushl   $0x\num                     # interrupt num
-    pushl   %eax                        # registers
-
-    lea     48(%ebp), %eax
-    pushl   %eax                        # interrupt frame
-    .else
-    pushl   $0                          # error num
-    pushl   $0x\num                     # interrupt num
-    pushl   %eax                        # registers
-
-    lea     44(%ebp), %eax
-    pushl   %eax                        # interrupt frame
-    .endif
+    lea     4(%ebp), %eax               # registers
+    pushl   %eax
+    lea     52(%ebp), %eax              # interrupt frame
+    pushl   %eax
     
     call    _pc_isr_common
-    add     $16, %esp
+    add     $12, %esp
 
     pop     %ebp                        # restore base pointer
-    popw    %ax
-    popw    %ss
-    popw    %es
-    popw    %ds
-    popal                               # pop all registers
+    pop     %eax
+    mov     %ax, %gs                    # pop all registers
+    pop     %eax
+    mov     %ax, %fs
+    pop     %eax
+    mov     %ax, %es
+    pop     %eax
+    mov     %ax, %ds
+    popal
+
+    add     $4, %esp                    # remove error code
 
     iret                                # return from interrupt
     .endm

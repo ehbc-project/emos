@@ -359,7 +359,7 @@ static status_t detect_device(struct device *dev, int slave, int *atapi)
     }
 }
 
-static void isr(void *data, int num)
+static void isr(void *data, struct interrupt_frame *frame, struct trap_regs *regs, int num)
 {
 }
 

@@ -146,7 +146,7 @@ static const struct fdc_interface fdcif = {
     .reset = reset,
 };
 
-static void isr(void *data, int num)
+static void isr(void *data, struct interrupt_frame *frame, struct trap_regs *regs, int num)
 {
 }
 

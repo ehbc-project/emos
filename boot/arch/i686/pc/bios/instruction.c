@@ -7,7 +7,7 @@ extern struct isr_handler *_pc_isr_table[256];
 static int trap_handler_called;
 static size_t instr_size;
 
-static void temp_trap_handler(struct interrupt_frame *frame, struct trap_regs *regs, int, int)
+static void temp_trap_handler(struct interrupt_frame *frame, struct trap_regs *regs, int)
 {
     trap_handler_called = 1;
     frame->eip += instr_size;

@@ -523,10 +523,13 @@ static status_t poll_event(struct device *dev, uint16_t *key, uint16_t *flags)
     status = _pc_isr_mask_interrupt(data->irq_num);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    if (data->scancode_set == 1) {
-        status = translate_scancode_set1(dev, key, flags) ? STATUS_BUFFER_UNDERFLOW : STATUS_SUCCESS;
-    } else if (data->scancode_set == 2) {
-        status = translate_scancode_set2(dev, key, flags) ? STATUS_BUFFER_UNDERFLOW : STATUS_SUCCESS;
+    switch (data->scancode_set) {
+        case 1:
+            status = translate_scancode_set1(dev, key, flags) ? STATUS_BUFFER_UNDERFLOW : STATUS_SUCCESS;
+        case 2:
+            status = translate_scancode_set2(dev, key, flags) ? STATUS_BUFFER_UNDERFLOW : STATUS_SUCCESS;
+        default:
+            break;
     }
     if (!CHECK_SUCCESS(status)) goto has_error;
 
@@ -546,7 +549,7 @@ static const struct hid_interface hidif = {
     .poll_event = poll_event,
 };
 
-static void keyboard_isr(void *_dev, int num)
+static void keyboard_isr(void *_dev, struct interrupt_frame *frame, struct trap_regs *regs, int num)
 {
     struct device *dev = _dev;
     struct ps2_keyboard_data *data = (struct ps2_keyboard_data *)dev->data;
