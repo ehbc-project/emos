@@ -7,6 +7,8 @@
 #include <emos/asm/pc_gdt.h>
 #include <emos/asm/io.h>
 #include <emos/asm/page.h>
+#include <emos/asm/isr.h>
+#include <emos/asm/pic.h>
 #include <emos/asm/instruction.h>
 
 #include <emos/compiler.h>
@@ -16,11 +18,9 @@
 #include <emos/macros.h>
 #include <emos/panic.h>
 #include <emos/log.h>
+#include <emos/thread.h>
 
 #define MODULE_NAME "init"
-
-#define SKIP_INVLPG_CHECK
-#define SKIP_RDTSC_CHECK
 
 int _pc_invlpg_undefined;
 int _pc_rdtsc_undefined;
@@ -86,30 +86,6 @@ void _pc_init(struct bootinfo_table_header *btblhdr)
         panic(STATUS_ENTRY_NOT_FOUND, "required entry not found");
     }
 
-    LOG_DEBUG("testing whether invlpg available...\n");
-#ifdef SKIP_INVLPG_CHECK
-    _pc_invlpg_undefined = 0;
-
-#else
-    status = _pc_instruction_test(invlpg_test, 3, &_pc_invlpg_undefined);
-    if (!CHECK_SUCCESS(status)) {
-        panic(status, "failed to test instruction invlpg");
-    }
-
-#endif
-
-    LOG_DEBUG("testing whether rdtsc available...\n");
-#ifdef SKIP_RDTSC_CHECK
-    _pc_rdtsc_undefined = 0;
-
-#else
-    status = _pc_instruction_test(rdtsc_test, 2, &_pc_rdtsc_undefined);
-    if (!CHECK_SUCCESS(status)) {
-        panic(status, "failed to test instruction rdtsc");
-    }
-
-#endif
-
     LOG_DEBUG("initializing GDT...\n");
     _pc_gdt_init();
 
@@ -142,4 +118,96 @@ void _pc_init(struct bootinfo_table_header *btblhdr)
     _pc_bootinfo_table = newbtblhdr;
 
     LOG_DEBUG("%p %p %p %08lX\n", (void *)_pc_bootinfo_table, (void *)btblhdr, (void *)enthdr, btblhdr->size);
+}
+
+static volatile uint64_t global_tick = 0;
+
+uint64_t get_global_tick(void)
+{
+    return global_tick;
+}
+
+static void *switch_thread(struct interrupt_frame *frame, struct isr_regs *regs)
+{
+    status_t status;
+    struct thread *current_thread, *next_thread;
+
+    status = thread_get_current(&current_thread);
+    if (!CHECK_SUCCESS(status)) return NULL;
+
+    /* ask to scheduler */
+    status = thread_get_next_scheduled(&next_thread);
+    if (!CHECK_SUCCESS(status) || !next_thread) return NULL;
+    
+    /* save current stack pointer of the previous thread */
+    current_thread->stack_ptr = (void *)(regs->esp - sizeof(struct isr_regs) - 4);
+
+    /* switch to next thread */
+    thread_switch(next_thread);
+
+    if (!next_thread->running) {
+        next_thread->running = 1;    
+    }
+
+    return next_thread->stack_ptr;
+}
+
+static void *pit_isr(int num, struct interrupt_frame *frame, struct isr_regs *regs, void *data)
+{
+    global_tick++;
+
+    return switch_thread(frame, regs);
+}
+
+static void init_pit(void)
+{
+    static const uint16_t pit_value = 1193182 / 20;
+    
+    io_out8(0x0043, 0x34);
+    io_out8(0x0040, pit_value & 0xFF);
+    io_out8(0x0040, (pit_value >> 8) & 0xFF);
+
+    _pc_isr_unmask_interrupt(0x20);
+}
+
+void _pc_init_late(void)
+{
+    status_t status;
+
+    LOG_DEBUG("initializing ISRs...\n");
+    status = _pc_isr_init();
+    if (!CHECK_SUCCESS(status)) {
+        panic(status, "failed to initialize interrupt system");
+    }
+
+    _pc_pic_remap_int(0x20, 0x28);
+
+    LOG_DEBUG("testing whether invlpg available...\n");
+#ifdef SKIP_INVLPG_CHECK
+    _pc_invlpg_undefined = 0;
+
+#else
+    status = _pc_instruction_test(invlpg_test, 3, &_pc_invlpg_undefined);
+    if (!CHECK_SUCCESS(status)) {
+        panic(status, "failed to test instruction invlpg");
+    }
+
+#endif
+
+    LOG_DEBUG("testing whether rdtsc available...\n");
+#ifdef SKIP_RDTSC_CHECK
+    _pc_rdtsc_undefined = 0;
+
+#else
+    status = _pc_instruction_test(rdtsc_test, 2, &_pc_rdtsc_undefined);
+    if (!CHECK_SUCCESS(status)) {
+        panic(status, "failed to test instruction rdtsc");
+    }
+
+#endif
+
+    _pc_isr_add_interrupt_handler(0x20, NULL, pit_isr, NULL);
+
+    LOG_DEBUG("initializing PIT...\n");
+    init_pit();
 }

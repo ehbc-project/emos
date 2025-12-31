@@ -2,13 +2,14 @@
 
 #include <string.h>
 
+#include <emos/asm/intrinsics/gdt.h>
+
 #include <emos/compiler.h>
 
 struct gdt_entry _pc_gdt[5];
 static struct gdtr _pc_gdtr;
 
 static void gdt_load(void) {
-    
     asm volatile(
         "mov $0x10, %%ax\n\t"
         "mov %%ax, %%ds\n\t"
@@ -26,6 +27,8 @@ void _pc_gdt_init(void)
 {
     _pc_gdtr.size = sizeof(_pc_gdt) - 1;
     _pc_gdtr.gdt_ptr = (uint32_t)&_pc_gdt;
+
+    _i686_lgdt(&_pc_gdtr);
 
     _pc_gdt[1].limit_low = 0xFFFF;
     _pc_gdt[1].base_low = 0x0000;

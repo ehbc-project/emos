@@ -43,6 +43,8 @@ _start:
 
     mov     $STACK_START, %esp          # set new stack
 
+    call    _pc_init_late               # late init
+
     mov     $__init_array_start, %ebx   # run init array
 0:
     cmp     $__init_array_end, %ebx
@@ -50,6 +52,8 @@ _start:
     call    *(%ebx)
     jmp     0b
 1:
+
+    sti
 
 .jump:
     call    main                        # jump to c code.

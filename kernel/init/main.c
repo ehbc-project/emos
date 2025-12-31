@@ -7,11 +7,13 @@
 #include <emos/asm/pc_gdt.h>
 #include <emos/asm/io.h>
 #include <emos/asm/page.h>
+#include <emos/asm/interrupt.h>
 #include <emos/asm/instruction.h>
 
 #include <emos/compiler.h>
 #include <emos/boot/bootinfo.h>
 #include <emos/mm.h>
+#include <emos/thread.h>
 #include <emos/status.h>
 #include <emos/macros.h>
 #include <emos/panic.h>
@@ -120,6 +122,28 @@ static int early_print_char(void *_state, char ch)
     }
 
     return 0;
+}
+
+static void thread1_main(struct thread *th)
+{
+    for (;;) {
+        interrupt_disable();
+        io_out8(0x007A, 0x00);
+        uint8_t value = io_in8(0x007B);
+        io_out8(0x007B, (value & 0x02) ? (value & ~0x02) : (value | 0x02));
+        interrupt_enable();
+    }
+}
+
+static void thread2_main(struct thread *th)
+{
+    for (;;) {
+        interrupt_disable();
+        io_out8(0x007A, 0x00);
+        uint8_t value = io_in8(0x007B);
+        io_out8(0x007B, (value & 0x04) ? (value & ~0x04) : (value | 0x04));
+        interrupt_enable();
+    }
 }
 
 __attribute__((noreturn))
@@ -289,8 +313,25 @@ void main(void)
     LOG_DEBUG( "  avail    free   avail    free   avail    free\n");
     LOG_DEBUG("%7lu %7lu %7lu %7lu %7lu %7lu\n", total_frames, free_frames, kernel_total_pages, kernel_free_pages, user_total_pages, user_free_pages);
 
-    io_out8(0x007A, 0x00);
-    io_out8(0x007B, 0xFF);
+    struct thread *kthread;
+    struct thread *thread1;
+    struct thread *thread2;
 
-    for (;;) {}
+    thread_create(NULL, 0, &kthread);
+    thread_create(thread1_main, 0x10000, &thread1);
+    thread_create(thread2_main, 0x10000, &thread2);
+    
+    thread_init();
+    thread_start();
+
+    io_out8(0x007A, 0x00);
+    io_out8(0x007B, 0x00);
+
+    for (;;) {
+        interrupt_disable();
+        io_out8(0x007A, 0x00);
+        uint8_t value = io_in8(0x007B);
+        io_out8(0x007B, (value & 0x01) ? (value & ~0x01) : (value | 0x01));
+        interrupt_enable();
+    }
 }

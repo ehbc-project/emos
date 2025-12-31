@@ -47,6 +47,7 @@ typedef unsigned int status_t;
 #define STATUS_BUFFER_TOO_SMALL         0x80000016
 #define STATUS_PAGE_NOT_PRESENT         0x80000017
 #define STATUS_INSUFFICIENT_MEMORY      0x80000018
+#define STATUS_FEATURE_DISABLED         0x80000019
 
 #define STATUS_FS_INCONSISTENT          0xC0000000
 
