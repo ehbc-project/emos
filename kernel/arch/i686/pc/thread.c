@@ -19,7 +19,7 @@ static void real_thread_entry(void)
 
     entry(th);
 
-    th->running = 0;
+    th->status = TS_FINISHED;
 }
 
 status_t _pc_thread_prepare_stack(struct thread *th, size_t stack_size, thread_entry_t entry, void **stack_base_out, void **stack_ptr)

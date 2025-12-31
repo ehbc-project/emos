@@ -7,12 +7,17 @@ struct thread;
 
 typedef void (*thread_entry_t)(struct thread *);
 
+#define TS_PENDING      0
+#define TS_RUNNING      1
+#define TS_BLOCKING     2
+#define TS_FINISHED     3
+
 struct thread {
     struct thread *next;
 
     int id;
 
-    int running;
+    int status;
     size_t stack_size;
     void *stack_base;
     void *stack_ptr;

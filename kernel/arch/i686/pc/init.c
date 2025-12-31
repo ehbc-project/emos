@@ -139,14 +139,27 @@ static void *switch_thread(struct interrupt_frame *frame, struct isr_regs *regs)
     /* ask to scheduler */
     status = scheduler_get_next_thread(&next_thread);
     if (!CHECK_SUCCESS(status) || !next_thread) return NULL;
+
+    /* check thread status */
+    switch (next_thread->status) {
+        case TS_PENDING:
+            next_thread->status = TS_RUNNING;
+            break;
+        case TS_RUNNING:
+            break;
+        case TS_BLOCKING:
+            break;
+        case TS_FINISHED:
+            // TODO: unregister finished thread
+            break;
+        default:
+            return NULL;
+    }
     
     /* save current stack pointer of the previous thread */
     current_thread->stack_ptr = (void *)(regs->esp - sizeof(struct isr_regs) - 4);
 
     /* switch to next thread */
-    if (!next_thread->running) {
-        next_thread->running = 1;    
-    }
     status = scheduler_set_current_thread(next_thread);
     if (!CHECK_SUCCESS(status)) return NULL;
 
@@ -166,7 +179,7 @@ static void *pit_isr(int num, struct interrupt_frame *frame, struct isr_regs *re
 
 static void init_pit(void)
 {
-    static const uint16_t pit_value = 1193182 / 20;
+    static const uint16_t pit_value = 1193182 / 100;
     
     io_out8(0x0043, 0x34);
     io_out8(0x0040, pit_value & 0xFF);
