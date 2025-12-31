@@ -3,56 +3,30 @@
 #include <stdlib.h>
 
 #include <emos/asm/thread.h>
-#include <emos/panic.h>
 
-static struct thread *thread_first_th = NULL;
-static struct thread *thread_current_th = NULL;
-static int thread_enabled = 0;
-static int thread_disabling = 0;
+#include <emos/panic.h>
+#include <emos/scheduler.h>
+
+static volatile int preemption_enabled = 0;
 
 void thread_init(void)
 {
 
 }
 
-void thread_start(void)
+void thread_start_preemption(void)
 {
-    while (thread_disabling) {}  /* spin wait */
-
-    thread_enabled = 1;
+    preemption_enabled = 1;
 }
 
-void thread_stop(void)
+void thread_stop_preemption(void)
 {
-    panic(STATUS_UNIMPLEMENTED, "NONSTOP");
+    preemption_enabled = 0;
 }
 
-status_t thread_get_current(struct thread **current)
+int thread_is_preemption_enabled(void)
 {
-    if (!thread_enabled) return STATUS_FEATURE_DISABLED;
-
-    if (current) *current = thread_current_th;
-
-    return STATUS_SUCCESS;
-}
-
-status_t thread_get_next_scheduled(struct thread **next)
-{
-    if (!thread_enabled) return STATUS_FEATURE_DISABLED;
-
-    struct thread *next_thread = thread_current_th->next;
-    if (!next_thread) {
-        next_thread = thread_first_th;
-    }
-    
-    if (next) *next = next_thread;
-
-    return STATUS_SUCCESS;
-}
-
-void thread_switch(struct thread *next)
-{
-    thread_current_th = next;
+    return preemption_enabled;
 }
 
 status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **threadout)
@@ -61,6 +35,10 @@ status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **
 
     status_t status;
     struct thread *th = NULL;
+    int added_thread_to_scheduler = 0;
+    int prev_preemption_enabled = preemption_enabled;
+
+    thread_stop_preemption();
 
     /* create thread object */
     th = calloc(1, sizeof(*th));
@@ -71,14 +49,16 @@ status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **
     th->id = new_thread_id++;
 
     /* add thread object to list */
-    th->next = thread_first_th;
-    thread_first_th = th;
+    status = scheduler_add_thread(th);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+    added_thread_to_scheduler = 1;
 
     if (!entry) {
         /* main thread */
-        thread_current_th = th;
+        status = scheduler_set_current_thread(th);
+        if (!CHECK_SUCCESS(status)) goto has_error;
 
-        th->running = 1;
+        th->status = 1;
     } else  {
         status = thread_prepare_stack(th, stack_size, entry, &th->stack_base, &th->stack_ptr);
         if (!CHECK_SUCCESS(status)) goto has_error;
@@ -89,11 +69,23 @@ status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **
 
     if (threadout) *threadout = th;
 
+    if (prev_preemption_enabled) {
+        thread_start_preemption();
+    }
+
     return STATUS_SUCCESS;
 
 has_error:
+    if (added_thread_to_scheduler) {
+        scheduler_remove_thread(th);
+    }
+
     if (th) {
         free(th);
+    }
+
+    if (prev_preemption_enabled) {
+        thread_start_preemption();
     }
 
     return status;

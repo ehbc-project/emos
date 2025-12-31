@@ -1,3 +1,3 @@
 cmake_minimum_required(VERSION 3.13)
 
-target_sources(kernel PRIVATE thread.c)
+target_sources(kernel PRIVATE scheduler.c thread.c)

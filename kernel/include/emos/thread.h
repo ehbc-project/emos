@@ -21,12 +21,9 @@ struct thread {
 
 void thread_init(void);
 
-void thread_start(void);
-void thread_stop(void);
-
-status_t thread_get_current(struct thread **current);
-status_t thread_get_next_scheduled(struct thread **next);
-void thread_switch(struct thread *next);
+void thread_start_preemption(void);
+void thread_stop_preemption(void);
+int thread_is_preemption_enabled(void);
 
 status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **threadout);
 status_t thread_wait(struct thread *thread, int timeout);

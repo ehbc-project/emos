@@ -19,6 +19,7 @@
 #include <emos/panic.h>
 #include <emos/log.h>
 #include <emos/thread.h>
+#include <emos/scheduler.h>
 
 #define MODULE_NAME "init"
 
@@ -132,22 +133,22 @@ static void *switch_thread(struct interrupt_frame *frame, struct isr_regs *regs)
     status_t status;
     struct thread *current_thread, *next_thread;
 
-    status = thread_get_current(&current_thread);
+    status = scheduler_get_current_thread(&current_thread);
     if (!CHECK_SUCCESS(status)) return NULL;
 
     /* ask to scheduler */
-    status = thread_get_next_scheduled(&next_thread);
+    status = scheduler_get_next_thread(&next_thread);
     if (!CHECK_SUCCESS(status) || !next_thread) return NULL;
     
     /* save current stack pointer of the previous thread */
     current_thread->stack_ptr = (void *)(regs->esp - sizeof(struct isr_regs) - 4);
 
     /* switch to next thread */
-    thread_switch(next_thread);
-
     if (!next_thread->running) {
         next_thread->running = 1;    
     }
+    status = scheduler_set_current_thread(next_thread);
+    if (!CHECK_SUCCESS(status)) return NULL;
 
     return next_thread->stack_ptr;
 }
@@ -156,7 +157,11 @@ static void *pit_isr(int num, struct interrupt_frame *frame, struct isr_regs *re
 {
     global_tick++;
 
-    return switch_thread(frame, regs);
+    if (thread_is_preemption_enabled()) {
+        return switch_thread(frame, regs);
+    }
+
+    return NULL;
 }
 
 static void init_pit(void)

@@ -124,25 +124,38 @@ static int early_print_char(void *_state, char ch)
     return 0;
 }
 
+static uint16_t *fb;
+
 static void thread1_main(struct thread *th)
 {
+    uint32_t index = 0;
+
     for (;;) {
-        interrupt_disable();
-        io_out8(0x007A, 0x00);
-        uint8_t value = io_in8(0x007B);
-        io_out8(0x007B, (value & 0x02) ? (value & ~0x02) : (value | 0x02));
-        interrupt_enable();
+        index = (index + 1) % (80 * 25);
+
+        fb[index] = '\\' | 0x0700;
     }
 }
 
 static void thread2_main(struct thread *th)
 {
+    uint32_t index = 0;
+
     for (;;) {
-        interrupt_disable();
-        io_out8(0x007A, 0x00);
-        uint8_t value = io_in8(0x007B);
-        io_out8(0x007B, (value & 0x04) ? (value & ~0x04) : (value | 0x04));
-        interrupt_enable();
+        index = (index + 1) % (80 * 25);
+
+        fb[index] = '|' | 0x0700;
+    }
+}
+
+static void thread3_main(struct thread *th)
+{
+    uint32_t index = 0;
+
+    for (;;) {
+        index = (index + 1) % (80 * 25);
+
+        fb[index] = '/' | 0x0700;
     }
 }
 
@@ -224,6 +237,8 @@ void main(void)
     pstate.height = fbent->height;
     pstate.pitch = fbent->pitch;
     pstate.cursor_col = pstate.cursor_row = 0;
+
+    fb = pstate.framebuffer;
 
     LOG_DEBUG("reinitializing early logger...\n");
     log_early_init(early_print_char, &pstate);
@@ -309,29 +324,32 @@ void main(void)
     mm_vma_get_available_user_page_count(&user_total_pages);
     mm_vma_get_free_user_page_count(&user_free_pages);
     
-    LOG_DEBUG( "frame           kernel page     user page\n");
-    LOG_DEBUG( "  avail    free   avail    free   avail    free\n");
+    LOG_DEBUG("frame           kernel page     user page\n");
+    LOG_DEBUG("  avail    free   avail    free   avail    free\n");
     LOG_DEBUG("%7lu %7lu %7lu %7lu %7lu %7lu\n", total_frames, free_frames, kernel_total_pages, kernel_free_pages, user_total_pages, user_free_pages);
 
     struct thread *kthread;
     struct thread *thread1;
     struct thread *thread2;
+    struct thread *thread3;
 
     thread_create(NULL, 0, &kthread);
-    thread_create(thread1_main, 0x10000, &thread1);
-    thread_create(thread2_main, 0x10000, &thread2);
     
     thread_init();
-    thread_start();
+    thread_start_preemption();
+
+    thread_create(thread1_main, 0x10000, &thread1);
+    thread_create(thread2_main, 0x10000, &thread2);
+    thread_create(thread3_main, 0x10000, &thread3);
 
     io_out8(0x007A, 0x00);
     io_out8(0x007B, 0x00);
 
+    uint32_t index = 0;
+
     for (;;) {
-        interrupt_disable();
-        io_out8(0x007A, 0x00);
-        uint8_t value = io_in8(0x007B);
-        io_out8(0x007B, (value & 0x01) ? (value & ~0x01) : (value | 0x01));
-        interrupt_enable();
+        index = (index + 1) % (80 * 25);
+
+        fb[index] = '-' | 0x0700;
     }
 }
