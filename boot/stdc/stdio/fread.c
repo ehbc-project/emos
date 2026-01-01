@@ -7,6 +7,7 @@ size_t fread(void *__restrict ptr, size_t size, size_t count, FILE *__restrict s
 {
     status_t status;
     size_t read_count = 0;
+    ssize_t cookie_result;
 
     while (read_count < count) {
         switch (stream->type) {
@@ -19,7 +20,8 @@ size_t fread(void *__restrict ptr, size_t size, size_t count, FILE *__restrict s
                 if (!CHECK_SUCCESS(status)) goto end;
                 break;
             case 3:
-                return stream->cookie.io_funcs.read(stream->cookie.cookie, ptr, size);
+                cookie_result = stream->cookie.io_funcs.read(stream->cookie.cookie, ptr, size);
+                if (cookie_result != count) goto end;
             default:
                 return -1;
         }
