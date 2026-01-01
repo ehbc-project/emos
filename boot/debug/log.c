@@ -41,7 +41,7 @@ void log_isr_printf(int level, const char *module_name, const char *fmt, ...)
 }
 
 static const char *ll_str[] = {
-    "FATAL", "ERROR", "WARN", "INFO", "DEBUG",
+    "FATAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE",
 };
 
 void log_vprintf(int level, const char *module_name, const char *fmt, va_list args)

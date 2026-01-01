@@ -23,11 +23,11 @@ status_t mm_init(void)
     // status_t status;
     uint32_t cr0;
 
-    // LOG_DEBUG("initializing page directory...\n");
+    // LOG_TRACE("initializing page directory...\n");
     // status = init_page_directory();
     // if (!CHECK_SUCCESS(status)) return status;
 
-    LOG_DEBUG("setting up registers...\n");
+    LOG_TRACE("setting up registers...\n");
     // _i686_write_cr3((uintptr_t)&page_dir_recursive);
     cr0 = _i686_read_cr0();
     cr0 |= CR0_PG;
@@ -136,7 +136,7 @@ status_t mm_map(pfn_t pfn, vpn_t vpn, size_t page_count, uint32_t flags)
 
     // TODO: rollback if failed
 
-    LOG_DEBUG("mapped page %lu-%lu to frame %lu-%lu\n", vpn, vpn + page_count - 1, pfn, pfn + page_count - 1);
+    LOG_TRACE("mapped page %lu-%lu to frame %lu-%lu\n", vpn, vpn + page_count - 1, pfn, pfn + page_count - 1);
 
     return STATUS_SUCCESS;
 }
@@ -155,7 +155,7 @@ static void unmap(vpn_t vpn)
 
 status_t mm_unmap(vpn_t vpn, size_t page_count)
 {
-    LOG_DEBUG("unmapping page %lu-%lu\n", vpn, vpn + page_count - 1);
+    LOG_TRACE("unmapping page %lu-%lu\n", vpn, vpn + page_count - 1);
 
     for (size_t i = 0; i < page_count; i++) {
         unmap(vpn + i);

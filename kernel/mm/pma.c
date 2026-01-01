@@ -82,7 +82,7 @@ status_t mm_pma_mark_reserved(pfn_t base_pfn, pfn_t limit_pfn)
         PBM_SET(i, PBM_RESERVED);
     }
 
-    LOG_DEBUG("marked frame %08lX-%08lX to reserved\n", base_pfn, limit_pfn);
+    LOG_TRACE("marked frame %lu-%lu to reserved\n", base_pfn, limit_pfn);
 
     return STATUS_SUCCESS;
 }
@@ -106,7 +106,7 @@ status_t mm_pma_unmark_reserved(pfn_t base_pfn, pfn_t limit_pfn)
         PBM_SET(i, PBM_FREE);
     }
 
-    LOG_DEBUG("unmarked frame %08lX-%08lX\n", base_pfn, limit_pfn);
+    LOG_TRACE("unmarked frame %lu-%lu\n", base_pfn, limit_pfn);
 
     return STATUS_SUCCESS;
 }
@@ -206,7 +206,7 @@ static status_t pma_bitmap_init(vpn_t pagedir_vpn, struct bootinfo_entry_memory_
 
     memset(pma_bitmap, 0, pma_bitmap_size);
 
-    LOG_DEBUG("PMA bitmap initialized to 0x%p. basepfn=0x%08lX limitpfn=0x%08lX\n", pma_bitmap, pma_base_pfn, pma_limit_pfn);
+    LOG_TRACE("PMA bitmap initialized to 0x%p. basepfn=%lu limitpfn=%lu\n", pma_bitmap, pma_base_pfn, pma_limit_pfn);
 
     
     return STATUS_SUCCESS;
@@ -286,7 +286,7 @@ status_t mm_pma_allocate_frame(size_t count, pfn_t *pfn, uint32_t flags)
 
     if (pfn) *pfn = pma_base_pfn + alloc_start_idx;
 
-    LOG_DEBUG("allocated frame %lu-%lu\n", pma_base_pfn + alloc_start_idx, pma_base_pfn + alloc_start_idx + count - 1);
+    LOG_TRACE("allocated frame %lu-%lu\n", pma_base_pfn + alloc_start_idx, pma_base_pfn + alloc_start_idx + count - 1);
 
     return STATUS_SUCCESS;
 }
@@ -304,7 +304,9 @@ void mm_pma_free_frame(pfn_t pfn, size_t frame_count)
         pma_free_frames++;
     }
 
-    LOG_DEBUG("freed frame %08lX-%08lX\n", pma_base_pfn + free_start_idx, pma_base_pfn + free_start_idx + frame_count - 1);
+    LOG_TRACE("freed frame %lu-%lu\n", pma_base_pfn + free_start_idx, pma_base_pfn + free_start_idx + frame_count - 1);
+
+    return;
 
 has_error:
     panic(STATUS_CONFLICTING_STATE, "failed to free memory frame");

@@ -11,6 +11,7 @@
 #define LL_WARN     2
 #define LL_INFO     3
 #define LL_DEBUG    4
+#define LL_TRACE    5
 
 void log_set_level(int level);
 
@@ -32,11 +33,13 @@ void log_isr_vprintf(int level, const char *module_name, const char *fmt, va_lis
 #define LOG_WARN(...)   LOG(LL_WARN, __VA_ARGS__);
 #define LOG_INFO(...)   LOG(LL_INFO, __VA_ARGS__);
 #define LOG_DEBUG(...)  LOG(LL_DEBUG, __VA_ARGS__);
+#define LOG_TRACE(...)  LOG(LL_TRACE, __VA_ARGS__);
 
 #define ILOG_FATAL(...) ILOG(LL_FATAL, __VA_ARGS__);
 #define ILOG_ERROR(...) ILOG(LL_ERROR, __VA_ARGS__);
 #define ILOG_WARN(...)  ILOG(LL_WARN, __VA_ARGS__);
 #define ILOG_INFO(...)  ILOG(LL_INFO, __VA_ARGS__);
 #define ILOG_DEBUG(...) ILOG(LL_DEBUG, __VA_ARGS__);
+#define ILOG_TRACE(...) ILOG(LL_TRACE, __VA_ARGS__);
 
 #endif // __EBOOT_LOG_H__
