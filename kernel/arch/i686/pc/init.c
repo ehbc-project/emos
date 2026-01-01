@@ -153,7 +153,7 @@ static void *switch_thread(struct interrupt_frame *frame, struct isr_regs *regs)
             // might be a scheduler error
             break;
         default:
-            return NULL;
+            panic(STATUS_SYSTEM_CORRUPTED, "system corrupted");
     }
     
     /* save current stack pointer of the previous thread */

@@ -5,7 +5,11 @@
 
 #include <emos/asm/thread.h>
 #include <emos/asm/isr.h>
+#include <emos/asm/intrinsics/misc.h>
 
+#include <emos/scheduler.h>
+
+__noreturn
 static void real_thread_entry(void)
 {
     thread_entry_t entry;
@@ -20,6 +24,12 @@ static void real_thread_entry(void)
     entry(th);
 
     th->status = TS_FINISHED;
+
+    scheduler_yield();
+
+    for (;;) {
+        _i686_halt();
+    }
 }
 
 status_t _pc_thread_prepare_stack(struct thread *th, size_t stack_size, thread_entry_t entry, void **stack_base_out, void **stack_ptr)

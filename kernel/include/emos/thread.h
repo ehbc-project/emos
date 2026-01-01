@@ -10,7 +10,8 @@ typedef void (*thread_entry_t)(struct thread *);
 #define TS_PENDING      0
 #define TS_RUNNING      1
 #define TS_BLOCKING     2
-#define TS_FINISHED     3
+#define TS_WAITING      3
+#define TS_FINISHED     4
 
 struct thread {
     struct thread *next;
@@ -22,16 +23,21 @@ struct thread {
     void *stack_base;
     void *stack_ptr;
     thread_entry_t entry;
+
+    struct thread **wait_list;
+    int wait_count;
+    int wait_timeout;
 };
 
-void thread_init(void);
+status_t thread_init(struct thread **main_thread);
 
 void thread_start_preemption(void);
 void thread_stop_preemption(void);
 int thread_is_preemption_enabled(void);
 
 status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **threadout);
-status_t thread_wait(struct thread *thread, int timeout);
 status_t thread_remove(struct thread *thread);
+
+status_t thread_wait(struct thread **list, int count, int timeout);
 
 #endif // __EMOS_THREAD_H__

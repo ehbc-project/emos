@@ -14,59 +14,13 @@
 #include <emos/boot/bootinfo.h>
 #include <emos/mm.h>
 #include <emos/thread.h>
+#include <emos/scheduler.h>
 #include <emos/status.h>
 #include <emos/macros.h>
 #include <emos/panic.h>
 #include <emos/log.h>
 
 #define MODULE_NAME "main"
-
-// extern const uint8_t image_map[307200 * 3];
-// extern const uint8_t pbar_map[20000 * 4];
-// 
-// uint8_t *fb = (void *)(uintptr_t)fbent->framebuffer_addr;
-// int pitch = fbent->pitch;
-// 
-// for (int i = 0; i < 480; i++) {
-//     for (int j = 0; j < 640; j++) {
-//         fb[i * pitch + j * 3] = image_map[(i * 640 + j) * 3];
-//         fb[i * pitch + j * 3 + 1] = image_map[(i * 640 + j) * 3 + 1];
-//         fb[i * pitch + j * 3 + 2] = image_map[(i * 640 + j) * 3 + 2];
-//     }
-// }
-// 
-// int center_x = 320;
-// int center_y = 375;
-// 
-// for (int f = 0;; f = (f + 1) % 8) {
-//     for (int i = center_y - 25; i < center_y + 25; i++) {
-//         for (int j = center_x - 25; j < center_x + 25; j++) {
-//             int alpha = pbar_map[((i - center_y + 25) * 400 + (j - center_x + 25 + f * 50)) * 4 + 3];
-//             int r = pbar_map[((i - center_y + 25) * 400 + (j - center_x + 25 + f * 50)) * 4 + 0];
-//             int g = pbar_map[((i - center_y + 25) * 400 + (j - center_x + 25 + f * 50)) * 4 + 1];
-//             int b = pbar_map[((i - center_y + 25) * 400 + (j - center_x + 25 + f * 50)) * 4 + 2];
-//             int bg_r = image_map[(i * 640 + j) * 3];
-//             int bg_g = image_map[(i * 640 + j) * 3 + 1];
-//             int bg_b = image_map[(i * 640 + j) * 3 + 2];
-// 
-//             if (!alpha) {
-//                 fb[i * pitch + j * 3] = bg_r;
-//                 fb[i * pitch + j * 3 + 1] = bg_g;
-//                 fb[i * pitch + j * 3 + 2] = bg_b;
-//             } else if (alpha == 255) {
-//                 fb[i * pitch + j * 3] = r;
-//                 fb[i * pitch + j * 3 + 1] = g;
-//                 fb[i * pitch + j * 3 + 2] = b;
-//             } else {
-//                 fb[i * pitch + j * 3] = bg_r * (255 - alpha) / 255 + r * alpha / 255;
-//                 fb[i * pitch + j * 3 + 1] = bg_g * (255 - alpha) / 255 + g * alpha / 255;
-//                 fb[i * pitch + j * 3 + 2] = bg_b * (255 - alpha) / 255 + b * alpha / 255;
-//             }
-//         }
-//     }
-// 
-//     for (volatile int i = 0; i < 1024 * 1024 * 16; i++) {}
-// }
 
 extern struct bootinfo_table_header *_pc_bootinfo_table;
 
@@ -126,36 +80,65 @@ static int early_print_char(void *_state, char ch)
 
 static uint16_t *fb;
 
+extern uint64_t get_global_tick(void);
+
 static void thread1_main(struct thread *th)
 {
+    uint64_t prev_tick = 0, current_tick;
     uint32_t index = 0;
 
     for (;;) {
-        index = (index + 1) % (80 * 25);
+        current_tick = get_global_tick();
+        if (current_tick - prev_tick < 20) scheduler_yield();
+        prev_tick = current_tick;
 
-        fb[index] = '\\' | 0x0700;
-    }
-}
+        fb[(5 + index) * 80 + 5] = 0x0700;
 
-static void thread2_main(struct thread *th)
-{
-    uint32_t index = 0;
+        index = (index + 1) % (15);
 
-    for (;;) {
-        index = (index + 1) % (80 * 25);
-
-        fb[index] = '|' | 0x0700;
+        fb[(5 + index) * 80 + 5] = '#' | 0x0700;
     }
 }
 
 static void thread3_main(struct thread *th)
 {
+    uint64_t start_tick = get_global_tick();
+    uint32_t time = 0, temp;
+
+    do {
+        time = get_global_tick() - start_tick;
+
+        temp = time;
+        for (int i = 2; i >= 0; i--) {
+            fb[20 * 80 + 60 + i] = ('0' + temp % 10) | 0x0700;
+
+            temp /= 10;
+        }
+    } while (time < 999);
+}
+
+static void thread2_main(struct thread *th)
+{
+    uint64_t prev_tick = 0, current_tick;
     uint32_t index = 0;
+    struct thread *thread3;
+    struct thread *waitlist[1];
+
+    thread_create(thread3_main, 0x10000, &thread3);
+
+    waitlist[0] = thread3;
+    thread_wait(waitlist, 1, -1);
 
     for (;;) {
-        index = (index + 1) % (80 * 25);
+        current_tick = get_global_tick();
+        if (current_tick - prev_tick < 20) scheduler_yield();
+        prev_tick = current_tick;
 
-        fb[index] = '/' | 0x0700;
+        fb[5 * 80 + 60 + index] = 0x0700;
+
+        index = (index + 1) % (15);
+
+        fb[5 * 80 + 60 + index] = '#' | 0x0700;
     }
 }
 
@@ -241,7 +224,7 @@ void main(void)
     fb = pstate.framebuffer;
 
     LOG_DEBUG("reinitializing early logger...\n");
-    log_early_init(early_print_char, &pstate);
+    // log_early_init(early_print_char, &pstate);
 
     /* print entries */
     if (caent) {
@@ -312,7 +295,7 @@ void main(void)
         LOG_DEBUG("\t%016llX\n", pvent->vpn);
     }
 
-    LOG_DEBUG("Starting main...\n");
+    LOG_DEBUG("starting main...\n");
 
     size_t total_frames, free_frames;
     size_t kernel_total_pages, kernel_free_pages, user_total_pages, user_free_pages;
@@ -328,28 +311,36 @@ void main(void)
     LOG_DEBUG("  avail    free   avail    free   avail    free\n");
     LOG_DEBUG("%7lu %7lu %7lu %7lu %7lu %7lu\n", total_frames, free_frames, kernel_total_pages, kernel_free_pages, user_total_pages, user_free_pages);
 
-    struct thread *kthread;
+    struct thread *main_thread;
     struct thread *thread1;
     struct thread *thread2;
-    struct thread *thread3;
 
-    thread_create(NULL, 0, &kthread);
-    
-    thread_init();
+    LOG_DEBUG("initializing multitasking...\n");
+    status = thread_init(&main_thread);
+    if (!CHECK_SUCCESS(status)) {
+        panic(status, "failed to initialize multitasking");
+    }
+
     thread_start_preemption();
 
     thread_create(thread1_main, 0x10000, &thread1);
     thread_create(thread2_main, 0x10000, &thread2);
-    thread_create(thread3_main, 0x10000, &thread3);
 
     io_out8(0x007A, 0x00);
     io_out8(0x007B, 0x00);
 
-    uint32_t index = 0;
-
     for (;;) {
-        index = (index + 1) % (80 * 25);
+        scheduler_maintain();
 
-        fb[index] = '-' | 0x0700;
+        if (scheduler_has_other_runnable_thread()) {
+            scheduler_yield();
+        } else {
+            asm volatile (
+                "pushf\r\n"
+                "sti\r\n"
+                "hlt\r\n"
+                "popf\r\n"
+            );
+        }
     }
 }
