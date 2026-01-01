@@ -23,8 +23,8 @@
 
 #define MODULE_NAME "init"
 
-int _pc_invlpg_undefined;
-int _pc_rdtsc_undefined;
+int _pc_invlpg_undefined = 1;
+int _pc_rdtsc_undefined = 1;
 
 static void invlpg_test(void)
 {
@@ -150,7 +150,7 @@ static void *switch_thread(struct interrupt_frame *frame, struct isr_regs *regs)
         case TS_BLOCKING:
             break;
         case TS_FINISHED:
-            // TODO: unregister finished thread
+            // might be a scheduler error
             break;
         default:
             return NULL;
@@ -200,29 +200,22 @@ void _pc_init_late(void)
 
     _pc_pic_remap_int(0x20, 0x28);
 
-    LOG_DEBUG("testing whether invlpg available...\n");
-#ifdef SKIP_INVLPG_CHECK
-    _pc_invlpg_undefined = 0;
+    io_out8(0x0070, 0x8B);
+    uint8_t temp = io_in8(0x0071);
+    io_out8(0x0070, 0x8B);
+    io_out8(0x0071, temp & ~0x70);
 
-#else
+    LOG_DEBUG("testing whether invlpg available...\n");
     status = _pc_instruction_test(invlpg_test, 3, &_pc_invlpg_undefined);
     if (!CHECK_SUCCESS(status)) {
         panic(status, "failed to test instruction invlpg");
     }
 
-#endif
-
     LOG_DEBUG("testing whether rdtsc available...\n");
-#ifdef SKIP_RDTSC_CHECK
-    _pc_rdtsc_undefined = 0;
-
-#else
     status = _pc_instruction_test(rdtsc_test, 2, &_pc_rdtsc_undefined);
     if (!CHECK_SUCCESS(status)) {
         panic(status, "failed to test instruction rdtsc");
     }
-
-#endif
 
     _pc_isr_add_interrupt_handler(0x20, NULL, pit_isr, NULL);
 
