@@ -1,0 +1,46 @@
+# System Calls
+
+- `[0000:0000] device_open(in const u8 ptr path, in u32 flags, out u32 handle)`
+  - open device
+- `[0000:0001] device_close(in u32 handle)`
+  - close device
+- `[0000:0002] device_get_interface_id(in u32 handle, in const uuid ptr if_uuid, in u32 request_ver, out u32 if_id, out u32 result_ver)`
+  - get interface handle
+- `[0000:0003] device_call(in u32 handle, in u32 if_id, in u32 func_id, in const opaque ptr args, in u32 args_size, in opaque ptr result, in u32 result_size)`
+  - call function of device interface
+- `[0000:0004] device_bind(in u32 handle, in u32 if_id, in u32 bind_id, in u32 signal_id)`
+  - bind signal to device interface
+- `[0000:0005] device_unbind(in u32 handle, in u32 if_id, in u32 bind_id)`
+  - unbind signal from device interface
+
+- `[0001:0000] process_get_current(out u32 handle)`
+  - get handle of the current process
+- `[0001:0001] process_exit()`
+  - exit process
+- `[0001:0002] process_yield()`
+  - yield processor
+- `[0001:0003] process_sleep(in u32 msec)`
+  - sleep process for milliseconds
+- `[0001:0004] process_create(in const u8 ptr path, in const char ptr ptr args, in u32 arg_count, in const char ptr ptr envs, in u32 env_count, in const struct ptr attributes, out u32 handle)`
+  - create a new child process
+- `[0001:0005] process_duplicate(in const struct ptr attributes, out u32 handle)`
+  - duplicate current process
+- `[0001:0006] process_wait(in struct *states, in u32 state_count, in s32 timeout_ms)`
+  - wait for selected processes to finish
+- `[0002:0004] process_suspend(in u32 handle)`
+  - suspend process
+- `[0002:0005] process_resume(in u32 handle)`
+  - resume process
+
+- `[0002:0000] thread_get_current(out u32 handle)`
+  - get handle of the current thread
+- `[0002:0001] thread_exit()`
+  - exit thread
+- `[0002:0002] thread_create(in u32 entry, in u32 stack_size, in u32 flags, out u32 handle)`
+  - create thread
+- `[0002:0003] thread_wait(in struct *states, in u32 state_count, in s32 timeout_ms)`
+  - wait for selected threads to finish
+- `[0002:0004] thread_suspend(in u32 handle)`
+  - suspend thread
+- `[0002:0005] thread_resume(in u32 handle)`
+  - resume thread
