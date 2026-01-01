@@ -75,6 +75,14 @@ cp build/boot/unifont.bfn ./.mkcdrom.temp/unifont.bfn
 cp disk/plchldr.bmp ./.mkcdrom.temp/plchldr.bmp
 cp disk/unicode.txt ./.mkcdrom.temp/unicode.txt
 
+mkdir ./.mkcdrom.temp/system
+mkdir ./.mkcdrom.temp/system/kernel
+mkdir ./.mkcdrom.temp/system/lib
+mkdir ./.mkcdrom.temp/system/subsys
+mkdir ./.mkcdrom.temp/system/services
+mkdir ./.mkcdrom.temp/system/drivers
+cp build/kernel/kernel.elf ./.mkcdrom.temp/system/kernel/kernel.elf
+
 xorriso -as mkisofs -o "$OUTPUT" -b "/boot.img" ./.mkcdrom.temp
 
 rm -r ./.mkcdrom.temp
