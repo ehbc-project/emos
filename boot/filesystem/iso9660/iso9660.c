@@ -529,6 +529,7 @@ static status_t iter_directory(struct fs_directory *dir, struct fs_directory_ent
     struct iso9660_dir_data *dir_data = (struct iso9660_dir_data *)dir->data;
     struct iso9660_dir_entry_header *dirent_header = NULL;
     const char *filename;
+    size_t filename_len;
     
     status = read_sector(fs, dir_data->current_lba);
     if (!CHECK_SUCCESS(status)) return status;
@@ -551,8 +552,16 @@ static status_t iter_directory(struct fs_directory *dir, struct fs_directory_ent
         strncpy(entry->name, "..", 2);
         entry->name[2] = '\0';
     } else {
-        strncpy(entry->name, filename, dirent_header->filename_len);
-        entry->name[dirent_header->filename_len] = '\0';
+        filename_len = dirent_header->filename_len;
+        for (size_t i = 0; i < dirent_header->filename_len; i++) {
+            if (filename[i] == ';') {
+                filename_len = i;
+                break;
+            }
+        }
+
+        strncpy(entry->name, filename, filename_len);
+        entry->name[filename_len] = '\0';
     }
     entry->size = GET_BIENDIAN(&dirent_header->data_size);
 
