@@ -161,3 +161,25 @@ status_t thread_wait(struct thread **list, int count, int timeout)
 
     return STATUS_SUCCESS;
 }
+
+__noreturn
+void thread_exit(void)
+{
+    status_t status;
+    struct thread *current_thread;
+    
+    status = scheduler_get_current_thread(&current_thread);
+    if (!CHECK_SUCCESS(status)) {
+        panic(status, "cannot get current thread");
+    }
+
+    if (!current_thread->entry) {
+        panic(STATUS_INVALID_THREAD, "cannot exit from main thread");
+    }
+
+    current_thread->status = TS_FINISHED;
+
+    scheduler_yield();
+
+    for (;;) {}
+}

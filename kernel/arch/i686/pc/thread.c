@@ -6,8 +6,11 @@
 #include <emos/asm/thread.h>
 #include <emos/asm/isr.h>
 #include <emos/asm/intrinsics/misc.h>
+#include <emos/log.h>
 
 #include <emos/scheduler.h>
+
+#define MODULE_NAME "asm_thread"
 
 __noreturn
 static void real_thread_entry(void)
@@ -23,13 +26,7 @@ static void real_thread_entry(void)
 
     entry(th);
 
-    th->status = TS_FINISHED;
-
-    scheduler_yield();
-
-    for (;;) {
-        _i686_halt();
-    }
+    thread_exit();
 }
 
 status_t _pc_thread_prepare_stack(struct thread *th, size_t stack_size, thread_entry_t entry, void **stack_base_out, void **stack_ptr)
