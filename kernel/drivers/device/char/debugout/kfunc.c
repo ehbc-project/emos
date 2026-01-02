@@ -14,6 +14,8 @@
 #include <emos/bus.h>
 #include <emos/bus/nonpnp.h>
 
+
+
 struct device_data {
     struct nonpnp_resource res;
 };
@@ -30,9 +32,9 @@ int main(int argc, char **argv)
 
     emos_log(LOG_INFO, "init device/char/porte9\n");
 
-    status = emos_device_driver_create(&drv);
+    status = device_driver_create(&drv);
     if (!CHECK_SUCCESS(status)) {
-        emos_log(LOG_ERROR, "emos_device_driver_create() failed: 0x%08X\n", status);
+        emos_log(LOG_ERROR, "device_driver_create() failed: 0x%08X\n", status);
         goto has_error;
     }
 
@@ -41,9 +43,9 @@ int main(int argc, char **argv)
     drv->ops->probe = probe;
     drv->ops->remove = remove;
 
-    status = emos_device_driver_add_interface(drv, CHAR_INTERFACE_UUID, &charif);
+    status = device_driver_add_interface(drv, CHAR_INTERFACE_UUID, &charif);
     if (!CHECK_SUCCESS(status)) {
-        emos_log(LOG_ERROR, "emos_device_driver_add_interface() failed: 0x%08X\n", status);
+        emos_log(LOG_ERROR, "device_driver_add_interface() failed: 0x%08X\n", status);
         goto has_error;
     }
 
@@ -51,7 +53,7 @@ int main(int argc, char **argv)
 
 has_error:
     if (drv) {
-        emos_device_driver_remove(drv);
+        device_driver_remove(drv);
     }
 
     return status;
@@ -64,7 +66,7 @@ static status_t early_deinit(struct device_driver *drv)
 
 static status_t deinit(struct device_driver *drv)
 {
-    emos_device_driver_remove(drv);
+    device_driver_remove(drv);
 
     return STATUS_SUCCESS;
 }
@@ -98,9 +100,9 @@ static status_t probe(struct device **devout, struct device_driver *drv, struct 
         goto has_error;
     }
 
-    status = emos_device_create(&dev, bus);
+    status = device_create(&dev, bus);
     if (!CHECK_SUCCESS(status)) {
-        emos_log(LOG_ERROR, "emos_device_create() failed: 0x%08X\n", status);
+        emos_log(LOG_ERROR, "device_create() failed: 0x%08X\n", status);
         goto has_error;
     }
 
@@ -123,7 +125,7 @@ has_error:
     }
 
     if (dev) {
-        emos_device_remove(dev);
+        device_remove(dev);
     }
 
     return status;
@@ -135,7 +137,7 @@ static status_t remove(struct device *dev)
     struct device_data *data = dev->data;
 
     emos_memory_free(data);
-    emos_device_remove(dev);
+    device_remove(dev);
 
     return STATUS_SUCCESS;
 }
