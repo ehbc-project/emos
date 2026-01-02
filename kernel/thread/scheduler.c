@@ -1,6 +1,9 @@
 #include <emos/scheduler.h>
 
 #include <emos/panic.h>
+#include <emos/log.h>
+
+#define MODULE_NAME "scheduler"
 
 static struct thread *volatile first_thread = NULL;
 static struct thread *volatile current_thread = NULL;

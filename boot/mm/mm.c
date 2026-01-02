@@ -57,7 +57,7 @@ status_t mm_pma_init(uintptr_t base_paddr, uintptr_t limit_paddr)
 
     memset(pma_bitmap, 0, pma_bitmap_size);
 
-    LOG_TRACE("PMA bitmap initialized to 0x%p. basepfn=%lu limitpfn=%lu\n", pma_bitmap, pma_base_pfn, pma_limit_pfn);
+    LOG_DEBUG("PMA bitmap initialized to 0x%p. basepfn=%lu limitpfn=%lu\n", pma_bitmap, pma_base_pfn, pma_limit_pfn);
 
     status = mm_pma_mark_reserved(base_paddr, (uintptr_t)pma_bitmap + pma_bitmap_size - 1);
     if (!CHECK_SUCCESS(status)) return status;
@@ -210,11 +210,11 @@ status_t mm_init(void)
     status_t status;
     uint32_t cr0;
 
-    LOG_TRACE("initializing page directory...\n");
+    LOG_DEBUG("initializing page directory...\n");
     status = init_page_directory();
     if (!CHECK_SUCCESS(status)) return status;
 
-    LOG_TRACE("setting up registers...\n");
+    LOG_DEBUG("setting up registers...\n");
     _i686_write_cr3((uintptr_t)&page_dir_recursive);
     cr0 = _i686_read_cr0();
     cr0 |= CR0_PG;

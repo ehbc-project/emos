@@ -20,15 +20,9 @@ struct page_dir_recursive *_pc_page_dir;
 
 status_t mm_init(void)
 {
-    // status_t status;
     uint32_t cr0;
 
-    // LOG_TRACE("initializing page directory...\n");
-    // status = init_page_directory();
-    // if (!CHECK_SUCCESS(status)) return status;
-
-    LOG_TRACE("setting up registers...\n");
-    // _i686_write_cr3((uintptr_t)&page_dir_recursive);
+    LOG_DEBUG("setting up registers...\n");
     cr0 = _i686_read_cr0();
     cr0 |= CR0_PG;
     _i686_write_cr0(cr0);

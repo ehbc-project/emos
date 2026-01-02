@@ -237,7 +237,7 @@ status_t _pc_isr_mask_interrupt(int num)
 {
     if (num > 0xFF) return STATUS_INVALID_VALUE;
 
-    // LOG_DEBUG("masking interrupt #%02X...\n", num);
+    LOG_TRACE("masking interrupt #%02X...\n", num);
 
     if (0x20 <= num && num < 0x30) {
         /* mask PIC first */
@@ -253,7 +253,7 @@ status_t _pc_isr_unmask_interrupt(int num)
 {
     if (num > 0xFF) return STATUS_INVALID_VALUE;
 
-    // LOG_DEBUG("unmasking interrupt #%02X...\n", num);
+    LOG_TRACE("unmasking interrupt #%02X...\n", num);
 
     _pc_idt[num].attributes |= 0x80000000;
 

@@ -243,7 +243,7 @@ status_t _pc_isr_mask_interrupt(int num)
 {
     if (num > 0xFF) return STATUS_INVALID_VALUE;
 
-    // LOG_DEBUG("masking interrupt #%02X...\n", num);
+    LOG_TRACE("masking interrupt #%02X...\n", num);
 
     if (0x20 <= num && num < 0x30) {
         /* mask PIC first */
@@ -259,7 +259,7 @@ status_t _pc_isr_unmask_interrupt(int num)
 {
     if (num > 0xFF) return STATUS_INVALID_VALUE;
 
-    // LOG_DEBUG("unmasking interrupt #%02X...\n", num);
+    LOG_TRACE("unmasking interrupt #%02X...\n", num);
 
     _pc_idt[num].attributes |= 0x80000000;
 
@@ -287,8 +287,8 @@ void *_pc_isr_common(struct interrupt_frame *frame, struct isr_regs *regs, int n
     irq_count++;
 
     if (num < 0x20) {
-        has_error = !!(0x60207C00 & (1 << num));
-        is_fault = !!(0x603B7FE1 & (1 << num));
+        has_error = (0x60207C00 >> num) & 1;
+        is_fault = (0x603B7FE1 >> num) & 1;
     } else if (num < 0x30) {
         if (num >= 0x28) {
             io_out8(0x00A0, 0x20);
