@@ -23,4 +23,26 @@ __always_inline void interrupt_disable(void)
     asm volatile ("cli");
 }
 
+__always_inline uint32_t interrupt_save(void)
+{
+    uint32_t flags;
+
+    asm volatile (
+        "pushfl\r\n"
+        "pop    %0\r\n"
+        : "=r"(flags)
+    );
+
+    return (flags & 0x0200) ? 1 : 0;
+}
+
+__always_inline void interrupt_restore(uint32_t state)
+{
+    if (state) {
+        interrupt_enable();
+    } else {
+        interrupt_disable();
+    }
+}
+
 #endif // __EMOS_ASM_INTERRUPT_H__

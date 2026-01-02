@@ -21,6 +21,7 @@ typedef unsigned int status_t;
 #define STATUS_SUCCESS                  0x00000000
 #define STATUS_DEPRECATED               0x00000001
 #define STATUS_NO_EVENT                 0x00000002
+#define STATUS_MUTEX_LOCKED             0x00000003
 
 #define STATUS_UNKNOWN_ERROR            0x80000000
 #define STATUS_INVALID_RESOURCE         0x80000001

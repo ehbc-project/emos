@@ -53,6 +53,8 @@ DECLARE_ISRx(c) DECLARE_ISRx(d) DECLARE_ISRx(e) DECLARE_ISRx(f)
 struct idt_entry _pc_idt[256] __aligned(PAGE_SIZE);
 struct isr_handler *_pc_isr_table[256];
 
+int _pc_irq_depth = 0;
+
 status_t _pc_isr_init(void)
 {
     struct idtr idtr;
@@ -286,6 +288,8 @@ void *_pc_isr_common(struct interrupt_frame *frame, struct isr_regs *regs, int n
 
     irq_count++;
 
+    _pc_irq_depth++;
+
     if (num < 0x20) {
         has_error = (0x60207C00 >> num) & 1;
         is_fault = (0x603B7FE1 >> num) & 1;
@@ -317,6 +321,8 @@ void *_pc_isr_common(struct interrupt_frame *frame, struct isr_regs *regs, int n
         if (new_esp) return new_esp;
         current_isr = current_isr->next;
     }
+
+    _pc_irq_depth--;
 
     return NULL;
 }

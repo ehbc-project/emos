@@ -19,6 +19,7 @@
 #include <emos/macros.h>
 #include <emos/panic.h>
 #include <emos/log.h>
+#include <emos/mutex.h>
 
 #define MODULE_NAME "main"
 
@@ -82,31 +83,62 @@ static uint16_t *fb;
 
 extern uint64_t get_global_tick(void);
 
+static void fb_print_str(int col, int row, const char *str)
+{
+    while (*str) {
+        fb[row * 80 + col++] = *str++ | 0x0700;
+    }
+}
+
 static void thread1_main(struct thread *th)
 {
     uint64_t prev_tick = 0, current_tick;
-    uint32_t index = 0;
+    size_t total_frames, free_frames;
+
+    char buf[512];
 
     for (;;) {
         current_tick = get_global_tick();
         if (current_tick - prev_tick < 20) scheduler_yield();
         prev_tick = current_tick;
 
-        fb[(5 + index) * 80 + 5] = 0x0700;
+        mm_pma_get_available_frame_count(&total_frames);
+        mm_pma_get_free_frame_count(&free_frames);
 
-        index = (index + 1) % (15);
-
-        fb[(5 + index) * 80 + 5] = '#' | 0x0700;
+        snprintf(buf, sizeof(buf), "free memory: %10ld", free_frames * 1024);
+        fb_print_str(80 - 23, 0, buf);
     }
 }
+
+static int shared_value = 0;
+
+struct mutex mtx;
+
+static void thread2_main(struct thread *th);
 
 static void thread3_main(struct thread *th)
 {
     uint64_t start_tick = get_global_tick();
-    uint32_t time = 0, temp;
+    uint32_t time = 0, prev_time = 0, temp;
+    struct thread *new_thread;
 
     do {
-        time = get_global_tick() - start_tick;
+        if (CHECK_SUCCESS(mutex_lock(&mtx))) {
+            if (shared_value) {
+                panic(STATUS_SYSTEM_CORRUPTED, "asdf");
+            }
+            shared_value = 1;
+            for (volatile int i = 0; i < 1024; i++) {}
+            shared_value = 0;
+            mutex_unlock(&mtx);
+        }
+
+        time = (get_global_tick() - start_tick) / 100;
+        if (time == prev_time) {
+            scheduler_yield();
+            continue;
+        }
+        prev_time = time;
 
         temp = time;
         for (int i = 2; i >= 0; i--) {
@@ -115,31 +147,48 @@ static void thread3_main(struct thread *th)
             temp /= 10;
         }
     } while (time < 999);
+
+    thread_create(thread2_main, 0x10000, &new_thread);
 }
 
 static void thread2_main(struct thread *th)
 {
-    uint64_t prev_tick = 0, current_tick;
-    uint32_t index = 0;
-    struct thread *thread3;
+    uint64_t start_tick = get_global_tick();
+    uint32_t time = 0, prev_time = 0, temp;
+    struct thread *new_thread;
     struct thread *waitlist[1];
+    
+    do {
+        if (CHECK_SUCCESS(mutex_lock(&mtx))) {
+            if (shared_value) {
+                panic(STATUS_SYSTEM_CORRUPTED, "asdf");
+            }
+            shared_value = 1;
+            for (volatile int i = 0; i < 1024; i++) {}
+            shared_value = 0;
+            mutex_unlock(&mtx);
+        }
 
-    thread_create(thread3_main, 0x10000, &thread3);
 
-    waitlist[0] = thread3;
+        time = (get_global_tick() - start_tick) / 100;
+        if (time == prev_time) {
+            scheduler_yield();
+            continue;
+        }
+        prev_time = time;
+
+        temp = time;
+        for (int i = 2; i >= 0; i--) {
+            fb[21 * 80 + 60 + i] = ('0' + temp % 10) | 0x0700;
+
+            temp /= 10;
+        }
+    } while (time < 999);
+
+    thread_create(thread3_main, 0x10000, &new_thread);
+
+    waitlist[0] = new_thread;
     thread_wait(waitlist, 1, -1);
-
-    for (;;) {
-        current_tick = get_global_tick();
-        if (current_tick - prev_tick < 20) scheduler_yield();
-        prev_tick = current_tick;
-
-        fb[5 * 80 + 60 + index] = 0x0700;
-
-        index = (index + 1) % (15);
-
-        fb[5 * 80 + 60 + index] = '#' | 0x0700;
-    }
 }
 
 __attribute__((noreturn))
@@ -321,7 +370,8 @@ void main(void)
         panic(status, "failed to initialize multitasking");
     }
 
-    thread_start_preemption();
+    mutex_init(&mtx);
+
     thread_enable_preemption();
 
     thread_create(thread1_main, 0x10000, &thread1);
@@ -337,10 +387,10 @@ void main(void)
             scheduler_yield();
         } else {
             asm volatile (
-                "pushf\r\n"
+                "pushfl\r\n"
                 "sti\r\n"
                 "hlt\r\n"
-                "popf\r\n"
+                "popfl\r\n"
             );
         }
     }
