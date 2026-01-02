@@ -2,6 +2,7 @@
 #define __EMOS_THREAD_H__
 
 #include <emos/status.h>
+#include <emos/compiler.h>
 
 struct thread;
 
@@ -31,13 +32,16 @@ struct thread {
 
 status_t thread_init(struct thread **main_thread);
 
-void thread_start_preemption(void);
-void thread_stop_preemption(void);
+void thread_enable_preemption(void);
+void thread_disable_preemption(void);
 int thread_is_preemption_enabled(void);
 
 status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **threadout);
 status_t thread_remove(struct thread *thread);
 
 status_t thread_wait(struct thread **list, int count, int timeout);
+
+__noreturn
+void thread_exit(void);
 
 #endif // __EMOS_THREAD_H__

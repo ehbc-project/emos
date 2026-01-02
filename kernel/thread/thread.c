@@ -49,12 +49,12 @@ has_error:
     return status;
 }
 
-void thread_start_preemption(void)
+void thread_enable_preemption(void)
 {
     preemption_enabled = 1;
 }
 
-void thread_stop_preemption(void)
+void thread_disable_preemption(void)
 {
     preemption_enabled = 0;
 }
@@ -74,7 +74,7 @@ status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **
     int added_thread_to_scheduler = 0;
     void *stack_base = NULL, *stack_ptr = NULL;
 
-    thread_stop_preemption();
+    thread_disable_preemption();
 
     /* create thread object */
     th = calloc(1, sizeof(*th));
@@ -103,7 +103,7 @@ status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **
     if (threadout) *threadout = th;
 
     if (prev_preemption_enabled) {
-        thread_start_preemption();
+        thread_enable_preemption();
     }
 
     return STATUS_SUCCESS;
@@ -113,8 +113,8 @@ has_error:
         scheduler_remove_thread(th);
     }
 
-    if (stack_ptr) {
-        free(stack_ptr);
+    if (stack_base) {
+        free(stack_base);
     }
 
     if (th) {
@@ -122,7 +122,7 @@ has_error:
     }
 
     if (prev_preemption_enabled) {
-        thread_start_preemption();
+        thread_enable_preemption();
     }
 
     return status;

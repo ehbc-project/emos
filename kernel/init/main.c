@@ -322,6 +322,7 @@ void main(void)
     }
 
     thread_start_preemption();
+    thread_enable_preemption();
 
     thread_create(thread1_main, 0x10000, &thread1);
     thread_create(thread2_main, 0x10000, &thread2);
