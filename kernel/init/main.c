@@ -11,7 +11,6 @@
 #include <emos/asm/instruction.h>
 
 #include <emos/compiler.h>
-#include <emos/boot/bootinfo.h>
 #include <emos/mm.h>
 #include <emos/thread.h>
 #include <emos/scheduler.h>
@@ -20,6 +19,8 @@
 #include <emos/panic.h>
 #include <emos/log.h>
 #include <emos/mutex.h>
+#include <emos/boot/bootinfo.h>
+#include <emos/boot/ramdisk.h>
 
 #define MODULE_NAME "main"
 
@@ -93,7 +94,7 @@ static void fb_print_str(int col, int row, const char *str)
 static void thread1_main(struct thread *th)
 {
     uint64_t prev_tick = 0, current_tick;
-    size_t total_frames, free_frames;
+    size_t free_frames, free_kvaddr, free_uvaddr;
 
     char buf[512];
 
@@ -102,11 +103,18 @@ static void thread1_main(struct thread *th)
         if (current_tick - prev_tick < 20) scheduler_yield();
         prev_tick = current_tick;
 
-        mm_pma_get_available_frame_count(&total_frames);
         mm_pma_get_free_frame_count(&free_frames);
+        mm_vma_get_free_kernel_page_count(&free_kvaddr);
+        mm_vma_get_free_user_page_count(&free_uvaddr);
 
         snprintf(buf, sizeof(buf), "free memory: %10ld", free_frames * 1024);
         fb_print_str(80 - 23, 0, buf);
+
+        snprintf(buf, sizeof(buf), "free kvaddr: %10ld", free_kvaddr * 1024);
+        fb_print_str(80 - 23, 1, buf);
+
+        snprintf(buf, sizeof(buf), "free uvaddr: %10ld", free_uvaddr * 1024);
+        fb_print_str(80 - 23, 2, buf);
     }
 }
 
@@ -115,6 +123,38 @@ static int shared_value = 0;
 struct mutex mtx;
 
 static void thread2_main(struct thread *th);
+
+static void thread4_main(struct thread *th)
+{
+    uint64_t start_tick = get_global_tick();
+    uint32_t time = 0, prev_time = 0, temp;
+
+    do {
+        if (CHECK_SUCCESS(mutex_lock(&mtx))) {
+            if (shared_value) {
+                panic(STATUS_SYSTEM_CORRUPTED, "asdf");
+            }
+            shared_value = 1;
+            for (volatile int i = 0; i < 1024; i++) {}
+            shared_value = 0;
+            mutex_unlock(&mtx);
+        }
+
+        time = (get_global_tick() - start_tick) / 100;
+        if (time == prev_time) {
+            scheduler_yield();
+            continue;
+        }
+        prev_time = time;
+
+        temp = time;
+        for (int i = 2; i >= 0; i--) {
+            fb[19 * 80 + 60 + i] = ('0' + temp % 10) | 0x0700;
+
+            temp /= 10;
+        }
+    } while (time < 499);
+}
 
 static void thread3_main(struct thread *th)
 {
@@ -149,14 +189,15 @@ static void thread3_main(struct thread *th)
     } while (time < 999);
 
     thread_create(thread2_main, 0x10000, &new_thread);
+    thread_detach(new_thread);
 }
 
 static void thread2_main(struct thread *th)
 {
     uint64_t start_tick = get_global_tick();
     uint32_t time = 0, prev_time = 0, temp;
-    struct thread *new_thread;
-    struct thread *waitlist[1];
+    struct thread *new_thread1, *new_thread2;
+    struct thread *waitlist[2];
     
     do {
         if (CHECK_SUCCESS(mutex_lock(&mtx))) {
@@ -185,10 +226,15 @@ static void thread2_main(struct thread *th)
         }
     } while (time < 999);
 
-    thread_create(thread3_main, 0x10000, &new_thread);
+    thread_create(thread3_main, 0x10000, &new_thread1);
+    thread_create(thread4_main, 0x10000, &new_thread2);
 
-    waitlist[0] = new_thread;
-    thread_wait(waitlist, 1, -1);
+    waitlist[0] = new_thread1;
+    waitlist[1] = new_thread2;
+    thread_wait(waitlist, ARRAY_SIZE(waitlist), -1);
+
+    thread_remove(new_thread1);
+    thread_remove(new_thread2);
 }
 
 __attribute__((noreturn))
@@ -335,7 +381,7 @@ void main(void)
         LOG_DEBUG("unavailable frames entry:\n");
         LOG_DEBUG("\tpfn              type\n");
         for (int j = 0; j < ufent->entry_count; j++) {
-            LOG_DEBUG("\t%016llX %01X\n", (uint64_t)ufent->entries[j].pfn, ufent->entries[j].type);
+            LOG_DEBUG("\t%013llX %01X\n", (uint64_t)ufent->entries[j].pfn, ufent->entries[j].type);
         }
     }
 
@@ -376,9 +422,8 @@ void main(void)
 
     thread_create(thread1_main, 0x10000, &thread1);
     thread_create(thread2_main, 0x10000, &thread2);
-
-    io_out8(0x007A, 0x00);
-    io_out8(0x007B, 0x00);
+    thread_detach(thread1);
+    thread_detach(thread2);
 
     for (;;) {
         scheduler_maintain();

@@ -25,9 +25,13 @@ struct thread {
     void *stack_ptr;
     thread_entry_t entry;
 
+    int detached;
+
     struct thread **wait_list;
     int wait_count;
     int wait_timeout;
+
+    struct thread *mutex_blocking_next;
 };
 
 status_t thread_init(struct thread **main_thread);
@@ -39,6 +43,7 @@ int thread_is_preemption_enabled(void);
 status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **threadout);
 status_t thread_remove(struct thread *thread);
 
+status_t thread_detach(struct thread *thread);
 status_t thread_wait(struct thread **list, int count, int timeout);
 
 __noreturn

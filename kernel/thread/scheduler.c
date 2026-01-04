@@ -10,6 +10,8 @@ static struct thread *volatile current_thread = NULL;
 
 status_t scheduler_add_thread(struct thread *th)
 {
+    LOG_DEBUG("thread #%d added to scheduler\n", th->id);
+
     th->next = first_thread;
     first_thread = th;
 
@@ -32,6 +34,8 @@ status_t scheduler_remove_thread(struct thread *th)
             break;
         }
     }
+
+    LOG_DEBUG("thread #%d removed from scheduler\n", th->id);
 
     return STATUS_SUCCESS;
 }
@@ -144,7 +148,11 @@ status_t scheduler_maintain(void)
 
         current = current->next;
 
-        thread_remove(thread_to_remove);
+        LOG_DEBUG("thread #%d removed from scheduler (maintain)\n", thread_to_remove->id);
+
+        if (thread_to_remove->detached) {
+            thread_remove(thread_to_remove);
+        }
     }
 
     return STATUS_SUCCESS;

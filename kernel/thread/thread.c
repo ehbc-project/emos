@@ -144,6 +144,23 @@ status_t thread_remove(struct thread *th)
     return STATUS_SUCCESS;
 }
 
+status_t thread_detach(struct thread *thread)
+{
+    status_t status;
+    struct thread *current_thread;
+    
+    status = scheduler_get_current_thread(&current_thread);
+    if (!CHECK_SUCCESS(status)) return status;
+
+    if (thread->wait_list) return STATUS_CONFLICTING_STATE;
+
+    thread->detached = 1;
+
+    LOG_DEBUG("detaching thread #%d\n", thread->id);
+
+    return STATUS_SUCCESS;
+}
+
 status_t thread_wait(struct thread **list, int count, int timeout)
 {
     status_t status;
@@ -152,10 +169,20 @@ status_t thread_wait(struct thread **list, int count, int timeout)
     status = scheduler_get_current_thread(&current_thread);
     if (!CHECK_SUCCESS(status)) return status;
 
+    for (int i = 0; i < count; i++) {
+        if (list[i]->detached) return STATUS_CONFLICTING_STATE;
+    }
+
+    thread_disable_preemption();
+
+    // TODO: implement timeout
+
     current_thread->wait_list = list;
     current_thread->wait_count = count;
     current_thread->wait_timeout = timeout;
     current_thread->status = TS_WAITING;
+
+    thread_enable_preemption();
 
     scheduler_yield();
 
@@ -178,6 +205,8 @@ void thread_exit(void)
     }
 
     current_thread->status = TS_FINISHED;
+
+    LOG_DEBUG("thread #%d finished\n", current_thread->id);
 
     scheduler_yield();
 

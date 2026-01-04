@@ -7,6 +7,7 @@
 struct mutex {
     volatile int locked;
     struct thread *owner;
+    struct thread *blocking_threads;
 };
 
 status_t mutex_init(struct mutex *mtx);
