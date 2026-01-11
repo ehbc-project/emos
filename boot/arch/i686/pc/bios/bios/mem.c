@@ -11,8 +11,8 @@ status_t _pc_bios_mem_query_map(uint32_t *_cursor, struct smap_entry *buf, long 
         .b.l = cursor,
         .c.l = buf_size,
         .d.l = 0x534D4150,
-        .es.w = ((uint32_t)buf >> 4) & 0xFFFF,
-        .di.w = (uint32_t)buf & 0x000F,
+        .es.w = ((uintptr_t)buf >> 4) & 0xFFFF,
+        .di.w = (uintptr_t)buf & 0x000F,
     };
 
     if (_pc_bios_call(0x15, &regs)) {

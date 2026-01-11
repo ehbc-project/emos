@@ -17,6 +17,8 @@ status_t mutex_init(struct mutex *mtx)
 static void add_blocking_thread(struct mutex *mtx, struct thread *th)
 {
     struct thread *last_blocking_th;
+        
+    LOG_DEBUG("blocking thread #%d\n", th->id);
 
     if (mtx->blocking_threads == th) return;
 
@@ -45,6 +47,8 @@ static void unblock_blocking_thread(struct mutex *mtx)
     
     th_to_unblock = mtx->blocking_threads;
     mtx->blocking_threads = th_to_unblock->mutex_blocking_next;
+        
+    LOG_DEBUG("unblocking thread #%d\n", th_to_unblock->id);
 
     th_to_unblock->mutex_blocking_next = NULL;
     if (th_to_unblock->status == TS_BLOCKING) {
@@ -68,8 +72,6 @@ status_t mutex_lock(struct mutex *mtx)
         th->status = TS_BLOCKING;
 
         add_blocking_thread(mtx, th);
-        
-        LOG_DEBUG("blocking thread #%d\n", th->id);
 
         scheduler_yield();
 

@@ -1,5 +1,5 @@
-#ifndef __COMPILER_H__
-#define __COMPILER_H__
+#ifndef __EMOS_COMPILER_H__
+#define __EMOS_COMPILER_H__
 
 #define __always_inline     inline __attribute__((always_inline))
 #define __always_unused     __attribute__((unused))
@@ -12,4 +12,4 @@
 #define __constructor       __attribute__((constructor))
 #define __destructor       __attribute__((destructor))
 
-#endif // __COMPILER_H__
+#endif // __EMOS_COMPILER_H__

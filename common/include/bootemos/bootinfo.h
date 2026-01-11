@@ -1,9 +1,9 @@
-#ifndef __EMOS_BOOT_BOOTINFO_H__
-#define __EMOS_BOOT_BOOTINFO_H__
+#ifndef __BOOTEMOS_BOOTINFO_H__
+#define __BOOTEMOS_BOOTINFO_H__
 
 #include <stdint.h>
 
-#include <emos/compiler.h>
+#include <bootemos/compiler.h>
 
 #define BTV_CURRENT     0
 
@@ -38,6 +38,7 @@ struct bootinfo_entry_header {
 #define BET_BOOT_GRAPHICS       7
 #define BET_UNAVAILABLE_FRAMES  8
 #define BET_PAGETABLE_VPN       9
+#define BET_RAMDISK             10
 
 struct bootinfo_entry_command_args {
     uint32_t arg_count;
@@ -123,9 +124,11 @@ struct bootinfo_entry_boot_graphics {
     uint64_t data_addr;
 } __packed;
 
-
-#define BEUT_PAGETABLE  0
-#define BEUT_KERNEL     1
+#define BEUT_PAGETABLE      0
+#define BEUT_KERNEL         1
+#define BEUT_DEFAULT_FONT   2
+#define BEUT_BOOT_GRAPHICS  3
+#define BEUT_RAMDISK        4
 
 struct bootinfo_entry_unavailable_frames {
     uint32_t entry_count;
@@ -143,4 +146,11 @@ struct bootinfo_entry_pagetable_vpn {
     uint64_t vpn;
 } __packed;
 
-#endif // __EMOS_BOOT_BOOTINFO_H__
+struct bootinfo_entry_ramdisk {
+    uint8_t  version;
+    uint8_t  reserved[3];
+    uint32_t size;
+    uint64_t data_addr;
+};
+
+#endif // __BOOTEMOS_BOOTINFO_H__

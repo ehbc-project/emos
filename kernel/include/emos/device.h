@@ -29,13 +29,13 @@ struct device_driver {
     struct device_driver_ops *ops;
 };
 
-status_t emos_device_create(struct device **devout, struct bus *bus);
-void emos_device_remove(struct device *dev);
+status_t device_create(struct device **devout, struct bus *bus);
+void device_remove(struct device *dev);
 
-status_t emos_device_driver_create(struct device_driver **drv);
-void emos_device_driver_remove(struct device_driver *drv);
+status_t device_driver_create(struct device_driver **drv);
+void device_driver_remove(struct device_driver *drv);
 
-status_t emos_device_driver_add_interface(struct device_driver *drv, struct uuid if_uuid, const void *interface);
+status_t device_driver_add_interface(struct device_driver *drv, struct uuid if_uuid, const void *interface);
 status_t emos_device_driver_get_interface(struct device_driver *drv, struct uuid if_uuid, const void **ifout);
 
 #endif // __EMOS_DEVICE_DRIVER_H__

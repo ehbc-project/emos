@@ -39,8 +39,8 @@ status_t _pc_bios_disk_read(uint8_t drive, struct chs chs, uint8_t count, void *
         .c.b.l = (((chs.cylinder >> 8) & 0x3) << 6) | (chs.sector & 0x3F),
         .d.b.h = chs.head,
         .d.b.l = drive,
-        .es.w = ((uint32_t)buf >> 4) & 0xFFFF,
-        .b.w = (uint32_t)buf & 0x000F,
+        .es.w = ((uintptr_t)buf >> 4) & 0xFFFF,
+        .b.w = (uintptr_t)buf & 0x000F,
     };
 
     if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {
@@ -63,8 +63,8 @@ status_t _pc_bios_disk_write(uint8_t drive, struct chs chs, uint8_t count, const
         .c.b.l = (((chs.cylinder >> 8) & 0x3) << 6) | (chs.sector & 0x3F),
         .d.b.h = chs.head,
         .d.b.l = drive,
-        .es.w = ((uint32_t)buf >> 4) & 0xFFFF,
-        .b.w = (uint32_t)buf & 0x000F,
+        .es.w = ((uintptr_t)buf >> 4) & 0xFFFF,
+        .b.w = (uintptr_t)buf & 0x000F,
     };
 
     if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {
@@ -103,7 +103,7 @@ status_t _pc_bios_disk_get_params(uint8_t drive, uint8_t *hdd_count, uint8_t *ty
         geometry->sector = (int)regs.c.b.l & 0x3F;
     }
     if (dbt && !(drive & 0x80)) {
-        *dbt = (void *)(((uint32_t)regs.es.w << 4) + regs.di.w);
+        *dbt = (void *)(((uintptr_t)regs.es.w << 4) + regs.di.w);
     }
 
     return STATUS_SUCCESS;
@@ -140,8 +140,8 @@ status_t _pc_bios_disk_read_ext(uint8_t drive, lba_t lba, uint16_t count, void *
     struct dap dap = {
         .dap_size = sizeof(struct dap),
         .count = count,
-        .buffer_offset = (uint32_t)buf & 0x000F,
-        .buffer_segment = ((uint32_t)buf >> 4) & 0xFFFF,
+        .buffer_offset = (uintptr_t)buf & 0x000F,
+        .buffer_segment = ((uintptr_t)buf >> 4) & 0xFFFF,
         .lba_low = lba & 0xFFFFFFFF,
         .lba_high = lba >> 32,
     };
@@ -149,8 +149,8 @@ status_t _pc_bios_disk_read_ext(uint8_t drive, lba_t lba, uint16_t count, void *
     struct bioscall_regs regs = {
         .a.b.h = 0x42,
         .d.b.l = drive,
-        .ds.w = ((uint32_t)&dap >> 4) & 0xFFFF,
-        .si.w = (uint32_t)&dap & 0x000F,
+        .ds.w = ((uintptr_t)&dap >> 4) & 0xFFFF,
+        .si.w = (uintptr_t)&dap & 0x000F,
     };
 
     if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {
@@ -165,8 +165,8 @@ status_t _pc_bios_disk_write_ext(uint8_t drive, lba_t lba, uint16_t count, const
     struct dap dap = {
         .dap_size = sizeof(struct dap),
         .count = count,
-        .buffer_offset = (uint32_t)buf & 0x000F,
-        .buffer_segment = ((uint32_t)buf >> 4) & 0xFFFF,
+        .buffer_offset = (uintptr_t)buf & 0x000F,
+        .buffer_segment = ((uintptr_t)buf >> 4) & 0xFFFF,
         .lba_low = lba & 0xFFFFFFFF,
         .lba_high = lba >> 32,
     };
@@ -174,8 +174,8 @@ status_t _pc_bios_disk_write_ext(uint8_t drive, lba_t lba, uint16_t count, const
     struct bioscall_regs regs = {
         .a.b.h = 0x43,
         .d.b.l = drive,
-        .ds.w = ((uint32_t)&dap >> 4) & 0xFFFF,
-        .si.w = (uint32_t)&dap & 0x000F,
+        .ds.w = ((uintptr_t)&dap >> 4) & 0xFFFF,
+        .si.w = (uintptr_t)&dap & 0x000F,
     };
     
     if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {
@@ -190,8 +190,8 @@ status_t _pc_bios_disk_get_params_ext(uint8_t drive, struct bios_extended_drive_
     struct bioscall_regs regs = {
         .a.b.h = 0x48,
         .d.b.l = drive,
-        .ds.w = ((uint32_t)params >> 4) & 0xFFFF,
-        .si.w = (uint32_t)params & 0x000F,
+        .ds.w = ((uintptr_t)params >> 4) & 0xFFFF,
+        .si.w = (uintptr_t)params & 0x000F,
     };
 
     if (_pc_bios_call(0x13, &regs) || regs.a.b.h) {

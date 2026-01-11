@@ -21,7 +21,7 @@
 #include <eboot/mm.h>
 #include <eboot/interface/video.h>
 
-#include "bootinfo.h"
+#include <bootemos/bootinfo.h>
 
 #define MODULE_NAME "bootemos"
 

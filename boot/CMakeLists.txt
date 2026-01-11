@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.13)
 cmake_policy(SET CMP0076 NEW)
+set(CMAKE_TOOLCHAIN_FILE "${ROOT_SOURCE_DIR}/cmake/${TARGET_ARCH}/Toolchain.cmake")
+
+project("eboot")
+
+# Language configurations
+enable_language(C CXX ASM)
 
 # Compiler Tests
 
@@ -43,7 +49,7 @@ add_custom_target(bootloader_symbol_table ALL
 add_custom_command(
     OUTPUT bootloader_exported_symbol_table.stamp
     COMMAND ${CMAKE_COMMAND} -E touch bootloader_exported_symbol_table.stamp
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/mksymtab/mksymtab.py" "${CMAKE_CURRENT_SOURCE_DIR}/exported_symbols.txt" "exported_symbols.c"
+    COMMAND ${Python3_EXECUTABLE} "${ROOT_SOURCE_DIR}/tools/mksymtab/mksymtab.py" "${CMAKE_CURRENT_SOURCE_DIR}/exported_symbols.txt" "exported_symbols.c"
     DEPENDS exported_symbols.txt
 )
 add_custom_target(bootloader_exported_symbol_table ALL
@@ -56,7 +62,7 @@ target_sources(bootloader PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/exported_symbols.
 set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/exported_symbols.c" PROPERTIES GENERATED TRUE)
 
 add_custom_target(bootloader_font ALL
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/hex2bfn/hex2bfn.py" "${CMAKE_CURRENT_SOURCE_DIR}/unifont.hex" "unifont.bfn"
+    COMMAND ${Python3_EXECUTABLE} "${ROOT_SOURCE_DIR}/tools/hex2bfn/hex2bfn.py" "${CMAKE_CURRENT_SOURCE_DIR}/unifont.hex" "unifont.bfn"
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     COMMENT "Generating font data"
 )

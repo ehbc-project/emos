@@ -101,7 +101,7 @@ status_t scheduler_maintain(void)
 {
     int unwait_thread;
 
-    if (current_thread && current_thread->entry) {
+    if (current_thread && current_thread->type == TT_MAIN) {
         /* if there's an entry point, then it's not a main thread */
         return STATUS_INVALID_THREAD;
     }
@@ -151,6 +151,7 @@ status_t scheduler_maintain(void)
         LOG_DEBUG("thread #%d removed from scheduler (maintain)\n", thread_to_remove->id);
 
         if (thread_to_remove->detached) {
+            LOG_DEBUG("detached\n");
             thread_remove(thread_to_remove);
         }
     }

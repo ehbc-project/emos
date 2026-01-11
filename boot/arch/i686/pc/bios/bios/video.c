@@ -97,7 +97,7 @@ void _pc_bios_video_get_font_data(uint8_t font_type, const void **data, uint16_t
     _pc_bios_call(0x10, &regs);
 
     if (data) {
-        *data = (const void *)(((uint32_t)regs.es.w << 4) + (uint32_t)regs.bp.w);
+        *data = (const void *)(((uintptr_t)regs.es.w << 4) + (uintptr_t)regs.bp.w);
     }
 
     if (len) {
@@ -109,8 +109,8 @@ status_t _pc_bios_vbe_get_controller_info(struct vbe_controller_info *buf)
 {
     struct bioscall_regs regs = {
         .a.w = 0x4F00,
-        .es.w = ((uint32_t)buf >> 4) & 0xFFFF,
-        .di.w = (uint32_t)buf & 0x000F,
+        .es.w = ((uintptr_t)buf >> 4) & 0xFFFF,
+        .di.w = (uintptr_t)buf & 0x000F,
     };
 
     _pc_bios_call(0x10, &regs);
@@ -125,8 +125,8 @@ status_t _pc_bios_vbe_get_video_mode_info(uint16_t mode, struct vbe_video_mode_i
     struct bioscall_regs regs = {
         .a.w = 0x4F01,
         .c.w = mode,
-        .es.w = ((uint32_t)buf >> 4) & 0xFFFF,
-        .di.w = (uint32_t)buf & 0x000F,
+        .es.w = ((uintptr_t)buf >> 4) & 0xFFFF,
+        .di.w = (uintptr_t)buf & 0x000F,
     };
 
     _pc_bios_call(0x10, &regs);
@@ -280,8 +280,8 @@ status_t _pc_bios_vbeddc_get_edid(uint16_t ctrlr_unit, uint16_t edid_block, stru
         .b.b.l = 0x01,
         .c.w = ctrlr_unit,
         .d.w = edid_block,
-        .es.w = ((uint32_t)buf >> 4) & 0xFFFF,
-        .di.w = (uint32_t)buf & 0x000F,
+        .es.w = ((uintptr_t)buf >> 4) & 0xFFFF,
+        .di.w = (uintptr_t)buf & 0x000F,
     };
 
     _pc_bios_call(0x10, &regs);

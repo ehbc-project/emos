@@ -3,10 +3,12 @@
 #include <stdlib.h>
 
 #include <emos/asm/thread.h>
+#include <emos/asm/page.h>
 
 #include <emos/panic.h>
 #include <emos/log.h>
 #include <emos/scheduler.h>
+#include <emos/macros.h>
 
 #define MODULE_NAME "thread"
 
@@ -25,6 +27,7 @@ status_t thread_init(struct thread **main_thread)
     }
     main_th->id = 0;
     main_th->status = TS_RUNNING;
+    main_th->type = TT_MAIN;
 
     status = scheduler_add_thread(main_th);
     if (!CHECK_SUCCESS(status)) goto has_error;
@@ -71,8 +74,8 @@ status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **
     status_t status;
     int prev_preemption_enabled = preemption_enabled;
     struct thread *th = NULL;
+    int stack_allocated = 0;
     int added_thread_to_scheduler = 0;
-    void *stack_base = NULL, *stack_ptr = NULL;
 
     thread_disable_preemption();
 
@@ -83,16 +86,20 @@ status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **
         goto has_error;
     }
     th->id = new_thread_id++;
+    th->status = TS_PENDING;
+    th->type = TT_KERNEL;
 
     /* prepare stack */
-    status = thread_prepare_stack(th, stack_size, entry, &stack_base, &stack_ptr);
+    th->kmode_stack_page_count = ALIGN_DIV(stack_size, PAGE_SIZE);
+    th->kmode_entry = entry;
+
+    status = thread_allocate_kthread_stack(th);
+    if (!CHECK_SUCCESS(status)) goto has_error;
+    stack_allocated = 1;
+
+    status = thread_setup_kthread_stack(th);
     if (!CHECK_SUCCESS(status)) goto has_error;
 
-    th->stack_base = stack_base;
-    th->stack_ptr = stack_ptr;
-    th->stack_size = stack_size;
-    th->entry = entry;
-        
     /* add thread object to list */
     status = scheduler_add_thread(th);
     if (!CHECK_SUCCESS(status)) goto has_error;
@@ -109,12 +116,12 @@ status_t thread_create(thread_entry_t entry, size_t stack_size, struct thread **
     return STATUS_SUCCESS;
 
 has_error:
-    if (added_thread_to_scheduler) {
+    if (th && added_thread_to_scheduler) {
         scheduler_remove_thread(th);
     }
 
-    if (stack_base) {
-        free(stack_base);
+    if (th && stack_allocated) {
+        thread_free_kthread_stack(th);
     }
 
     if (th) {
@@ -130,14 +137,14 @@ has_error:
 
 status_t thread_remove(struct thread *th)
 {
-    if (!th->entry) return STATUS_INVALID_THREAD;
+    if (th->type == TT_MAIN) return STATUS_INVALID_THREAD;
     if (th->status != TS_FINISHED) return STATUS_THREAD_NOT_FINISHED;
 
     LOG_DEBUG("removing thread #%d\n", th->id);
 
     scheduler_remove_thread(th);
 
-    free(th->stack_base);
+    thread_free_kthread_stack(th);
 
     free(th);
 
@@ -200,7 +207,7 @@ void thread_exit(void)
         panic(status, "cannot get current thread");
     }
 
-    if (!current_thread->entry) {
+    if (current_thread->type == TT_MAIN) {
         panic(STATUS_INVALID_THREAD, "cannot exit from main thread");
     }
 

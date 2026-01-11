@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #include <emos/status.h>
-#include <emos/boot/bootinfo.h>
+#include <bootemos/bootinfo.h>
 
 #define PAF_DEFAULT         0x00000000
 #define PAF_NO_24BIT        0x00000001

@@ -43,6 +43,7 @@ target_compile_options(bootloader_module_${MODULE_NAME} PUBLIC
 target_include_directories(bootloader_module_${MODULE_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(bootloader_module_${MODULE_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(bootloader_module_${MODULE_NAME} PRIVATE "${CMAKE_BINARY_DIR}")
+target_include_directories(bootloader_module_${MODULE_NAME} PRIVATE "${ROOT_SOURCE_DIR}/common/include")
 
 get_target_property(BOOTLOADER_INCLUDES bootloader INCLUDE_DIRECTORIES)
 target_include_directories(bootloader_module_${MODULE_NAME} PRIVATE ${BOOTLOADER_INCLUDES})

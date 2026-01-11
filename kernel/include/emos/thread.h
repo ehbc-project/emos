@@ -3,6 +3,7 @@
 
 #include <emos/status.h>
 #include <emos/compiler.h>
+#include <emos/mm.h>
 
 struct thread;
 
@@ -14,16 +15,29 @@ typedef void (*thread_entry_t)(struct thread *);
 #define TS_WAITING      3
 #define TS_FINISHED     4
 
+#define TT_MAIN         0
+#define TT_KERNEL       1
+#define TT_USER         2
+
 struct thread {
     struct thread *next;
 
     int id;
 
     int status;
-    size_t stack_size;
-    void *stack_base;
-    void *stack_ptr;
-    thread_entry_t entry;
+
+    int type;
+
+    size_t kmode_stack_page_count;
+    vpn_t kmode_stack_base_vpn;
+    void *kmode_stack_ptr;
+
+    thread_entry_t kmode_entry;
+
+    size_t umode_stack_page_count;
+    vpn_t umode_stack_base_vpn;
+
+    uintptr_t cr3;
 
     int detached;
 

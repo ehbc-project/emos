@@ -19,8 +19,8 @@
 #include <emos/panic.h>
 #include <emos/log.h>
 #include <emos/mutex.h>
-#include <emos/boot/bootinfo.h>
-#include <emos/boot/ramdisk.h>
+#include <bootemos/bootinfo.h>
+#include <bootemos/ramdisk.h>
 
 #define MODULE_NAME "main"
 
@@ -252,6 +252,7 @@ void main(void)
     struct bootinfo_entry_boot_graphics *bgent = NULL;
     struct bootinfo_entry_unavailable_frames *ufent = NULL;
     struct bootinfo_entry_pagetable_vpn *pvent = NULL;
+    struct bootinfo_entry_ramdisk *rdent = NULL;
     vpn_t earlyfb_vpn;
     struct print_state pstate;
 
@@ -287,6 +288,9 @@ void main(void)
                 break;
             case BET_PAGETABLE_VPN:
                 pvent = (void *)((uintptr_t)enthdr + enthdr->header_size);
+                break;
+            case BET_RAMDISK:
+                rdent = (void *)((uintptr_t)enthdr + enthdr->header_size);
                 break;
             default:
                 break;
@@ -387,7 +391,12 @@ void main(void)
 
     if (pvent) {
         LOG_DEBUG("pagetable vpn entry:\n");
-        LOG_DEBUG("\t%016llX\n", pvent->vpn);
+        LOG_DEBUG("\t%013llX\n", pvent->vpn);
+    }
+
+    if (rdent) {
+        LOG_DEBUG("boot ramdisk:\n");
+        LOG_DEBUG("\tversion=%u size=%08lX addr=%016llX\n", rdent->version, rdent->size, rdent->data_addr);
     }
 
     LOG_DEBUG("starting main...\n");

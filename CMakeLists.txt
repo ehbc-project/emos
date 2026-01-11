@@ -8,6 +8,14 @@ include(ExternalProject)
 # include(ProcessTarget)
 # include(BuildConfiguration)
 
+project("emos")
+
+# Load build configurations
+# load_build_configuration(TARGET CONFIG_PRESET)
+
+# Subdirectories
+add_subdirectory(tools)  # host tools
+
 # Build configurations
 set(TARGET "i686-pc-bios" CACHE STRING "Target triple (arch-board-firmware)")
 set(CONFIG_PRESET "default" CACHE STRING "Preset name of build configuration")
@@ -22,18 +30,34 @@ list(GET TARGET_TEMP 1 TARGET_BOARD)
 list(GET TARGET_TEMP 2 TARGET_FIRMWARE)
 unset(TARGET_TEMP)
 
-set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/cmake/${TARGET_ARCH}/Toolchain.cmake")
+if ("${TARGET_ARCH}" STREQUAL "amd64")
+    set(EBOOT_TARGET_ARCH i686)
+else()
+    set(EBOOT_TARGET_ARCH "${TARGET_ARCH}")
+endif()
 
-project("emos")
+ExternalProject_Add(eboot
+    SOURCE_DIR "${CMAKE_SOURCE_DIR}/boot"
+    BINARY_DIR "${CMAKE_BINARY_DIR}/boot"
+    CMAKE_ARGS
+        -DTARGET_ARCH=${EBOOT_TARGET_ARCH}
+        -DTARGET_BOARD=${TARGET_BOARD}
+        -DTARGET_FIRMWARE=${TARGET_FIRMWARE}
+        -DROOT_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DROOT_BINARY_DIR=${CMAKE_BINARY_DIR}
+    BUILD_ALWAYS 1
+    INSTALL_COMMAND ""
+)
 
-# Language configurations
-enable_language(C CXX ASM)
-
-# Load build configurations
-# load_build_configuration(TARGET CONFIG_PRESET)
-
-# Subdirectories
-add_subdirectory(tools)
-add_subdirectory(boot)
-add_subdirectory(kernel)
-add_subdirectory(packages)
+ExternalProject_Add(ekern
+    SOURCE_DIR "${CMAKE_SOURCE_DIR}/kernel"
+    BINARY_DIR "${CMAKE_BINARY_DIR}/kernel"
+    CMAKE_ARGS
+        -DTARGET_ARCH=${TARGET_ARCH}
+        -DTARGET_BOARD=${TARGET_BOARD}
+        -DTARGET_FIRMWARE=${TARGET_FIRMWARE}
+        -DROOT_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DROOT_BINARY_DIR=${CMAKE_BINARY_DIR}
+    BUILD_ALWAYS 1
+    INSTALL_COMMAND ""
+)
